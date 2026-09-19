@@ -1,12 +1,22 @@
 # Repo Intelligence
 
-An AI-powered engineering knowledge and repository intelligence platform designed to index a curated collection of 10 to 60 open-source repositories and reason across capabilities, architectures, and evidence.
+An open-world AI engineering knowledge and cross-repository reasoning platform. Index arbitrary GitHub repositories across any technical domain—without fixed taxonomies—back every claim with strictly verified source code evidence, compute cross-repository architectures with data-flow matching, and interact via an interactive engineering chat studio.
+
+---
+
+## Key Features
+
+- **Open-World Capability Discovery:** Dynamically discovers capabilities, input/output data contracts, and techniques across any engineering domain (satellite systems, computer vision, robotics, biology, distributed systems, etc.) without rigid category constraints.
+- **Strict Evidence Verification Gate:** Eliminates LLM hallucinations by programmatically validating every claim against actual repository AST symbols, exact file paths, line ranges, and source quotes (`[repo:owner/name#file:lines]`).
+- **Cross-Repository Reasoning & Composition:** Decomposes complex engineering queries into requirement contracts (`MUST` vs `SHOULD`), retrieves across repositories with anti-clustering diversity, matches producer-consumer data flows, and automatically synthesizes optimal, non-redundant multi-repo architectures.
+- **Interactive Engineering Chat Studio:** Next.js 14 streaming studio with live architecture flow graphs, verified evidence inspectors, repository management, and domain explorer.
+- **Single Operational Store:** Clean PostgreSQL + `pgvector` architecture with zero unnecessary external services (no Redis, Kafka, Neo4j, or Celery).
 
 ---
 
 ## Architecture Overview
 
-- **Web Application & APIs:** Next.js 14 App Router (TypeScript, REST APIs, Streaming SSE).
+- **Web Application & APIs:** Next.js 14 App Router (TypeScript, REST APIs, Streaming SSE, Interactive Visualizations).
 - **Ingestion & Analysis Worker:** Python 3.11+ service featuring Tree-sitter AST parsing, Git shallow cloning, and strict evidence verification.
 - **Database:** PostgreSQL 16/18 with `pgvector` extension and GIN inverted index (`tsvector`).
 - **Queue Engine:** PostgreSQL-native transactional task queue (`SELECT ... FOR UPDATE SKIP LOCKED`).
