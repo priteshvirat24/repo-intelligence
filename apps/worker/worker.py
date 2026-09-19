@@ -43,14 +43,18 @@ class IngestionWorker:
         print(f"[{self.worker_id}] Initialized. LLM: {type(self.llm).__name__}, Embeddings: {type(self.embedding_provider).__name__} ({self.embedding_provider.get_dimensions()}d)")
 
     def _handle_shutdown(self, signum, frame):
-        print(f"\n[{self.worker_id}] Received shutdown signal ({signum}). Initiating graceful shutdown...")
+        print(f"\n[{self.worker_id}] Received shutdown signal ({signum}). Initiating graceful shutdown...", flush=True)
         self.running = False
+        try:
+            self.db.record_heartbeat(self.worker_id, status="STOPPED")
+        except Exception:
+            pass
         if self.active_job:
             try:
-                print(f"[{self.worker_id}] Releasing locked job {self.active_job['id']} back to queue...")
+                print(f"[{self.worker_id}] Releasing locked job {self.active_job['id']} back to queue...", flush=True)
                 self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"])
             except Exception as e:
-                print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr)
+                print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def process_job(self, job: Dict[str, Any]):
@@ -443,6 +447,23 @@ class IngestionWorker:
             domain_tags = synthesis.get("domains", ["general-engineering"])
             knowledge_relationships = synthesis.get("relationships", [])
 
+            # Calculate analysis completeness
+            files_discovered = stage_metrics["counts"].get("files_discovered", 0)
+            files_included = stage_metrics["counts"].get("files_included", 0)
+            is_truncated = scan_result.get("is_truncated", False) or files_discovered > config.MAX_FILES
+            completeness_level = "limited" if files_included < 5 else ("partial" if is_truncated or files_included < files_discovered else "full")
+            reason = "Repository exceeded configured file or size analysis budget" if is_truncated else (
+                f"Analyzed {files_included} of {files_discovered} discovered files" if completeness_level == "partial" else None
+            )
+
+            analysis_completeness = {
+                "level": completeness_level,
+                "filesDiscovered": files_discovered,
+                "filesAnalyzed": files_included,
+                "subsystemsAnalyzed": len(subsystems),
+                "reason": reason
+            }
+
             self.db.persist_ingestion_atomic(
                 job_id=job_id,
                 repo_id=repo_id,
@@ -457,10 +478,11 @@ class IngestionWorker:
                 domain_tags=domain_tags,
                 open_knowledge_json=synthesis,
                 knowledge_objects=knowledge_objects,
-                knowledge_relationships=knowledge_relationships
+                knowledge_relationships=knowledge_relationships,
+                analysis_completeness=analysis_completeness
             )
 
-            print(f"[{self.worker_id}] Successfully indexed {full_repo_name} in {stage_metrics['durations']['total_duration_ms']}ms. Caps: {len(verified_capabilities)}, KOs: {len(knowledge_objects)}, Chunks: {len(chunk_dicts)}")
+            print(f"[{self.worker_id}] Successfully indexed {full_repo_name} in {stage_metrics['durations']['total_duration_ms']}ms. Caps: {len(verified_capabilities)}, KOs: {len(knowledge_objects)}, Chunks: {len(chunk_dicts)}, Completeness: {completeness_level}", flush=True)
 
         except Exception as e:
             err_msg = str(e)
@@ -475,21 +497,27 @@ class IngestionWorker:
         print(f"[{self.worker_id}] Batch mode: Processing all queued jobs...", flush=True)
         processed = 0
         while self.running:
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
             job = self.db.claim_next_job(worker_id=self.worker_id)
             if not job:
                 print(f"[{self.worker_id}] No more queued jobs found. Batch completed. Total processed: {processed}", flush=True)
                 break
             processed += 1
             print(f"[{self.worker_id}] === Processing Batch Job #{processed} ({job['id']}) ===", flush=True)
+            self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
             self.process_job(job)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
 
     def run_loop(self):
         print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...", flush=True)
         while self.running:
             try:
+                self.db.record_heartbeat(self.worker_id, status="ALIVE")
                 job = self.db.claim_next_job(worker_id=self.worker_id)
                 if job:
+                    self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
                     self.process_job(job)
+                    self.db.record_heartbeat(self.worker_id, status="ALIVE")
                 else:
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:

@@ -56,7 +56,10 @@ export const RequirementCard: React.FC<{ requirement: OpenRequirement }> = ({ re
 };
 
 // Candidate Repository Card
-export const CandidateRepoCard: React.FC<{ candidate: CandidateScore }> = ({ candidate }) => {
+export const CandidateRepoCard: React.FC<{
+  candidate: CandidateScore;
+  onAskAboutRepo?: (repoName: string) => void;
+}> = ({ candidate, onAskAboutRepo }) => {
   return (
     <div style={{
       background: 'rgba(15, 23, 42, 0.75)',
@@ -65,7 +68,7 @@ export const CandidateRepoCard: React.FC<{ candidate: CandidateScore }> = ({ can
       padding: '16px',
       display: 'flex',
       flexDirection: 'column',
-      gap: 10,
+      gap: 12,
       transition: 'border-color 0.2s'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -87,16 +90,31 @@ export const CandidateRepoCard: React.FC<{ candidate: CandidateScore }> = ({ can
           </Link>
         </div>
 
-        <div style={{
-          fontSize: '0.75rem',
-          fontWeight: 700,
-          padding: '4px 8px',
-          borderRadius: 6,
-          background: 'rgba(6, 182, 212, 0.12)',
-          color: '#22d3ee',
-          border: '1px solid rgba(6, 182, 212, 0.3)'
-        }}>
-          Score: {Math.round(candidate.finalScore * 100)}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {candidate.distinctiveTermBoost && candidate.distinctiveTermBoost > 0 && (
+            <span style={{
+              fontSize: '0.675rem',
+              fontWeight: 700,
+              padding: '2px 6px',
+              borderRadius: 4,
+              background: 'rgba(168, 85, 247, 0.15)',
+              color: '#c084fc',
+              border: '1px solid rgba(168, 85, 247, 0.3)'
+            }}>
+              +{Math.round(candidate.distinctiveTermBoost * 100)}% Keyword
+            </span>
+          )}
+          <div style={{
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            padding: '4px 8px',
+            borderRadius: 6,
+            background: 'rgba(6, 182, 212, 0.12)',
+            color: '#22d3ee',
+            border: '1px solid rgba(6, 182, 212, 0.3)'
+          }}>
+            Score: {Math.round(candidate.finalScore * 100)}
+          </div>
         </div>
       </div>
 
@@ -121,26 +139,61 @@ export const CandidateRepoCard: React.FC<{ candidate: CandidateScore }> = ({ can
         </div>
       )}
 
-      {/* Footer stats */}
+      {/* Actionable Buttons Bar */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 16,
+        justifyContent: 'space-between',
         paddingTop: 8,
         borderTop: '1px solid var(--border-subtle)',
         fontSize: '0.775rem',
         color: 'var(--text-muted)'
       }}>
-        {candidate.primaryLanguage && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {candidate.primaryLanguage && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Code size={13} color="var(--accent-cyan)" />
+              {candidate.primaryLanguage}
+            </span>
+          )}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Code size={13} color="var(--accent-cyan)" />
-            {candidate.primaryLanguage}
+            <Star size={13} color="var(--accent-amber)" />
+            {candidate.stars.toLocaleString()}
           </span>
-        )}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Star size={13} color="var(--accent-amber)" />
-          {candidate.stars.toLocaleString()}
-        </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Link
+            href={`/repositories/${candidate.repositoryId}`}
+            style={{
+              fontSize: '0.725rem',
+              color: 'var(--accent-cyan)',
+              padding: '3px 8px',
+              borderRadius: 4,
+              background: 'rgba(6, 182, 212, 0.08)',
+              border: '1px solid rgba(6, 182, 212, 0.25)',
+              textDecoration: 'none'
+            }}
+          >
+            View Repo
+          </Link>
+          {onAskAboutRepo && (
+            <button
+              onClick={() => onAskAboutRepo(`${candidate.owner}/${candidate.repositoryName}`)}
+              style={{
+                fontSize: '0.725rem',
+                color: '#a5b4fc',
+                padding: '3px 8px',
+                borderRadius: 4,
+                background: 'rgba(99, 102, 241, 0.1)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                cursor: 'pointer'
+              }}
+            >
+              Ask
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

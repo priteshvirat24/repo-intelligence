@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { validateGitHubUrl } from '@/lib/validation/url';
 import { GitHubClient } from '@/lib/github/client';
+import { checkRateLimit } from '@/lib/security/rate_limit';
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,6 +47,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 10 repository ingestion requests per minute per IP
+  const rateLimit = checkRateLimit(req, 'submit_repo', { maxRequests: 10, windowMs: 60 * 1000 });
+  if (!rateLimit.allowed && rateLimit.response) {
+    return rateLimit.response;
+  }
+
   try {
     const body = await req.json();
     const { url } = body;

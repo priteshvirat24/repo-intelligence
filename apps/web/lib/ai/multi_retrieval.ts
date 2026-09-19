@@ -1,4 +1,4 @@
-import { OpenQueryRequirements, CandidateScore, KnowledgeObject } from '@repo/shared';
+import { OpenQueryRequirements, CandidateScore, KnowledgeObject, RetrievalTrace } from '@repo/shared';
 import { query } from '@repo/database';
 import { EmbeddingProvider } from './providers';
 
@@ -25,6 +25,18 @@ export interface RetrievedKnowledgeObject {
   score: number;
 }
 
+export const GENERIC_TECH_WORDS = new Set([
+  'ai', 'artificial', 'intelligence', 'system', 'systems', 'data', 'pipeline', 'pipelines',
+  'framework', 'frameworks', 'automation', 'tool', 'tools', 'engine', 'engines', 'service',
+  'services', 'app', 'apps', 'application', 'applications', 'code', 'platform', 'platforms',
+  'software', 'library', 'libraries', 'solution', 'solutions', 'project', 'projects',
+  'model', 'models', 'agent', 'agents', 'feature', 'features', 'fast', 'simple', 'best',
+  'smart', 'intelligent', 'build', 'using', 'based', 'with', 'from', 'into', 'over', 'open',
+  'source', 'github', 'repo', 'repository', 'repositories', 'implementation', 'module',
+  'modules', 'interface', 'interfaces', 'helper', 'helpers', 'utils', 'utilities',
+  'modern', 'lightweight', 'flexible', 'advanced', 'easy', 'powerful', 'high', 'performance'
+]);
+
 export class MultiLevelHybridRetrievalEngine {
   constructor(private embeddingProvider: EmbeddingProvider) {}
 
@@ -33,23 +45,58 @@ export class MultiLevelHybridRetrievalEngine {
     chunks: RetrievedChunk[];
     knowledgeObjects: RetrievedKnowledgeObject[];
     rawObjectsByRepo: Map<string, KnowledgeObject[]>;
+    trace: RetrievalTrace;
   }> {
-    const searchText = [
+    const rawTokens = [
       requirements.problemSummary,
       ...requirements.requirements.map(r => r.name),
       ...requirements.queryExpansions
-    ].join(' ').replace(/[^a-zA-Z0-9\s-]/g, ' ').trim();
+    ].join(' ').split(/[\s,;:!?()\[\]{}"]+/).filter(Boolean);
+
+    // Suppress generic noise words while extracting distinctive domain/technical terms
+    const suppressedGenericWords: string[] = [];
+    const distinctiveTokens: string[] = [];
+    const seenDistinctive = new Set<string>();
+
+    for (const rawToken of rawTokens) {
+      const lower = rawToken.toLowerCase().replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
+      if (!lower || lower.length < 2) continue;
+
+      if (GENERIC_TECH_WORDS.has(lower)) {
+        if (!suppressedGenericWords.includes(lower)) {
+          suppressedGenericWords.push(lower);
+        }
+      } else if (lower.length >= 3 && !seenDistinctive.has(lower)) {
+        seenDistinctive.add(lower);
+        distinctiveTokens.push(lower);
+      }
+    }
+
+    // FTS query prioritized by distinctive technical terms; fallback to full clean text
+    const ftsSearchText = distinctiveTokens.length > 0
+      ? distinctiveTokens.slice(0, 20).join(' ')
+      : requirements.problemSummary.replace(/[^a-zA-Z0-9\s-]/g, ' ').trim();
+
+    const vectorSearchText = [
+      requirements.problemSummary,
+      distinctiveTokens.slice(0, 10).join(' ')
+    ].join(' ').trim();
 
     // 1. Generate query embedding for dense retrieval
     let queryEmbedding: number[] = [];
     try {
-      queryEmbedding = await this.embeddingProvider.embedQuery(requirements.problemSummary);
+      queryEmbedding = await this.embeddingProvider.embedQuery(vectorSearchText);
     } catch (e) {
       console.warn('Embedding generation warning:', e);
     }
 
     const hasEmbedding = queryEmbedding.length > 0;
     const embStr = hasEmbedding ? `[${queryEmbedding.join(',')}]` : null;
+
+    const ilikePatterns = [
+      ...requirements.requirements.map(r => `%${r.name.slice(0, 20)}%`),
+      ...distinctiveTokens.slice(0, 10).map(t => `%${t}%`)
+    ];
 
     // 2. Query Knowledge Objects across all tiers (Capabilities, Features, Concepts, Techniques, Use Cases, Interfaces, Inputs, Outputs)
     let koRows: any[] = [];
@@ -86,7 +133,7 @@ export class MultiLevelHybridRetrievalEngine {
             )
           ORDER BY vector_sim DESC, text_rank DESC
           LIMIT 60;
-        `, [embStr, searchText, requirements.requirements.map(r => `%${r.name.slice(0, 15)}%`)]);
+        `, [embStr, ftsSearchText, ilikePatterns]);
         koRows = koRes.rows;
       } else {
         const koRes = await query(`
@@ -116,7 +163,7 @@ export class MultiLevelHybridRetrievalEngine {
             )
           ORDER BY text_rank DESC
           LIMIT 40;
-        `, [searchText, requirements.requirements.map(r => `%${r.name.slice(0, 15)}%`)]);
+        `, [ftsSearchText, ilikePatterns]);
         koRows = koRes.rows;
       }
     } catch (err) {
@@ -172,7 +219,7 @@ export class MultiLevelHybridRetrievalEngine {
             )
           ORDER BY vector_sim DESC, text_rank DESC
           LIMIT 30;
-        `, [embStr, searchText]);
+        `, [embStr, ftsSearchText]);
         chunkRows = chunkRes.rows;
       } else {
         const chunkRes = await query(`
@@ -191,7 +238,7 @@ export class MultiLevelHybridRetrievalEngine {
           WHERE r.status = 'READY'
           ORDER BY text_rank DESC
           LIMIT 20;
-        `, [searchText]);
+        `, [ftsSearchText]);
         chunkRows = chunkRes.rows;
       }
     } catch {
@@ -327,13 +374,32 @@ export class MultiLevelHybridRetrievalEngine {
       const vectorSim = agg.maxVectorSim > 0 ? agg.maxVectorSim : 0.7;
       const fullTextRank = agg.maxTextRank > 0 ? agg.maxTextRank : 0.5;
 
-      const finalScore = Math.max(
+      // Distinctive token boost calculation
+      let distinctiveMatches = 0;
+      if (distinctiveTokens.length > 0) {
+        const repoNameLower = agg.repoName.toLowerCase();
+        const ownerLower = agg.owner.toLowerCase();
+        const capsCombined = Array.from(agg.matchedCapabilities).join(' ').toLowerCase();
+        const conceptsCombined = Array.from(agg.matchedConcepts).join(' ').toLowerCase();
+
+        for (const token of distinctiveTokens) {
+          if (repoNameLower.includes(token) || ownerLower.includes(token)) {
+            distinctiveMatches += 2;
+          } else if (capsCombined.includes(token) || conceptsCombined.includes(token)) {
+            distinctiveMatches += 1;
+          }
+        }
+      }
+      const distinctiveTermBoost = Math.min(0.35, distinctiveMatches * 0.08);
+
+      const baseScore = Math.max(
         0,
-        0.45 * capCoverageScore +
+        0.40 * capCoverageScore +
         0.30 * vectorSim +
         0.15 * fullTextRank +
-        0.10 * maturityScore
+        0.15 * maturityScore
       );
+      const finalScore = Math.min(1.0, baseScore + distinctiveTermBoost);
 
       candidates.push({
         repositoryId: agg.repositoryId,
@@ -346,6 +412,7 @@ export class MultiLevelHybridRetrievalEngine {
         fullTextRank: Math.round(fullTextRank * 100) / 100,
         capabilityCoverageScore: Math.round(capCoverageScore * 100) / 100,
         maturityScore: Math.round(maturityScore * 100) / 100,
+        distinctiveTermBoost: Math.round(distinctiveTermBoost * 100) / 100,
         complexityPenalty: 0,
         conflictPenalty: 0,
         finalScore: Math.round(finalScore * 100) / 100,
@@ -357,11 +424,23 @@ export class MultiLevelHybridRetrievalEngine {
     // Sort descending by finalScore
     candidates.sort((a, b) => b.finalScore - a.finalScore);
 
+    const trace: RetrievalTrace = {
+      queryText: ftsSearchText,
+      hasEmbedding,
+      suppressedGenericWords,
+      distinctiveTokens,
+      rawKnowledgeObjectsCount: koRows.length,
+      rawChunksCount: chunkRows.length,
+      candidatesScored: candidates.length,
+      topCandidateNames: candidates.slice(0, 5).map(c => `${c.owner}/${c.repositoryName}`)
+    };
+
     return {
       candidates,
       chunks,
       knowledgeObjects,
-      rawObjectsByRepo
+      rawObjectsByRepo,
+      trace
     };
   }
 }

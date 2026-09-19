@@ -84,18 +84,22 @@ class DatabaseRepository:
         finally:
             conn.close()
 
-    def mark_job_failed(self, job_id: str, repo_id: str, error_message: str):
-        """Marks repository and job as FAILED."""
+    def record_heartbeat(self, worker_id: str, current_job_id: Optional[str] = None, status: str = "ALIVE", metadata: Optional[Dict[str, Any]] = None):
+        """Records or updates heartbeat in worker_heartbeats table."""
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE ingestion_jobs SET status = 'FAILED', step = 'ERROR', error_message = %s, updated_at = NOW() WHERE id = %s",
-                    (error_message, job_id)
-                )
-                cur.execute(
-                    "UPDATE repositories SET status = 'FAILED', error_message = %s, updated_at = NOW() WHERE id = %s",
-                    (error_message, repo_id)
+                    """
+                    INSERT INTO worker_heartbeats (worker_id, status, current_job_id, last_seen_at, metadata)
+                    VALUES (%s, %s, %s, NOW(), %s)
+                    ON CONFLICT (worker_id) DO UPDATE
+                    SET status = EXCLUDED.status,
+                        current_job_id = EXCLUDED.current_job_id,
+                        last_seen_at = NOW(),
+                        metadata = EXCLUDED.metadata;
+                    """,
+                    (worker_id, status, current_job_id, Json(metadata or {}))
                 )
                 conn.commit()
         finally:
@@ -116,7 +120,8 @@ class DatabaseRepository:
         domain_tags: Optional[List[str]] = None,
         open_knowledge_json: Optional[Dict[str, Any]] = None,
         knowledge_objects: Optional[List[Dict[str, Any]]] = None,
-        knowledge_relationships: Optional[List[Dict[str, Any]]] = None
+        knowledge_relationships: Optional[List[Dict[str, Any]]] = None,
+        analysis_completeness: Optional[Dict[str, Any]] = None
     ):
         """
         Atomically persists all ingestion artifacts within a single database transaction.
@@ -126,19 +131,20 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # 1. Update Repository commit, domain tags, open knowledge JSON, and status
+                # 1. Update Repository commit, domain tags, open knowledge JSON, completeness, and status
                 cur.execute(
                     """
                     UPDATE repositories
                     SET latest_commit_hash = %s,
                         domain_tags = %s,
                         open_knowledge_json = %s,
+                        analysis_completeness = %s,
                         status = 'READY',
                         error_message = NULL,
                         updated_at = NOW()
                     WHERE id = %s
                     """,
-                    (commit_hash, domain_tags or [], Json(open_knowledge_json or {}), repo_id)
+                    (commit_hash, domain_tags or [], Json(open_knowledge_json or {}), Json(analysis_completeness or {}), repo_id)
                 )
 
                 # Clean previous data if re-indexing
@@ -202,8 +208,8 @@ class DatabaseRepository:
                     for ev in cap.get("evidence", []):
                         cur.execute(
                             """
-                            INSERT INTO evidence (repository_capability_id, file_path, start_line, end_line, symbol_name, quote_snippet, evidence_type, is_verified)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                            INSERT INTO evidence (repository_capability_id, file_path, start_line, end_line, symbol_name, quote_snippet, evidence_type, evidence_strength, is_verified)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
                             """,
                             (
                                 repo_cap_id,
@@ -213,6 +219,7 @@ class DatabaseRepository:
                                 ev.get("symbol_name"),
                                 ev.get("quote_snippet", ""),
                                 ev.get("evidence_type", "doc"),
+                                ev.get("evidence_strength", "DIRECT_IMPLEMENTATION"),
                                 ev.get("verified", True)
                             )
                         )
@@ -247,8 +254,8 @@ class DatabaseRepository:
                         for ev in ko.get("evidence", []):
                             cur.execute(
                                 """
-                                INSERT INTO evidence (repository_capability_id, knowledge_object_id, file_path, start_line, end_line, symbol_name, quote_snippet, evidence_type, is_verified)
-                                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s);
+                                INSERT INTO evidence (repository_capability_id, knowledge_object_id, file_path, start_line, end_line, symbol_name, quote_snippet, evidence_type, evidence_strength, is_verified)
+                                VALUES (NULL, %s, %s, %s, %s, %s, %s, %s, %s, %s);
                                 """,
                                 (
                                     ko_id,
@@ -258,6 +265,7 @@ class DatabaseRepository:
                                     ev.get("symbol_name"),
                                     ev.get("quote_snippet", ""),
                                     ev.get("evidence_type", "code_ast"),
+                                    ev.get("evidence_strength", "DIRECT_IMPLEMENTATION"),
                                     ev.get("verified", True)
                                 )
                             )

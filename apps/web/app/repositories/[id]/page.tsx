@@ -174,18 +174,53 @@ export default function RepositoryDetailPage({ params }: { params: { id: string 
               </h1>
             </div>
 
-            <span className={`badge-${repo.status.toLowerCase()}`} style={{
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              padding: '4px 10px',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5
-            }}>
-              {repo.status === 'READY' && <CheckCircle2 size={14} />}
-              {repo.status}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {repo.analysisCompleteness && (
+                <span style={{
+                  fontSize: '0.725rem',
+                  fontWeight: 600,
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  background: repo.analysisCompleteness.level === 'full'
+                    ? 'rgba(16, 185, 129, 0.15)'
+                    : repo.analysisCompleteness.level === 'partial'
+                    ? 'rgba(245, 158, 11, 0.15)'
+                    : 'rgba(239, 68, 68, 0.15)',
+                  color: repo.analysisCompleteness.level === 'full'
+                    ? '#34d399'
+                    : repo.analysisCompleteness.level === 'partial'
+                    ? '#fbbf24'
+                    : '#f87171',
+                  border: `1px solid ${
+                    repo.analysisCompleteness.level === 'full'
+                      ? 'rgba(16, 185, 129, 0.3)'
+                      : repo.analysisCompleteness.level === 'partial'
+                      ? 'rgba(245, 158, 11, 0.3)'
+                      : 'rgba(239, 68, 68, 0.3)'
+                  }`
+                }} title={`Discovered: ${repo.analysisCompleteness.filesDiscovered || 0} files | Analyzed: ${repo.analysisCompleteness.filesAnalyzed || 0} files | Subsystems: ${repo.analysisCompleteness.subsystemsAnalyzed || 0}`}>
+                  <Layers size={13} />
+                  {repo.analysisCompleteness.level?.toUpperCase()} ANALYSIS
+                  {repo.analysisCompleteness.filesAnalyzed ? ` (${repo.analysisCompleteness.filesAnalyzed} files)` : ''}
+                </span>
+              )}
+
+              <span className={`badge-${repo.status.toLowerCase()}`} style={{
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                padding: '4px 10px',
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5
+              }}>
+                {repo.status === 'READY' && <CheckCircle2 size={14} />}
+                {repo.status}
+              </span>
+            </div>
           </div>
 
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6, maxWidth: 840, marginBottom: 20 }}>

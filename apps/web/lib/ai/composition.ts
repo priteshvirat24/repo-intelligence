@@ -124,19 +124,35 @@ export class OpenRepositoryCompositionEngine {
     const coveredMusts = new Set<string>();
     const mustRequirements = requirements.requirements.filter(r => r.criticality === 'MUST');
 
-    for (const candidate of candidates) {
-      const repoKey = `${candidate.owner}/${candidate.repositoryName}`;
-      let addsNewMust = false;
+    // Single-repo minimalization check:
+    // If the top candidate covers all MUST requirements, prefer a clean single-repo solution
+    if (candidates.length > 0) {
+      const topCandidate = candidates[0];
+      const topKey = `${topCandidate.owner}/${topCandidate.repositoryName}`;
+      const topCoveredMusts = mustRequirements.filter(m => coverage[m.name]?.providedBy.includes(topKey));
 
-      for (const mustReq of mustRequirements) {
-        if (!coveredMusts.has(mustReq.name) && coverage[mustReq.name]?.providedBy.includes(repoKey)) {
-          addsNewMust = true;
-          coveredMusts.add(mustReq.name);
+      if (mustRequirements.length > 0 && topCoveredMusts.length === mustRequirements.length) {
+        // Top candidate satisfies all critical requirements alone
+        selectedRepos.push(topCandidate);
+        for (const m of topCoveredMusts) coveredMusts.add(m.name);
+      } else {
+        // Multi-repository greedy set cover: only add candidate if it genuinely covers an uncovered requirement
+        for (const candidate of candidates) {
+          const repoKey = `${candidate.owner}/${candidate.repositoryName}`;
+          let addsNewMust = false;
+
+          for (const mustReq of mustRequirements) {
+            if (!coveredMusts.has(mustReq.name) && coverage[mustReq.name]?.providedBy.includes(repoKey)) {
+              addsNewMust = true;
+              coveredMusts.add(mustReq.name);
+            }
+          }
+
+          if (addsNewMust) {
+            selectedRepos.push(candidate);
+            if (selectedRepos.length >= 4) break; // Keep architectures minimal and realistic
+          }
         }
-      }
-
-      if (addsNewMust || (selectedRepos.length === 0 && candidate.finalScore > 0.45)) {
-        selectedRepos.push(candidate);
       }
     }
 

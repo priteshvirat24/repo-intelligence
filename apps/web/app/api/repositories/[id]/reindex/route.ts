@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { GitHubClient } from '@/lib/github/client';
+import { checkRateLimit } from '@/lib/security/rate_limit';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  // Rate limit: 5 reindex operations per minute per IP
+  const rateLimit = checkRateLimit(req, 'reindex_repo', { maxRequests: 5, windowMs: 60 * 1000 });
+  if (!rateLimit.allowed && rateLimit.response) {
+    return rateLimit.response;
+  }
+
   try {
     const { id } = params;
 

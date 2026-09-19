@@ -11,7 +11,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         id, owner, name, url, description, default_branch as "defaultBranch",
         latest_commit_hash as "latestCommitHash", license, stars,
         primary_language as "primaryLanguage", status, domain_tags as "domainTags",
-        open_knowledge_json as "openKnowledge", error_message as "errorMessage",
+        open_knowledge_json as "openKnowledge", analysis_completeness as "analysisCompleteness",
+        error_message as "errorMessage",
         created_at as "createdAt", updated_at as "updatedAt"
       FROM repositories
       WHERE id = $1

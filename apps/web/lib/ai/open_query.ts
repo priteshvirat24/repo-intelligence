@@ -82,17 +82,17 @@ Return JSON matching:
   }
 
   private fallbackDecompose(query: string): OpenQueryRequirements {
-    const qLower = query.toLowerCase();
     const reqs = this.fallbackRequirements(query);
     const expansions = this.fallbackExpansions(query);
 
-    const domains: string[] = [];
-    if (qLower.includes('satellite') || qLower.includes('orbit') || qLower.includes('space')) domains.push('satellite-systems');
-    if (qLower.includes('geo') || qLower.includes('coordinate') || qLower.includes('map')) domains.push('geospatial');
-    if (qLower.includes('image') || qLower.includes('vision') || qLower.includes('detect') || qLower.includes('reconstruction')) domains.push('computer-vision');
-    if (qLower.includes('robot') || qLower.includes('ros') || qLower.includes('kinematic')) domains.push('robotics');
-    if (qLower.includes('crawl') || qLower.includes('scrape') || qLower.includes('browser')) domains.push('web-automation');
-    if (qLower.includes('agent') || qLower.includes('llm') || qLower.includes('rag')) domains.push('artificial-intelligence');
+    // Extract dynamic domain candidates from prominent technical tokens
+    const tokens = query
+      .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+      .split(/\s+/)
+      .map(t => t.toLowerCase())
+      .filter(t => t.length > 3 && !COMMON_STOPWORDS.has(t));
+
+    const domains = Array.from(new Set(tokens.slice(0, 3))).map(t => `${t}-systems`);
     if (domains.length === 0) domains.push('general-engineering');
 
     return {
@@ -106,108 +106,46 @@ Return JSON matching:
   }
 
   private fallbackRequirements(query: string): OpenRequirement[] {
-    const qLower = query.toLowerCase();
     const reqs: OpenRequirement[] = [];
 
-    // Satellite / Orbit
-    if (qLower.includes('satellite') || qLower.includes('orbit') || qLower.includes('sgp4')) {
-      reqs.push({
-        name: 'SGP4 orbital propagation & trajectory simulation',
-        description: 'Propagates satellite state vectors and computes ephemeris trajectories.',
-        type: 'domain',
-        criticality: 'MUST',
-        confidence: 0.95
-      });
-    }
+    // Split query by common coordination delimiters
+    const clauses = query
+      .split(/(?:,|\band\b|\bwith\b|\balso\b|\bplus\b|\bas well as\b|\bneed\b|\brequire\b)/i)
+      .map(c => c.trim())
+      .filter(c => c.length > 3);
 
-    // Geospatial
-    if (qLower.includes('geospatial') || qLower.includes('coordinate') || qLower.includes('geo')) {
-      reqs.push({
-        name: 'Geospatial coordinate transformations',
-        description: 'Transforms coordinates between WGS84, ECEF, and local projections.',
-        type: 'technical',
-        criticality: 'MUST',
-        confidence: 0.92
-      });
-    }
+    for (let i = 0; i < clauses.length; i++) {
+      const clause = clauses[i];
+      const cleaned = clause
+        .split(/\s+/)
+        .filter(w => !COMMON_STOPWORDS.has(w.toLowerCase()))
+        .join(' ')
+        .trim();
 
-    // 3D / Globe rendering
-    if (qLower.includes('globe') || qLower.includes('3d') || qLower.includes('render') || qLower.includes('webgl') || qLower.includes('visualization')) {
-      reqs.push({
-        name: 'Interactive 3D Globe & Spatial Visualization',
-        description: 'Renders geospatial entities and satellite trajectories on an interactive globe.',
-        type: 'functional',
-        criticality: 'MUST',
-        confidence: 0.94
-      });
-    }
+      if (!cleaned || cleaned.length < 3) continue;
 
-    // Computer Vision
-    if (qLower.includes('detect') || qLower.includes('vision') || qLower.includes('object') || qLower.includes('image')) {
-      reqs.push({
-        name: 'Computer Vision & Object Detection',
-        description: 'Detects objects, boundaries, or changes from imagery.',
-        type: 'domain',
-        criticality: 'MUST',
-        confidence: 0.90
-      });
-    }
+      const isMust = i === 0 || /\b(must|essential|require|critical|primary)\b/i.test(clause);
+      const criticality = isMust ? 'MUST' : 'SHOULD';
 
-    // Web Automation
-    if (qLower.includes('crawl') || qLower.includes('scrape') || qLower.includes('browser')) {
-      reqs.push({
-        name: 'Headless Browser Automation & Crawling',
-        description: 'Automates browser rendering, DOM extraction, and page crawling.',
-        type: 'functional',
-        criticality: 'MUST',
-        confidence: 0.95,
-        canonicalSlug: 'headless-browser-automation'
-      });
-    }
+      // Clean requirement title
+      const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
-    // Memory
-    if (qLower.includes('memory') || qLower.includes('remember') || qLower.includes('session')) {
       reqs.push({
-        name: 'Persistent Agent Memory',
-        description: 'Manages multi-turn conversation state and persistent semantic recall.',
-        type: 'functional',
-        criticality: 'MUST',
-        confidence: 0.95,
-        canonicalSlug: 'session-memory'
-      });
-    }
-
-    // Vector Indexing
-    if (qLower.includes('vector') || qLower.includes('embedding') || qLower.includes('rag')) {
-      reqs.push({
-        name: 'Vector Indexing & Similarity Search',
-        description: 'High-performance nearest-neighbor indexing over dense vector spaces.',
-        type: 'technical',
-        criticality: 'MUST',
-        confidence: 0.95,
-        canonicalSlug: 'vector-indexing'
-      });
-    }
-
-    // Document Extraction
-    if (qLower.includes('pdf') || qLower.includes('table') || qLower.includes('document')) {
-      reqs.push({
-        name: 'Document & Table Extraction',
-        description: 'Parses complex documents and structures tables into queryable formats.',
-        type: 'functional',
-        criticality: 'MUST',
-        confidence: 0.95,
-        canonicalSlug: 'pdf-table-extraction'
+        name: title,
+        description: `Implementation for ${cleaned} as requested in problem specification.`,
+        type: i === 0 ? 'functional' : 'technical',
+        criticality,
+        confidence: 0.88
       });
     }
 
     if (reqs.length === 0) {
       reqs.push({
-        name: 'Core System Capability',
+        name: query.trim().slice(0, 60),
         description: query.trim(),
         type: 'functional',
         criticality: 'MUST',
-        confidence: 0.85
+        confidence: 0.80
       });
     }
 
@@ -215,35 +153,45 @@ Return JSON matching:
   }
 
   private fallbackExpansions(query: string): string[] {
-    const words = query.split(/\s+/).filter(w => w.length > 3);
-    const expansions = new Set<string>(words);
+    const tokens = query
+      .replace(/[^a-zA-Z0-9\s-]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !COMMON_STOPWORDS.has(w.toLowerCase()));
 
-    const qLower = query.toLowerCase();
-    if (qLower.includes('satellite')) {
-      expansions.add('orbital propagation');
-      expansions.add('TLE');
-      expansions.add('ephemeris');
-      expansions.add('SGP4');
+    const expansions = new Set<string>();
+
+    // Add standalone tokens
+    for (const token of tokens) {
+      expansions.add(token);
+      // If looks like an acronym (all caps, 2-6 chars)
+      if (token === token.toUpperCase() && token.length >= 2 && token.length <= 6) {
+        expansions.add(`${token} protocol`);
+        expansions.add(`${token} implementation`);
+      }
     }
-    if (qLower.includes('globe') || qLower.includes('visualize')) {
-      expansions.add('WebGL');
-      expansions.add('Three.js');
-      expansions.add('Cesium');
-      expansions.add('3D canvas');
-    }
-    if (qLower.includes('geo') || qLower.includes('coordinate')) {
-      expansions.add('WGS84');
-      expansions.add('lat/lon');
-      expansions.add('ECEF');
-      expansions.add('GIS');
-    }
-    if (qLower.includes('vision') || qLower.includes('detect')) {
-      expansions.add('object detection');
-      expansions.add('bounding box');
-      expansions.add('YOLO');
-      expansions.add('segmentation');
+
+    // Add adjacent pairs as compound phrases
+    for (let i = 0; i < tokens.length - 1; i++) {
+      expansions.add(`${tokens[i]} ${tokens[i + 1]}`);
     }
 
     return Array.from(expansions).slice(0, 8);
   }
 }
+
+const COMMON_STOPWORDS = new Set([
+  'a', 'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
+  'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by',
+  'can', 'could', 'did', 'do', 'does', 'doing', 'down', 'during',
+  'each', 'few', 'for', 'from', 'further',
+  'had', 'has', 'have', 'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how',
+  'i', 'if', 'in', 'into', 'is', 'it', 'its', 'itself',
+  'just', 'me', 'more', 'most', 'my', 'myself',
+  'need', 'needs', 'no', 'nor', 'not', 'now',
+  'of', 'off', 'on', 'once', 'only', 'or', 'other', 'our', 'ours', 'ourselves', 'out', 'over', 'own',
+  'same', 'should', 'so', 'some', 'such',
+  'than', 'that', 'the', 'their', 'theirs', 'them', 'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too',
+  'under', 'until', 'up', 'very',
+  'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom', 'why', 'will', 'with', 'would',
+  'you', 'your', 'yours', 'yourself', 'yourselves'
+]);

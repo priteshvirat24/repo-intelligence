@@ -87,6 +87,8 @@ class EvidenceVerificationGate:
             }
 
         start_line, end_line = calculated_lines
+        ev_type = evidence.get("evidence_type", "doc")
+        strength = cls.classify_evidence_strength(file_path_str, symbol, ev_type, quote)
 
         return {
             "verified": True,
@@ -95,5 +97,39 @@ class EvidenceVerificationGate:
             "end_line": end_line,
             "symbol_name": symbol,
             "quote_snippet": quote,
-            "evidence_type": evidence.get("evidence_type", "doc")
+            "evidence_type": ev_type,
+            "evidence_strength": strength
         }
+
+    @staticmethod
+    def classify_evidence_strength(file_path: str, symbol: Optional[str], evidence_type: str, content_quote: str) -> str:
+        """
+        Classifies evidence into five rigor tiers:
+        - DIRECT_IMPLEMENTATION: Verified source code implementation (classes, functions, methods)
+        - DIRECT_INTERFACE: Exported types, interfaces, structs, or API contracts
+        - DOCUMENTATION: README or documentation text quotes
+        - EXAMPLE: Code in examples, tests, or demo folders
+        - INFERRED: Structural or configuration references
+        """
+        fp_lower = file_path.lower()
+        ext = Path(file_path).suffix.lower()
+        is_code = ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".cpp", ".c", ".h")
+
+        if any(marker in fp_lower for marker in ("test", "example", "fixture", "demo", "sample")):
+            return "EXAMPLE"
+
+        if is_code:
+            quote_lower = (content_quote or "").lower()
+            if any(k in quote_lower for k in ("interface ", "type ", "struct ", "typedef ", "trait ")):
+                return "DIRECT_INTERFACE"
+            if symbol or any(k in quote_lower for k in ("def ", "class ", "function ", "func ", "fn ")):
+                return "DIRECT_IMPLEMENTATION"
+            return "DIRECT_INTERFACE"
+
+        if "readme" in fp_lower or ext in (".md", ".rst", ".txt", ".adoc", ".html"):
+            return "DOCUMENTATION"
+
+        if any(m in fp_lower for m in ("package.json", "pyproject.toml", "cargo.toml", "go.mod", "pom.xml")):
+            return "DOCUMENTATION"
+
+        return "INFERRED"

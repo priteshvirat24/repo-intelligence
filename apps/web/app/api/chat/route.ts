@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatOrchestrator } from '@/lib/ai/chat';
+import { checkRateLimit } from '@/lib/security/rate_limit';
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 20 chat queries per minute per IP
+  const rateLimit = checkRateLimit(req, 'chat_query', { maxRequests: 20, windowMs: 60 * 1000 });
+  if (!rateLimit.allowed && rateLimit.response) {
+    return rateLimit.response;
+  }
+
   try {
     const { message, history } = await req.json();
 

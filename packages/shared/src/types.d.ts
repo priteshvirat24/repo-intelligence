@@ -1,4 +1,19 @@
 export type RepositoryStatus = 'PENDING' | 'CLONING' | 'ANALYZING' | 'INDEXING' | 'READY' | 'FAILED';
+export type EvidenceStrength = 'DIRECT_IMPLEMENTATION' | 'DIRECT_INTERFACE' | 'DOCUMENTATION' | 'EXAMPLE' | 'INFERRED';
+export interface AnalysisCompleteness {
+    level: 'full' | 'partial' | 'limited';
+    filesDiscovered: number;
+    filesAnalyzed: number;
+    subsystemsAnalyzed: number;
+    reason?: string | null;
+}
+export interface WorkerHeartbeat {
+    workerId: string;
+    status: 'ALIVE' | 'STALE' | 'STOPPED';
+    currentJobId: string | null;
+    lastSeenAt: string;
+    metadata?: Record<string, any>;
+}
 export interface Repository {
     id: string;
     owner: string;
@@ -13,6 +28,7 @@ export interface Repository {
     status: RepositoryStatus;
     domainTags?: string[];
     openKnowledge?: OpenWorldRepositoryProfile;
+    analysisCompleteness?: AnalysisCompleteness;
     errorMessage?: string | null;
     metadata?: Record<string, any>;
     createdAt: string;
@@ -30,6 +46,7 @@ export interface Evidence {
     symbolName?: string | null;
     quoteSnippet: string;
     evidenceType: 'doc' | 'code_ast' | 'manifest' | 'example' | 'inferred';
+    evidenceStrength?: EvidenceStrength;
     isVerified: boolean;
     verificationNotes?: string;
     createdAt?: string;
@@ -159,7 +176,18 @@ export interface CandidateScore {
     finalScore: number;
     matchedCapabilities: string[];
     matchedConcepts?: string[];
+    distinctiveTermBoost?: number;
     relevanceExplanation?: string;
+}
+export interface RetrievalTrace {
+    queryText: string;
+    hasEmbedding: boolean;
+    suppressedGenericWords: string[];
+    distinctiveTokens: string[];
+    rawKnowledgeObjectsCount: number;
+    rawChunksCount: number;
+    candidatesScored: number;
+    topCandidateNames: string[];
 }
 export interface ArchitectureNode {
     id: string;
