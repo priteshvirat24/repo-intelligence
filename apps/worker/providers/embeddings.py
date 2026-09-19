@@ -41,11 +41,32 @@ class MistralEmbeddingProvider(BaseEmbeddingProvider):
                     "model": self.model,
                     "input": batch
                 }
-                resp = client.post("https://api.mistral.ai/v1/embeddings", headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                for item in data.get("data", []):
-                    embeddings.append(item["embedding"])
+                batch_success = False
+                for attempt in range(5):
+                    try:
+                        resp = client.post("https://api.mistral.ai/v1/embeddings", headers=headers, json=payload)
+                        if resp.status_code == 429:
+                            time.sleep(2 ** attempt + 0.5)
+                            continue
+                        resp.raise_for_status()
+                        data = resp.json()
+                        for item in data.get("data", []):
+                            embeddings.append(item["embedding"])
+                        batch_success = True
+                        break
+                    except httpx.HTTPStatusError as e:
+                        if attempt == 4:
+                            raise e
+                        time.sleep(2 ** attempt)
+                    except Exception as e:
+                        if attempt == 4:
+                            raise e
+                        time.sleep(1)
+
+                if not batch_success:
+                    # Fallback to zero vector or skip if total failure
+                    for _ in batch:
+                        embeddings.append([0.0] * self.get_dimensions())
 
         return embeddings
 

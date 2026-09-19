@@ -77,15 +77,18 @@ class IngestionWorker:
                 raise ValueError(f"Repository {repo_id} not found in database.")
 
             repo_owner, repo_name, repo_url, default_branch, existing_commit = row[1], row[2], row[3], row[4], row[5]
-            print(f"[{self.worker_id}] Ingesting {repo_owner}/{repo_name} (Job: {job_id})")
+            print(f"[{self.worker_id}] Ingesting {repo_owner}/{repo_name} (Job: {job_id})", flush=True)
 
             # 2. Stage: CLONING
+            print(f"[{self.worker_id}] Starting Stage: CLONING...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING")
             scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
             stage_metrics["durations"]["cloning_ms"] = int((time.time() - s_time) * 1000)
+            print(f"[{self.worker_id}] CLONING complete in {stage_metrics['durations']['cloning_ms']}ms. SHA: {commit_sha}", flush=True)
 
             # 3. Stage: FILE_FILTERING
+            print(f"[{self.worker_id}] Starting Stage: FILE_FILTERING...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "FILE_FILTERING", "ANALYZING")
             scan_result = self.file_filter.scan_repository(scratch_dir)
@@ -93,15 +96,19 @@ class IngestionWorker:
             stage_metrics["counts"]["files_included"] = len(scan_result["included_files"])
             stage_metrics["counts"]["files_excluded"] = scan_result["excluded_files_count"]
             stage_metrics["durations"]["filtering_ms"] = int((time.time() - s_time) * 1000)
+            print(f"[{self.worker_id}] FILE_FILTERING complete: {len(scan_result['included_files'])} included files.", flush=True)
 
             # 4. Stage: MANIFEST_ANALYSIS
+            print(f"[{self.worker_id}] Starting Stage: MANIFEST_ANALYSIS...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "MANIFEST_ANALYSIS", "ANALYZING")
             dependencies = self.manifest_analyzer.analyze_all(scratch_dir)
             stage_metrics["counts"]["dependencies_found"] = len(dependencies)
             stage_metrics["durations"]["manifest_ms"] = int((time.time() - s_time) * 1000)
+            print(f"[{self.worker_id}] MANIFEST_ANALYSIS complete: {len(dependencies)} deps found.", flush=True)
 
             # 5. Stage: AST_ANALYSIS & DOC_PARSING
+            print(f"[{self.worker_id}] Starting Stage: AST_ANALYSIS...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "AST_ANALYSIS", "ANALYZING")
             documents: List[Dict[str, Any]] = []
@@ -464,8 +471,20 @@ class IngestionWorker:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
 
+    def run_batch(self):
+        print(f"[{self.worker_id}] Batch mode: Processing all queued jobs...", flush=True)
+        processed = 0
+        while self.running:
+            job = self.db.claim_next_job(worker_id=self.worker_id)
+            if not job:
+                print(f"[{self.worker_id}] No more queued jobs found. Batch completed. Total processed: {processed}", flush=True)
+                break
+            processed += 1
+            print(f"[{self.worker_id}] === Processing Batch Job #{processed} ({job['id']}) ===", flush=True)
+            self.process_job(job)
+
     def run_loop(self):
-        print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...")
+        print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...", flush=True)
         while self.running:
             try:
                 job = self.db.claim_next_job(worker_id=self.worker_id)
@@ -474,9 +493,12 @@ class IngestionWorker:
                 else:
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
-                print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr)
+                print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)
                 time.sleep(3)
 
 if __name__ == "__main__":
     worker = IngestionWorker()
-    worker.run_loop()
+    if "--batch" in sys.argv:
+        worker.run_batch()
+    else:
+        worker.run_loop()
