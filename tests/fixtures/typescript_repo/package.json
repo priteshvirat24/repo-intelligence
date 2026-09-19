@@ -1,0 +1,8 @@
+{
+  "name": "ts-memory-fixture",
+  "version": "1.0.0",
+  "dependencies": {
+    "chromadb": "^1.8.1",
+    "openai": "^4.28.0"
+  }
+}

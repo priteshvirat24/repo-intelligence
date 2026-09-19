@@ -1,0 +1,22 @@
+{
+  "name": "repo-intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "eval": "pnpm --filter @repo/web eval",
+    "db:migrate": "pnpm --filter @repo/database migrate",
+    "db:seed": "pnpm --filter @repo/database seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
