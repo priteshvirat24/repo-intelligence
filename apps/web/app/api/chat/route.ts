@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatOrchestrator } from '@/lib/ai/chat';
 import { checkRateLimit } from '@/lib/security/rate_limit';
+import { ChatSourceMode } from '@repo/shared';
 
 export async function POST(req: NextRequest) {
   // Rate limit: 20 chat queries per minute per IP
@@ -10,25 +11,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { message, history } = await req.json();
+    const { message, history, mode } = await req.json();
 
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
+    const sourceMode: ChatSourceMode = mode || 'BOTH';
+
     const orchestrator = new ChatOrchestrator();
-    const result = await orchestrator.processQuery(message, Array.isArray(history) ? history : []);
+    const result = await orchestrator.processQuery(
+      message,
+      Array.isArray(history) ? history : [],
+      { mode: sourceMode }
+    );
 
     // Create readable stream for SSE
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // First emit metadata event with requirements, composition, architectureGraph, citations
+        // First emit metadata event with requirements, composition, architectureGraph, citations, webSources, sourcesUsed
         const metaEvent = `event: metadata\ndata: ${JSON.stringify({
           requirements: result.requirements,
           composition: result.composition,
           architectureGraph: result.architectureGraph,
-          citations: result.citations
+          citations: result.citations,
+          webSources: result.webSources,
+          sourcesUsed: result.sourcesUsed,
+          sourceMode
         })}\n\n`;
         controller.enqueue(encoder.encode(metaEvent));
 

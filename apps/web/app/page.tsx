@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   Send,
   Sparkles,
@@ -17,10 +18,18 @@ import {
   FileCode,
   Compass,
   Cpu,
-  RefreshCw
+  RefreshCw,
+  Globe,
+  Youtube,
+  FileText,
+  Linkedin,
+  GitBranch,
+  BookmarkPlus,
+  ExternalLink,
+  BookOpen
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-import { AddRepositoryModal } from '@/components/AddRepositoryModal';
+import { AddResourceModal } from '@/components/AddResourceModal';
 import { ArchitectureGraph } from '@/components/ArchitectureGraph';
 import { EvidenceDrawer, EvidenceItem } from '@/components/EvidenceDrawer';
 import {
@@ -33,7 +42,11 @@ import {
   OpenQueryRequirements,
   CompositionPlan,
   ArchitectureGraphData,
-  CandidateScore
+  CandidateScore,
+  ResourceCitation,
+  WebSearchResult,
+  ChatSourceMode,
+  ResourceType
 } from '@repo/shared';
 
 interface Message {
@@ -43,31 +56,36 @@ interface Message {
   requirements?: OpenQueryRequirements;
   composition?: CompositionPlan;
   architectureGraph?: ArchitectureGraphData;
-  citations?: EvidenceItem[];
+  citations?: ResourceCitation[];
+  webSources?: WebSearchResult[];
+  sourcesUsed?: 'OPEN EYE' | 'WEB' | 'OPEN EYE + WEB';
 }
 
-export default function StudioChatPage() {
-  const [repositories, setRepositories] = useState<any[]>([]);
+function StudioChatContent() {
+  const searchParams = useSearchParams();
+  const [resources, setResources] = useState<any[]>([]);
   const [capabilities, setCapabilities] = useState<any[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null);
-  const [repoSearch, setRepoSearch] = useState('');
+  const [sourceMode, setSourceMode] = useState<ChatSourceMode>('BOTH');
+  const [savingWebUrls, setSavingWebUrls] = useState<Set<string>>(new Set());
+  const [savedWebUrls, setSavedWebUrls] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch initial repositories and capabilities
-  const fetchRepositories = async () => {
+  // Fetch initial resources and capabilities
+  const fetchResources = async () => {
     try {
-      const res = await fetch('/api/repositories');
+      const res = await fetch('/api/resources');
       if (res.ok) {
         const data = await res.json();
-        setRepositories(data.repositories || []);
+        setResources(data.items || []);
       }
     } catch (err) {
-      console.error('Error fetching repositories:', err);
+      console.error('Error fetching resources:', err);
     }
   };
 
@@ -84,9 +102,18 @@ export default function StudioChatPage() {
   };
 
   useEffect(() => {
-    fetchRepositories();
+    fetchResources();
     fetchCapabilities();
   }, []);
+
+  // Handle prompt query param if passed from /resources
+  useEffect(() => {
+    const prompt = searchParams.get('prompt');
+    if (prompt) {
+      setInputQuery(prompt);
+      handleSendMessage(prompt);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -99,10 +126,10 @@ export default function StudioChatPage() {
     const userMsg: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: textToSend.trim()
+      content: textToSend
     };
 
-    setMessages(prev => [...prev, userMsg]);
+    setMessages((prev) => [...prev, userMsg]);
     setInputQuery('');
     setIsLoading(true);
 
@@ -110,28 +137,35 @@ export default function StudioChatPage() {
     const assistantMsg: Message = {
       id: assistantMsgId,
       role: 'assistant',
-      content: ''
+      content: '',
+      sourcesUsed: sourceMode === 'INTERNAL' ? 'OPEN EYE' : sourceMode === 'WEB' ? 'WEB' : 'OPEN EYE + WEB'
     };
-    setMessages(prev => [...prev, assistantMsg]);
+
+    setMessages((prev) => [...prev, assistantMsg]);
 
     try {
-      const historyPayload = messages.map(m => ({ role: m.role, content: m.content }));
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend, history: historyPayload })
+        body: JSON.stringify({
+          message: textToSend,
+          mode: sourceMode,
+          history: messages.map((m) => ({ role: m.role, content: m.content }))
+        })
       });
 
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
         throw new Error('Failed to start chat stream');
       }
 
-      const reader = response.body.getReader();
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
       const decoder = new TextDecoder();
       let buffer = '';
 
       while (true) {
-        const { value, done } = await reader.read();
+        const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -139,47 +173,48 @@ export default function StudioChatPage() {
         buffer = lines.pop() || '';
 
         for (const block of lines) {
-          const trimmed = block.trim();
-          if (!trimmed) continue;
+          if (!block.trim()) continue;
+          const eventMatch = block.match(/^event: (.*)$/m);
+          const dataMatch = block.match(/^data: (.*)$/m);
 
-          const eventMatch = trimmed.match(/^event:\s*(\w+)/);
-          const dataMatch = trimmed.match(/data:\s*(.+)$/m);
-          if (!dataMatch) continue;
+          if (eventMatch && dataMatch) {
+            const event = eventMatch[1];
+            const data = JSON.parse(dataMatch[1]);
 
-          const eventType = eventMatch ? eventMatch[1] : 'message';
-          const payload = JSON.parse(dataMatch[1]);
-
-          if (eventType === 'metadata') {
-            setMessages(prev =>
-              prev.map(m =>
-                m.id === assistantMsgId
-                  ? {
-                      ...m,
-                      requirements: payload.requirements,
-                      composition: payload.composition,
-                      architectureGraph: payload.architectureGraph,
-                      citations: payload.citations
-                    }
-                  : m
-              )
-            );
-          } else if (eventType === 'message') {
-            setMessages(prev =>
-              prev.map(m =>
-                m.id === assistantMsgId
-                  ? { ...m, content: m.content + (payload.text || '') }
-                  : m
-              )
-            );
+            if (event === 'metadata') {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMsgId
+                    ? {
+                        ...msg,
+                        requirements: data.requirements,
+                        composition: data.composition,
+                        architectureGraph: data.architectureGraph,
+                        citations: data.citations,
+                        webSources: data.webSources,
+                        sourcesUsed: data.sourcesUsed
+                      }
+                    : msg
+                )
+              );
+            } else if (event === 'message') {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMsgId
+                    ? { ...msg, content: msg.content + data.text }
+                    : msg
+                )
+              );
+            }
           }
         }
       }
     } catch (err: any) {
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === assistantMsgId
-            ? { ...m, content: `Error generating response: ${err.message}` }
-            : m
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? { ...msg, content: `Error: ${err.message || 'Something went wrong'}` }
+            : msg
         )
       );
     } finally {
@@ -187,381 +222,400 @@ export default function StudioChatPage() {
     }
   };
 
-  const filteredRepos = repositories.filter(r => {
-    const full = `${r.owner}/${r.name} ${r.description || ''}`.toLowerCase();
-    return full.includes(repoSearch.toLowerCase());
-  });
+  const handleSaveWebSource = async (webResult: WebSearchResult) => {
+    if (savedWebUrls.has(webResult.url) || savingWebUrls.has(webResult.url)) return;
 
-  const exampleQueries = [
-    'Track satellites on an interactive 3D globe and detect objects from imagery',
-    'Monitor construction progress using satellite imagery and temporal change detection',
-    'Build an autonomous research agent with persistent memory and web crawling',
-    'What can our collection do?',
-    'What capabilities are missing from our current repository collection?'
-  ];
+    setSavingWebUrls(prev => new Set(prev).add(webResult.url));
+    try {
+      const res = await fetch('/api/resources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: webResult.url })
+      });
+      if (res.ok) {
+        setSavedWebUrls(prev => new Set(prev).add(webResult.url));
+        fetchResources();
+      }
+    } catch (err) {
+      console.error('Error saving web resource:', err);
+    } finally {
+      setSavingWebUrls(prev => {
+        const next = new Set(prev);
+        next.delete(webResult.url);
+        return next;
+      });
+    }
+  };
+
+  const getSourceIcon = (type?: string) => {
+    switch (type) {
+      case 'github_repository': return <GitBranch size={14} color="var(--accent-indigo)" />;
+      case 'youtube_video': return <Youtube size={14} color="#ef4444" />;
+      case 'linkedin_post': return <Linkedin size={14} color="#0284c7" />;
+      case 'pdf':
+      case 'research_paper': return <FileText size={14} color="#f59e0b" />;
+      default: return <Globe size={14} color="var(--accent-cyan)" />;
+    }
+  };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <Navbar onOpenAddModal={() => setIsAddModalOpen(true)} repoCount={repositories.length} />
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      <Navbar
+        onOpenAddModal={() => setIsAddModalOpen(true)}
+        resourceCount={resources.length}
+      />
 
-      {/* Main Studio Split Layout */}
-      <div style={{
-        display: 'flex',
-        flex: 1,
-        maxWidth: 1600,
-        margin: '0 auto',
-        width: '100%',
-        padding: '20px 24px',
-        gap: 24,
-        overflow: 'hidden'
-      }}>
-        {/* Left Sidebar: Repositories & Discovered Capabilities */}
-        <aside style={{
-          width: 340,
-          flexShrink: 0,
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Left Sidebar: Indexed Knowledge Shelf */}
+        <div style={{
+          width: 320,
+          borderRight: '1px solid var(--border-subtle)',
+          background: 'rgba(10, 15, 26, 0.7)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 20
+          padding: '20px 16px',
+          gap: 16
         }}>
-          {/* Indexed Repositories Panel */}
-          <div className="glass-panel" style={{ padding: 18, display: 'flex', flexDirection: 'column', maxHeight: '50vh' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', fontWeight: 600 }}>
-                <Database size={16} color="var(--accent-cyan)" />
-                <span>Indexed Repositories ({repositories.length})</span>
-              </div>
-              <button
-                onClick={fetchRepositories}
-                style={{ color: 'var(--text-muted)', padding: 4 }}
-                title="Refresh repositories"
-              >
-                <RefreshCw size={14} />
-              </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Database size={16} color="var(--accent-cyan)" />
+              <span style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
+                Open Eye Shelf
+              </span>
             </div>
-
-            {/* Filter Search */}
-            <div style={{ position: 'relative', marginBottom: 12 }}>
-              <Search size={14} color="var(--text-muted)" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)' }} />
-              <input
-                type="text"
-                placeholder="Filter repositories..."
-                value={repoSearch}
-                onChange={e => setRepoSearch(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '8px 10px 8px 30px',
-                  borderRadius: 6,
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.8rem',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            {/* Repositories List */}
-            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {filteredRepos.length === 0 ? (
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
-                  No indexed repositories match.
-                </div>
-              ) : (
-                filteredRepos.map(r => (
-                  <Link
-                    key={r.id}
-                    href={`/repositories/${r.id}`}
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 4,
-                      padding: '10px 12px',
-                      borderRadius: 8,
-                      background: 'rgba(30, 41, 59, 0.4)',
-                      border: '1px solid var(--border-subtle)',
-                      transition: 'background 0.2s',
-                      textDecoration: 'none'
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        {r.name}
-                      </span>
-                      <span className={`badge-${r.status.toLowerCase()}`} style={{ fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4 }}>
-                        {r.status}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.725rem', color: 'var(--text-muted)' }}>
-                      {r.primaryLanguage && <span>{r.primaryLanguage}</span>}
-                      <span>★ {r.stars || 0}</span>
-                      {r.domainTags?.[0] && (
-                        <span style={{ color: 'var(--accent-cyan)' }}>#{r.domainTags[0]}</span>
-                      )}
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
+            <Link href="/resources" style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', textDecoration: 'none', fontWeight: 600 }}>
+              View All ({resources.length})
+            </Link>
           </div>
 
-          {/* Discovered Capabilities Panel */}
-          <div className="glass-panel" style={{ padding: 18, display: 'flex', flexDirection: 'column', flex: 1, minHeight: 220 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', fontWeight: 600 }}>
-                <Layers size={16} color="var(--accent-indigo)" />
-                <span>Discovered Capabilities</span>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {resources.length === 0 ? (
+              <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                No resources indexed yet.
               </div>
-              <Link href="/capabilities" style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                View All
-                <ArrowUpRight size={12} />
-              </Link>
-            </div>
-
-            <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6, flex: 1 }}>
-              {capabilities.length === 0 ? (
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '20px 0' }}>
-                  Ingest repositories to discover capabilities.
-                </div>
-              ) : (
-                capabilities.slice(0, 10).map((cap, i) => (
-                  <div
-                    key={i}
-                    onClick={() => handleSendMessage(`Which repository provides '${cap.name}' and how is it implemented?`)}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '7px 10px',
-                      borderRadius: 6,
-                      background: 'rgba(15, 23, 42, 0.4)',
-                      border: '1px solid var(--border-subtle)',
-                      cursor: 'pointer',
-                      fontSize: '0.775rem'
-                    }}
-                  >
-                    <span style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-                      {cap.name}
-                    </span>
+            ) : (
+              resources.slice(0, 10).map((r) => (
+                <div
+                  key={r.id}
+                  style={{
+                    padding: '10px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--border-subtle)',
+                    fontSize: '0.85rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 4
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
+                    {getSourceIcon(r.resourceType)}
                     <span style={{
-                      fontSize: '0.675rem',
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: 'rgba(99, 102, 241, 0.15)',
-                      color: '#a5b4fc',
-                      fontFamily: 'var(--font-mono)'
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      color: 'var(--text-primary)'
                     }}>
-                      {cap.repoCount} {cap.repoCount === 1 ? 'repo' : 'repos'}
+                      {r.title}
                     </span>
                   </div>
-                ))
-              )}
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {r.problemsSolved?.[0] || r.sourceDomain}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Quick Problem Inspirations */}
+          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14 }}>
+            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
+              Try Questions
+            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <button
+                onClick={() => handleSendMessage('What can our indexed collection collectively do?')}
+                style={{
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-cyan)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  padding: 2
+                }}
+              >
+                • What can our collection do?
+              </button>
+              <button
+                onClick={() => handleSendMessage('Find open-source tools and tutorials for satellite image segmentation.')}
+                style={{
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-cyan)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  padding: 2
+                }}
+              >
+                • Satellite image segmentation
+              </button>
+              <button
+                onClick={() => handleSendMessage('Build a production research agent with browser automation.')}
+                style={{
+                  textAlign: 'left',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--accent-cyan)',
+                  fontSize: '0.78rem',
+                  cursor: 'pointer',
+                  padding: 2
+                }}
+              >
+                • Autonomous research agent
+              </button>
             </div>
           </div>
-        </aside>
+        </div>
 
-        {/* Center / Main Chat Studio */}
-        <main className="glass-panel" style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          position: 'relative'
-        }}>
-          {/* Chat Messages Stream */}
-          <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '24px 28px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 24
-          }}>
+        {/* Center: Main Chat Studio */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Chat Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
             {messages.length === 0 ? (
-              <div style={{
-                margin: 'auto 0',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                textAlign: 'center',
-                gap: 16,
-                padding: '40px 20px'
-              }}>
+              <div style={{ maxWidth: 760, margin: '60px auto', textAlign: 'center' }}>
                 <div style={{
                   width: 56,
                   height: 56,
                   borderRadius: 16,
-                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%)',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  border: '1px solid rgba(99, 102, 241, 0.4)'
+                  margin: '0 auto 20px',
+                  boxShadow: '0 0 25px rgba(99, 102, 241, 0.4)'
                 }}>
-                  <Sparkles size={28} color="var(--accent-cyan)" />
+                  <span style={{ fontSize: '1.8rem' }}>👁️</span>
                 </div>
-                <div>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: 8 }}>
-                    Open-World Repository Intelligence Studio
-                  </h2>
-                  <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', maxWidth: 580, margin: '0 auto' }}>
-                    Describe any technical problem. Repo Intelligence identifies domain requirements, evaluates indexed repositories, reasons across multi-repository architectures, and grounds conclusions in verified code evidence.
-                  </p>
-                </div>
+                <h2 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em' }}>
+                  Open Eye Studio
+                </h2>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6, margin: '0 auto 30px' }}>
+                  Universal resource intelligence connecting software repositories, video tutorials, technical articles, and live web discoveries to solve complex engineering challenges.
+                </p>
 
-                {/* Example Query Pills */}
+                {/* Mode Selector Pill in Empty State */}
                 <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 10,
-                  maxWidth: 720,
-                  justifyContent: 'center',
-                  marginTop: 12
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 8px',
+                  borderRadius: 12,
+                  background: 'rgba(15, 23, 42, 0.8)',
+                  border: '1px solid var(--border-subtle)',
+                  marginBottom: 32
                 }}>
-                  {exampleQueries.map((q, i) => (
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0 8px', fontWeight: 600 }}>Knowledge Mode:</span>
+                  {(['INTERNAL', 'WEB', 'BOTH'] as ChatSourceMode[]).map((m) => (
                     <button
-                      key={i}
-                      onClick={() => handleSendMessage(q)}
+                      key={m}
+                      onClick={() => setSourceMode(m)}
                       style={{
-                        padding: '8px 14px',
-                        borderRadius: 20,
-                        background: 'rgba(30, 41, 59, 0.6)',
-                        border: '1px solid var(--border-subtle)',
-                        color: 'var(--text-primary)',
+                        padding: '6px 14px',
+                        borderRadius: 8,
                         fontSize: '0.8rem',
-                        transition: 'all 0.2s',
-                        textAlign: 'left'
+                        fontWeight: 600,
+                        border: sourceMode === m ? '1px solid rgba(99, 102, 241, 0.5)' : 'none',
+                        background: sourceMode === m ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                        color: sourceMode === m ? '#ffffff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
                       }}
-                      onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--accent-cyan)')}
-                      onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
                     >
-                      {q}
+                      {m === 'INTERNAL' ? 'Open Eye' : m === 'WEB' ? 'Live Web' : 'Both (Hybrid)'}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              messages.map(msg => (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                    gap: 12,
-                    maxWidth: '100%'
-                  }}
-                >
-                  {/* Message Bubble */}
-                  <div style={{
-                    maxWidth: msg.role === 'user' ? '80%' : '100%',
-                    width: msg.role === 'user' ? 'auto' : '100%',
-                    padding: msg.role === 'user' ? '12px 18px' : '20px 24px',
-                    borderRadius: 14,
-                    background: msg.role === 'user'
-                      ? 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)'
-                      : 'rgba(15, 23, 42, 0.65)',
-                    border: msg.role === 'user' ? 'none' : '1px solid var(--border-subtle)',
-                    color: '#ffffff',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.2)'
-                  }}>
+              <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+                {messages.map((msg) => (
+                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {msg.role === 'user' ? (
-                      <div style={{ fontSize: '0.95rem', lineHeight: 1.5 }}>
-                        {msg.content}
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          maxWidth: '75%',
+                          padding: '14px 20px',
+                          borderRadius: '16px 16px 2px 16px',
+                          background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                          color: '#ffffff',
+                          fontSize: '0.95rem',
+                          lineHeight: 1.5,
+                          boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)'
+                        }}>
+                          {msg.content}
+                        </div>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {/* 1. Requirements Section (if present) */}
-                        {msg.requirements && msg.requirements.requirements.length > 0 && (
-                          <div style={{ marginBottom: 12 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-indigo)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                              Discovered Domain Requirements ({msg.requirements.domains.join(', ')})
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
-                              {msg.requirements.requirements.map((r, i) => (
-                                <RequirementCard key={i} requirement={r} />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 2. Candidate Repositories */}
-                        {msg.composition && msg.composition.recommendedRepositories.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                              Recommended Candidate Repositories
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                              {msg.composition.recommendedRepositories.map((cand, i) => (
-                                <CandidateRepoCard key={i} candidate={cand} />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* 3. Architecture Graph */}
-                        {msg.architectureGraph && (
-                          <ArchitectureGraph data={msg.architectureGraph} />
-                        )}
-
-                        {/* 4. Redundancies & Overlaps */}
-                        {msg.composition?.redundancies && msg.composition.redundancies.length > 0 && (
-                          <div>
-                            {msg.composition.redundancies.map((red, i) => (
-                              <OverlapNotice
-                                key={i}
-                                capabilityOrFeature={red.capabilityOrFeature}
-                                overlappingRepositories={red.overlappingRepositories}
-                                recommendation={red.recommendation}
-                              />
-                            ))}
-                          </div>
-                        )}
-
-                        {/* 5. Missing Capabilities */}
-                        {msg.composition?.uncoveredRequirements && msg.composition.uncoveredRequirements.length > 0 && (
-                          <MissingCapabilityNotice uncoveredRequirements={msg.composition.uncoveredRequirements} />
-                        )}
-
-                        {/* 6. Main Reasoning Text (Markdown) */}
-                        <div style={{
-                          fontSize: '0.925rem',
-                          lineHeight: 1.7,
-                          color: 'var(--text-primary)',
-                          whiteSpace: 'pre-wrap'
-                        }}>
-                          {msg.content || (isLoading ? 'Analyzing repository knowledge and synthesizing architecture...' : '')}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {/* Source Indicator Badge */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{
+                            padding: '3px 10px',
+                            borderRadius: 20,
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.04em',
+                            background: msg.sourcesUsed?.includes('WEB') ? 'rgba(6, 182, 212, 0.15)' : 'rgba(99, 102, 241, 0.15)',
+                            color: msg.sourcesUsed?.includes('WEB') ? 'var(--accent-cyan)' : 'var(--accent-indigo)',
+                            border: `1px solid ${msg.sourcesUsed?.includes('WEB') ? 'rgba(6, 182, 212, 0.3)' : 'rgba(99, 102, 241, 0.3)'}`
+                          }}>
+                            SOURCES: {msg.sourcesUsed || 'OPEN EYE'}
+                          </span>
                         </div>
 
-                        {/* 7. Verified Evidence Citations */}
-                        {msg.citations && msg.citations.length > 0 && (
+                        {/* Live Web Discoveries Section if any */}
+                        {msg.webSources && msg.webSources.length > 0 && (
                           <div style={{
-                            marginTop: 12,
-                            paddingTop: 14,
-                            borderTop: '1px solid var(--border-subtle)'
+                            padding: 16,
+                            borderRadius: 12,
+                            background: 'rgba(6, 182, 212, 0.05)',
+                            border: '1px solid rgba(6, 182, 212, 0.2)',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 12
                           }}>
-                            <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <CheckCircle2 size={13} color="var(--accent-emerald)" />
-                              <span>Verified Citations (Click to inspect source code evidence):</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
+                              <Globe size={14} />
+                              <span>Live Web Discoveries (Tavily)</span>
                             </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
+                              {msg.webSources.map((w, idx) => {
+                                const isSaved = savedWebUrls.has(w.url);
+                                const isSaving = savingWebUrls.has(w.url);
+
+                                return (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      padding: 12,
+                                      borderRadius: 8,
+                                      background: 'rgba(15, 23, 42, 0.7)',
+                                      border: '1px solid var(--border-subtle)',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      justifyContent: 'space-between',
+                                      gap: 8
+                                    }}
+                                  >
+                                    <div>
+                                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+                                        {w.title}
+                                      </div>
+                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6 }}>
+                                        {w.domain}
+                                      </div>
+                                      <p style={{
+                                        fontSize: '0.8rem',
+                                        color: 'var(--text-secondary)',
+                                        margin: 0,
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical',
+                                        overflow: 'hidden'
+                                      }}>
+                                        {w.content}
+                                      </p>
+                                    </div>
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+                                      <a
+                                        href={w.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                                      >
+                                        <ExternalLink size={12} />
+                                        <span>Open</span>
+                                      </a>
+
+                                      <button
+                                        onClick={() => handleSaveWebSource(w)}
+                                        disabled={isSaved || isSaving}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          padding: '4px 8px',
+                                          borderRadius: 6,
+                                          background: isSaved ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)',
+                                          border: `1px solid ${isSaved ? 'rgba(16, 185, 129, 0.4)' : 'rgba(99, 102, 241, 0.4)'}`,
+                                          color: isSaved ? '#10b981' : '#ffffff',
+                                          fontSize: '0.75rem',
+                                          fontWeight: 600,
+                                          cursor: isSaved || isSaving ? 'default' : 'pointer'
+                                        }}
+                                      >
+                                        <BookmarkPlus size={12} />
+                                        <span>{isSaved ? 'Saved to Open Eye' : isSaving ? 'Saving...' : 'Save to Open Eye'}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Synthesis Content */}
+                        <div className="glass-panel" style={{ padding: 24, fontSize: '0.95rem', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
+                          {msg.content || 'Thinking & reasoning over universal resources...'}
+                        </div>
+
+                        {/* Architecture Graph if generated */}
+                        {msg.architectureGraph && msg.architectureGraph.nodes.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <ArchitectureGraph data={msg.architectureGraph} />
+                          </div>
+                        )}
+
+                        {/* Citations Box */}
+                        {msg.citations && msg.citations.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                              Source-Aware Citations ({msg.citations.length})
+                            </span>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                              {msg.citations.map((cite, i) => (
+                              {msg.citations.map((c, i) => (
                                 <button
                                   key={i}
-                                  onClick={() => setSelectedEvidence(cite)}
+                                  onClick={() => setSelectedEvidence({
+                                    resourceTitle: c.resourceTitle,
+                                    resourceType: c.resourceType,
+                                    sourceUrl: c.sourceUrl,
+                                    filePath: c.formattedCitation,
+                                    quote: c.snippet,
+                                    verified: c.isVerified,
+                                    locator: c.locator,
+                                    formattedCitation: c.formattedCitation
+                                  })}
                                   style={{
                                     display: 'flex',
                                     alignItems: 'center',
                                     gap: 6,
-                                    fontSize: '0.725rem',
-                                    padding: '4px 10px',
+                                    padding: '6px 12px',
                                     borderRadius: 6,
-                                    background: 'rgba(16, 185, 129, 0.1)',
-                                    color: '#6ee7b7',
-                                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                                    background: 'rgba(15, 23, 42, 0.8)',
+                                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                                    color: '#10b981',
+                                    fontSize: '0.8rem',
+                                    fontWeight: 600,
                                     cursor: 'pointer'
                                   }}
                                 >
-                                  <FileCode size={12} />
-                                  <span>{cite.repo}#{cite.filePath}{cite.lines ? `:${cite.lines}` : ''}</span>
+                                  {getSourceIcon(c.resourceType)}
+                                  <span>{c.formattedCitation}</span>
                                 </button>
                               ))}
                             </div>
@@ -570,92 +624,137 @@ export default function StudioChatPage() {
                       </div>
                     )}
                   </div>
-                </div>
-              ))
+                ))}
+                <div ref={messagesEndRef} />
+              </div>
             )}
-            <div ref={messagesEndRef} />
           </div>
 
-          {/* Chat Input Bar */}
+          {/* Bottom Chat Input Bar */}
           <div style={{
             padding: '16px 24px',
             borderTop: '1px solid var(--border-subtle)',
-            background: 'rgba(9, 13, 22, 0.85)',
-            backdropFilter: 'blur(12px)'
+            background: 'rgba(9, 13, 22, 0.9)'
           }}>
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                handleSendMessage();
-              }}
-              style={{ display: 'flex', gap: 12, alignItems: 'center' }}
-            >
-              <input
-                type="text"
-                placeholder="Describe your engineering problem (e.g. 'Track satellites on 3D globe and detect changes over time')..."
-                value={inputQuery}
-                onChange={e => setInputQuery(e.target.value)}
-                disabled={isLoading}
-                style={{
-                  flex: 1,
-                  padding: '14px 18px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.925rem',
-                  outline: 'none',
-                  boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
+            <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Mode Toggle Controls */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Knowledge Source:</span>
+                  {(['INTERNAL', 'WEB', 'BOTH'] as ChatSourceMode[]).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setSourceMode(m)}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: 6,
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        border: sourceMode === m ? '1px solid rgba(99, 102, 241, 0.5)' : '1px solid transparent',
+                        background: sourceMode === m ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.04)',
+                        color: sourceMode === m ? '#ffffff' : 'var(--text-secondary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {m === 'INTERNAL' ? 'Open Eye' : m === 'WEB' ? 'Web' : 'Both'}
+                    </button>
+                  ))}
+                </div>
+
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Press Enter to send
+                </div>
+              </div>
+
+              {/* Textarea Input Form */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
                 }}
-              />
-              <button
-                type="submit"
-                disabled={isLoading || !inputQuery.trim()}
-                style={{
-                  padding: '14px 22px',
-                  borderRadius: 'var(--radius-md)',
-                  background: isLoading || !inputQuery.trim()
-                    ? 'rgba(99, 102, 241, 0.3)'
-                    : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#ffffff',
-                  fontWeight: 600,
-                  fontSize: '0.9rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  cursor: isLoading || !inputQuery.trim() ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: '0 2px 10px rgba(99, 102, 241, 0.3)'
-                }}
+                style={{ display: 'flex', gap: 10 }}
               >
-                {isLoading ? <Clock size={16} className="animate-spin" /> : <Send size={16} />}
-                <span>Send</span>
-              </button>
-            </form>
+                <input
+                  type="text"
+                  placeholder="Ask Open Eye an architectural question, request web research, or connect resources..."
+                  value={inputQuery}
+                  onChange={(e) => setInputQuery(e.target.value)}
+                  disabled={isLoading}
+                  style={{
+                    flex: 1,
+                    padding: '14px 18px',
+                    borderRadius: 10,
+                    background: 'rgba(15, 23, 42, 0.85)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.95rem',
+                    outline: 'none'
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputQuery.trim()}
+                  style={{
+                    padding: '0 24px',
+                    borderRadius: 10,
+                    background: isLoading || !inputQuery.trim()
+                      ? 'rgba(99, 102, 241, 0.4)'
+                      : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    fontWeight: 600,
+                    cursor: isLoading || !inputQuery.trim() ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Send size={16} />
+                  <span>Send</span>
+                </button>
+              </form>
+            </div>
           </div>
-        </main>
+        </div>
       </div>
 
-      {/* Add Repository Modal */}
-      <AddRepositoryModal
-        isOpen={isAddModalOpen}
-        onClose={() => {
-          setIsAddModalOpen(false);
-          fetchRepositories();
-          fetchCapabilities();
-        }}
-        onRepositoryAdded={() => {
-          fetchRepositories();
-          fetchCapabilities();
-        }}
-      />
-
-      {/* Evidence Drawer Modal */}
+      {/* Evidence Drawer */}
       <EvidenceDrawer
         isOpen={Boolean(selectedEvidence)}
         evidence={selectedEvidence}
         onClose={() => setSelectedEvidence(null)}
       />
+
+      {/* Add Resource Modal */}
+      <AddResourceModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onResourceAdded={() => {
+          fetchResources();
+        }}
+      />
     </div>
+  );
+}
+
+export default function StudioChatPage() {
+  return (
+    <React.Suspense fallback={
+      <div style={{
+        minHeight: '100vh',
+        background: '#090d16',
+        color: '#ffffff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '1rem',
+        fontWeight: 600
+      }}>
+        Loading Open Eye Studio...
+      </div>
+    }>
+      <StudioChatContent />
+    </React.Suspense>
   );
 }

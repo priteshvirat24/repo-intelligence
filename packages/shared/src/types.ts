@@ -6,6 +6,51 @@ export type RepositoryStatus =
   | 'READY'
   | 'FAILED';
 
+export type ResourceType =
+  | 'github_repository'
+  | 'web_page'
+  | 'documentation_site'
+  | 'article'
+  | 'linkedin_post'
+  | 'youtube_video'
+  | 'pdf'
+  | 'document'
+  | 'research_paper'
+  | 'generic_url';
+
+export type ResourceRole =
+  | 'software_component'
+  | 'library'
+  | 'framework'
+  | 'documentation'
+  | 'tutorial'
+  | 'reference'
+  | 'research'
+  | 'dataset'
+  | 'article'
+  | 'video'
+  | 'opinion'
+  | 'guide'
+  | 'specification';
+
+export type ResourceStatus =
+  | 'PENDING'
+  | 'FETCHING'
+  | 'ANALYZING'
+  | 'INDEXING'
+  | 'READY'
+  | 'PARTIAL'
+  | 'FAILED'
+  | 'BLOCKED';
+
+export type ResourceLocatorType =
+  | 'github_line'
+  | 'web_section'
+  | 'youtube_timestamp'
+  | 'pdf_page'
+  | 'linkedin_post'
+  | 'metadata';
+
 export type EvidenceStrength =
   | 'DIRECT_IMPLEMENTATION'
   | 'DIRECT_INTERFACE'
@@ -29,8 +74,92 @@ export interface WorkerHeartbeat {
   metadata?: Record<string, any>;
 }
 
+export interface UniversalResource {
+  id: string;
+  resourceType: ResourceType;
+  resourceRole: ResourceRole;
+  sourceUrl: string;
+  canonicalUrl?: string | null;
+  title: string;
+  description?: string | null;
+  author?: string | null;
+  publisher?: string | null;
+  sourceDomain?: string | null;
+  status: ResourceStatus;
+  errorMessage?: string | null;
+  contentHash?: string | null;
+  domainTags?: string[];
+  problemsSolved?: string[];
+  practicalUses?: string[];
+  valueProposition?: string | null;
+  usefulFor?: string[];
+  publishedAt?: string | null;
+  lastCheckedAt?: string | null;
+  indexedAt?: string | null;
+  metadata?: Record<string, any>;
+  analysis?: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResourceDetail extends UniversalResource {
+  knowledgeProfile?: OpenWorldRepositoryProfile;
+  capabilities: KnowledgeObject[];
+  features: KnowledgeObject[];
+  concepts: KnowledgeObject[];
+  useCases: KnowledgeObject[];
+  limitations: KnowledgeObject[];
+  relationships?: KnowledgeRelationship[];
+  citations?: ResourceCitation[];
+  stats: {
+    documents: number;
+    chunks: number;
+    capabilities: number;
+    concepts: number;
+  };
+}
+
+export interface ResourceCitation {
+  id?: string;
+  resourceId: string;
+  resourceTitle: string;
+  resourceType: ResourceType;
+  sourceUrl: string;
+  locatorType: ResourceLocatorType;
+  locator: {
+    filePath?: string;
+    startLine?: number;
+    endLine?: number;
+    symbolName?: string;
+    sectionHeading?: string;
+    startSeconds?: number;
+    endSeconds?: number;
+    timestampLabel?: string;
+    pageNumber?: number;
+    author?: string;
+    postId?: string;
+  };
+  snippet: string;
+  formattedCitation: string;
+  isVerified: boolean;
+}
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  content: string;
+  domain?: string;
+  score?: number;
+  publishedDate?: string;
+  canSave: boolean;
+  sourceType?: ResourceType;
+}
+
+export type ChatSourceMode = 'INTERNAL' | 'WEB' | 'BOTH';
+
 export interface Repository {
   id: string;
+  resourceId?: string;
   owner: string;
   name: string;
   url: string;
@@ -64,6 +193,7 @@ export type KnowledgeObjectType =
   | 'limitation'
   | 'integration'
   | 'architecture'
+  | 'technical_insight'
   | 'repository_profile';
 
 export type KnowledgeRelationshipType =
@@ -76,19 +206,29 @@ export type KnowledgeRelationshipType =
   | 'alternative-to'
   | 'produces'
   | 'consumes'
-  | 'enables';
+  | 'enables'
+  | 'explains'
+  | 'references'
+  | 'implements'
+  | 'demonstrates'
+  | 'contradicts'
+  | 'supports'
+  | 'related-to';
 
 export interface Evidence {
   id?: string;
   repositoryCapabilityId?: string;
   knowledgeObjectId?: string;
-  filePath: string;
+  resourceId?: string;
+  filePath?: string;
   startLine?: number | null;
   endLine?: number | null;
   symbolName?: string | null;
   quoteSnippet: string;
-  evidenceType: 'doc' | 'code_ast' | 'manifest' | 'example' | 'inferred';
+  evidenceType: 'doc' | 'code_ast' | 'manifest' | 'example' | 'inferred' | 'web_section' | 'youtube_transcript' | 'pdf_page' | 'post';
   evidenceStrength?: EvidenceStrength;
+  locatorType?: ResourceLocatorType;
+  locatorJson?: Record<string, any>;
   isVerified: boolean;
   verificationNotes?: string;
   createdAt?: string;
@@ -97,6 +237,8 @@ export interface Evidence {
 export interface KnowledgeObject {
   id?: string;
   repositoryId?: string;
+  resourceId?: string;
+  sourceType?: ResourceType;
   objectType: KnowledgeObjectType;
   name: string;
   description: string;
@@ -113,6 +255,8 @@ export interface KnowledgeRelationship {
   targetId?: string;
   sourceRepoId?: string;
   targetRepoId?: string;
+  sourceResourceId?: string;
+  targetResourceId?: string;
   sourceName?: string;
   targetName?: string;
   relationshipType: KnowledgeRelationshipType;
@@ -125,6 +269,9 @@ export interface OpenWorldRepositoryProfile {
   domains: string[];
   purpose: string;
   problemSpace: string;
+  problemsSolved?: string[];
+  practicalUses?: string[];
+  valueProposition?: string;
   capabilities: KnowledgeObject[];
   features: KnowledgeObject[];
   concepts: KnowledgeObject[];
@@ -142,7 +289,7 @@ export interface OpenWorldRepositoryProfile {
   integrations: KnowledgeObject[];
   constraints: KnowledgeObject[];
   limitations: KnowledgeObject[];
-  importantFiles: Array<{
+  importantFiles?: Array<{
     filePath: string;
     importance: 'critical' | 'high' | 'medium' | 'low';
     reason: string;
@@ -178,7 +325,8 @@ export interface RepositoryDetail extends Repository {
 
 export interface IngestionJob {
   id: string;
-  repositoryId: string;
+  repositoryId?: string;
+  resourceId?: string;
   status: 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
   step: string;
   attempts: number;
@@ -213,11 +361,15 @@ export interface OpenQueryRequirements {
 }
 
 export interface CandidateScore {
-  repositoryId: string;
+  repositoryId?: string;
+  resourceId?: string;
+  resourceType?: ResourceType;
+  resourceRole?: ResourceRole;
   repositoryName: string;
-  owner: string;
-  primaryLanguage: string | null;
-  stars: number;
+  owner?: string;
+  sourceUrl?: string;
+  primaryLanguage?: string | null;
+  stars?: number;
   domainTags?: string[];
   vectorSimilarity: number;
   fullTextRank: number;
@@ -230,6 +382,8 @@ export interface CandidateScore {
   matchedConcepts?: string[];
   distinctiveTermBoost?: number;
   relevanceExplanation?: string;
+  problemsSolved?: string[];
+  practicalUses?: string[];
 }
 
 export interface RetrievalTrace {
@@ -247,6 +401,8 @@ export interface ArchitectureNode {
   id: string;
   label: string;
   role: string;
+  resourceType?: ResourceType;
+  resourceRole?: ResourceRole;
   domain?: string;
 }
 
@@ -255,7 +411,7 @@ export interface ArchitectureEdge {
   to: string;
   relationship: string;
   label?: string;
-  boundary?: 'same-process' | 'library' | 'sdk' | 'http-service' | 'cli' | 'file-exchange' | 'database' | 'message-queue';
+  boundary?: 'same-process' | 'library' | 'sdk' | 'http-service' | 'cli' | 'file-exchange' | 'database' | 'message-queue' | 'knowledge-reference' | 'tutorial-guide';
 }
 
 export interface ArchitectureGraphData {
@@ -297,6 +453,8 @@ export interface ChatMessage {
     requirements?: OpenQueryRequirements;
     composition?: CompositionPlan;
     architectureGraph?: ArchitectureGraphData;
+    sourceMode?: ChatSourceMode;
+    sourcesUsed?: 'OPEN EYE' | 'WEB' | 'OPEN EYE + WEB';
     citations?: Array<{
       repo: string;
       filePath: string;
@@ -305,6 +463,8 @@ export interface ChatMessage {
       symbolName?: string;
       verified: boolean;
     }>;
+    universalCitations?: ResourceCitation[];
+    webSources?: WebSearchResult[];
   };
   createdAt: string;
 }

@@ -32,7 +32,8 @@ export class OpenRepositoryCompositionEngine {
     // 2. Evaluate requirement coverage against candidate repositories
     for (const candidate of candidates) {
       const repoName = `${candidate.owner}/${candidate.repositoryName}`;
-      const repoObjects = rawObjectsByRepo.get(candidate.repositoryId) || [];
+      const repoId = candidate.repositoryId || candidate.resourceId || '';
+      const repoObjects = rawObjectsByRepo.get(repoId) || [];
       const repoCapabilities = candidate.matchedCapabilities.map(c => c.toLowerCase());
       const repoConcepts = (candidate.matchedConcepts || []).map(c => c.toLowerCase());
 
@@ -70,7 +71,8 @@ export class OpenRepositoryCompositionEngine {
 
     for (const candidate of candidates) {
       const repoKey = `${candidate.owner}/${candidate.repositoryName}`;
-      const repoObjects = rawObjectsByRepo.get(candidate.repositoryId) || [];
+      const repoId = candidate.repositoryId || candidate.resourceId || '';
+      const repoObjects = rawObjectsByRepo.get(repoId) || [];
 
       const inputs = repoObjects.filter(o => o.objectType === 'input').map(o => ({
         name: o.name,
@@ -177,12 +179,13 @@ export class OpenRepositoryCompositionEngine {
     // 7. Construct Architecture Graph Data
     const nodes: ArchitectureNode[] = selectedRepos.map(repo => {
       const repoKey = `${repo.owner}/${repo.repositoryName}`;
-      const repoObjects = rawObjectsByRepo.get(repo.repositoryId) || [];
+      const repoId = repo.repositoryId || repo.resourceId || '';
+      const repoObjects = rawObjectsByRepo.get(repoId) || [];
       const profile = repoObjects.find(o => o.objectType === 'repository_profile');
       const role = repo.matchedCapabilities[0] || profile?.name || repo.primaryLanguage || 'Component';
 
       return {
-        id: repo.repositoryId,
+        id: repoId,
         label: repo.repositoryName,
         role,
         domain: repo.domainTags?.[0] || 'engineering'
@@ -194,6 +197,8 @@ export class OpenRepositoryCompositionEngine {
       const fromRepo = selectedRepos[i];
       const toRepo = selectedRepos[i + 1];
       const sameLang = fromRepo.primaryLanguage === toRepo.primaryLanguage;
+      const fromId = fromRepo.repositoryId || fromRepo.resourceId || '';
+      const toId = toRepo.repositoryId || toRepo.resourceId || '';
 
       // Find if an explicit data flow exists
       const flow = dataFlow.find(df => 
@@ -202,8 +207,8 @@ export class OpenRepositoryCompositionEngine {
       );
 
       edges.push({
-        from: fromRepo.repositoryId,
-        to: toRepo.repositoryId,
+        from: fromId,
+        to: toId,
         relationship: flow ? 'produces-consumes' : 'integrates-with',
         label: flow ? `${flow.output} → ${flow.input}` : 'pipeline',
         boundary: flow ? (flow.boundary as any) : (sameLang ? 'library' : 'http-service')

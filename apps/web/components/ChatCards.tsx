@@ -156,10 +156,12 @@ export const CandidateRepoCard: React.FC<{
               {candidate.primaryLanguage}
             </span>
           )}
-          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Star size={13} color="var(--accent-amber)" />
-            {candidate.stars.toLocaleString()}
-          </span>
+          {candidate.stars !== undefined && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Star size={13} color="var(--accent-amber)" />
+              {candidate.stars.toLocaleString()}
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 6 }}>

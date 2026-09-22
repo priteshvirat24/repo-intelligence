@@ -13,7 +13,7 @@ import {
   Filter
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
-import { AddRepositoryModal } from '@/components/AddRepositoryModal';
+import { AddResourceModal } from '@/components/AddResourceModal';
 
 interface CapabilityItem {
   name: string;
@@ -255,10 +255,10 @@ export default function CapabilityExplorerPage() {
         )}
       </main>
 
-      <AddRepositoryModal
+      <AddResourceModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onRepositoryAdded={() => {
+        onResourceAdded={() => {
           fetch('/api/capabilities')
             .then(res => res.json())
             .then(data => setCapabilities(data.capabilities || []));

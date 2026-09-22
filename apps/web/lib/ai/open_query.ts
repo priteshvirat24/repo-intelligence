@@ -14,7 +14,7 @@ export class OpenProblemDecomposer {
       qLower.includes('what repos do we have') ||
       qLower.includes('overview of repositories');
 
-    const systemPrompt = `You are the Lead Open-World Systems Architect for Repo Intelligence.
+    const systemPrompt = `You are the Lead Open-World Systems Architect for Open Eye.
 Analyze the user's natural language problem or question and extract its domain, technical requirements, constraints, desired outputs, and query expansions.
 
 OPEN-WORLD PRINCIPLES:

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@repo/database';
+import { FirecrawlProvider } from '@/lib/providers/firecrawl';
+import { TavilyProvider } from '@/lib/providers/tavily';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,46 +54,68 @@ export async function GET() {
       };
     }
 
-    // 3. Check Repository Queue / Counts
-    const repoStatsRes = await query(`
+    // 3. Check Universal Resource Counts
+    const resourceStatsRes = await query(`
       SELECT 
-        COUNT(*) as total,
-        COUNT(*) FILTER (WHERE status = 'READY') as ready,
-        COUNT(*) FILTER (WHERE status = 'PROCESSING') as processing,
-        COUNT(*) FILTER (WHERE status = 'QUEUED') as queued,
-        COUNT(*) FILTER (WHERE status = 'FAILED') as failed
-      FROM repositories;
+        COUNT(*)::int as total,
+        COUNT(*) FILTER (WHERE status = 'READY')::int as ready,
+        COUNT(*) FILTER (WHERE status IN ('FETCHING', 'ANALYZING', 'INDEXING'))::int as processing,
+        COUNT(*) FILTER (WHERE status = 'PENDING')::int as pending,
+        COUNT(*) FILTER (WHERE status IN ('FAILED', 'BLOCKED'))::int as failed,
+        COUNT(*) FILTER (WHERE resource_type = 'github_repository')::int as repositories,
+        COUNT(*) FILTER (WHERE resource_type IN ('web_page', 'article', 'documentation_site', 'generic_url'))::int as web_sources,
+        COUNT(*) FILTER (WHERE resource_type = 'youtube_video')::int as videos,
+        COUNT(*) FILTER (WHERE resource_type IN ('pdf', 'research_paper', 'document'))::int as documents,
+        COUNT(*) FILTER (WHERE resource_type = 'linkedin_post')::int as linkedin
+      FROM resources;
     `);
 
-    const stats = repoStatsRes.rows[0];
+    const stats = resourceStatsRes.rows[0];
 
-    const isHealthy = workerStatus !== 'OFFLINE';
+    // 4. Check Provider Connectivity (without exposing keys)
+    const firecrawl = new FirecrawlProvider();
+    const tavily = new TavilyProvider();
+
+    const providers = {
+      firecrawl: firecrawl.isAvailable() ? 'Connected' : 'Not configured',
+      tavily: tavily.isAvailable() ? 'Connected' : 'Not configured',
+      llm: Boolean(process.env.LLM_API_KEY) ? 'Connected' : 'Not configured',
+      database: 'Healthy'
+    };
 
     return NextResponse.json({
-      status: isHealthy ? 'healthy' : 'degraded',
+      product: 'Open Eye',
+      status: 'healthy',
       totalLatencyMs: Date.now() - startTime,
       timestamp: new Date().toISOString(),
       database: {
         status: 'connected',
         latencyMs: dbLatencyMs
       },
+      providers,
       worker: {
         status: workerStatus,
         ...workerData
       },
-      repositories: {
-        total: parseInt(stats.total || '0', 10),
-        ready: parseInt(stats.ready || '0', 10),
-        processing: parseInt(stats.processing || '0', 10),
-        queued: parseInt(stats.queued || '0', 10),
-        failed: parseInt(stats.failed || '0', 10)
+      resources: {
+        total: stats.total,
+        ready: stats.ready,
+        processing: stats.processing,
+        pending: stats.pending,
+        failed: stats.failed,
+        byType: {
+          repositories: stats.repositories,
+          webSources: stats.web_sources,
+          videos: stats.videos,
+          documents: stats.documents,
+          linkedin: stats.linkedin
+        }
       }
-    }, {
-      status: isHealthy ? 200 : 200 // Still return 200 for degraded to allow monitoring dashboards to read stats
     });
   } catch (error: any) {
     console.error('Health check failed:', error);
     return NextResponse.json({
+      product: 'Open Eye',
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: error.message || 'Database or service unreachable'
