@@ -34,7 +34,7 @@ class DatabaseRepository:
                         SELECT id FROM ingestion_jobs
                         WHERE (
                             status = 'QUEUED'
-                            OR (status = 'RUNNING' AND locked_at < NOW() - INTERVAL '{config.JOB_LOCK_TIMEOUT_MINUTES} minutes')
+                            OR (status = 'RUNNING' AND (locked_at IS NULL OR locked_at < NOW() - INTERVAL '{config.JOB_LOCK_TIMEOUT_MINUTES} minutes'))
                         )
                         AND attempts < {config.MAX_JOB_ATTEMPTS}
                         ORDER BY created_at ASC
@@ -51,7 +51,7 @@ class DatabaseRepository:
             conn.close()
 
     def update_job_step(self, job_id: str, repo_id: str, step: str, repo_status: str):
-        """Updates job step and repository status."""
+        """Updates job step, repository status, and resource status."""
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
@@ -62,6 +62,20 @@ class DatabaseRepository:
                 cur.execute(
                     "UPDATE repositories SET status = %s, updated_at = NOW() WHERE id = %s",
                     (repo_status, repo_id)
+                )
+                cur.execute(
+                    """
+                    UPDATE resources 
+                    SET status = CASE 
+                        WHEN %s = 'COMPLETED' THEN 'READY'
+                        WHEN %s = 'FAILED' THEN 'FAILED'
+                        ELSE 'PROCESSING'
+                    END,
+                    updated_at = NOW() 
+                    WHERE id = (SELECT resource_id FROM ingestion_jobs WHERE id = %s LIMIT 1) 
+                       OR id = %s
+                    """,
+                    (repo_status, repo_status, job_id, repo_id)
                 )
                 conn.commit()
         finally:
