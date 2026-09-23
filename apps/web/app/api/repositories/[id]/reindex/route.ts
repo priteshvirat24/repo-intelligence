@@ -67,8 +67,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       console.warn('Could not check remote commit SHA, queuing reindex anyway:', err.message);
     }
 
-    // 4. Compare commit SHA: If unchanged, return idempotent no-op response
-    if (currentSha && repo.latest_commit_hash && currentSha === repo.latest_commit_hash) {
+    // 4. Compare commit SHA: If unchanged and status is READY and not forcing, return idempotent no-op response
+    if (!force && repo.status === 'READY' && currentSha && repo.latest_commit_hash && currentSha === repo.latest_commit_hash) {
       return NextResponse.json({
         reindexed: false,
         message: 'Repository is already up-to-date with latest commit.',
