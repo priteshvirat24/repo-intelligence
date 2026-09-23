@@ -8,10 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./apps/worker/
+COPY apps/worker/requirements.txt ./apps/worker/
 RUN pip install --no-cache-dir -r ./apps/worker/requirements.txt
 
-COPY . ./apps/worker/
+COPY apps/worker/ ./apps/worker/
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

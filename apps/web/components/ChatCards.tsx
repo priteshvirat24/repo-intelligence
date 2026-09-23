@@ -49,7 +49,9 @@ export const RequirementCard: React.FC<{ requirement: OpenRequirement }> = ({ re
       </p>
       <div style={{ display: 'flex', gap: 10, marginTop: 4, fontSize: '0.725rem', color: 'var(--text-muted)' }}>
         <span>Type: <strong style={{ color: 'var(--text-secondary)' }}>{requirement.type}</strong></span>
-        <span>Confidence: <strong style={{ color: 'var(--accent-cyan)' }}>{Math.round(requirement.confidence * 100)}%</strong></span>
+        <span>Confidence: <strong style={{ color: 'var(--accent-cyan)' }}>
+          {typeof requirement.confidence === 'string' ? requirement.confidence : `${Math.round((requirement.confidence || 0.8) * 100)}%`}
+        </strong></span>
       </div>
     </div>
   );

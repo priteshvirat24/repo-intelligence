@@ -6,7 +6,9 @@ import {
   ArchitectureGraphData,
   ArchitectureNode,
   ArchitectureEdge,
-  KnowledgeObject
+  KnowledgeObject,
+  CompatibilityLevel,
+  ResourceRole
 } from '@repo/shared';
 
 export class OpenRepositoryCompositionEngine {
@@ -29,9 +31,39 @@ export class OpenRepositoryCompositionEngine {
       };
     }
 
-    // 2. Evaluate requirement coverage against candidate repositories
+    // 2. Separate Executable Software Components from Information Resources (YouTube, PDF, Articles, Docs)
+    const executableCandidates: CandidateScore[] = [];
+    const knowledgeCandidates: CandidateScore[] = [];
+    const knowledgeReferences: NonNullable<CompositionPlan['knowledgeReferences']> = [];
+
+    for (const c of candidates) {
+      const isExecutable =
+        c.resourceType === 'github_repository' ||
+        ['software_component', 'library', 'framework'].includes(c.resourceRole || '');
+
+      if (isExecutable) {
+        executableCandidates.push(c);
+      } else {
+        knowledgeCandidates.push(c);
+        const contributionType =
+          c.resourceType === 'youtube_video' ? 'tutorial_guide' :
+          c.resourceType === 'pdf' || c.resourceType === 'research_paper' ? 'methodology' :
+          c.resourceType === 'documentation_site' ? 'api_specification' : 'conceptual_background';
+
+        knowledgeReferences.push({
+          resourceId: c.resourceId || c.repositoryId || '',
+          resourceTitle: c.repositoryName,
+          resourceRole: (c.resourceRole || 'reference') as ResourceRole,
+          sourceUrl: c.sourceUrl || '',
+          contributionType,
+          explanation: `Provides ${contributionType.replace('_', ' ')} and conceptual grounding for ${c.matchedCapabilities.slice(0, 3).join(', ')}.`
+        });
+      }
+    }
+
+    // 3. Evaluate requirement coverage across all candidates
     for (const candidate of candidates) {
-      const repoName = `${candidate.owner}/${candidate.repositoryName}`;
+      const repoName = candidate.owner ? `${candidate.owner}/${candidate.repositoryName}` : candidate.repositoryName;
       const repoId = candidate.repositoryId || candidate.resourceId || '';
       const repoObjects = rawObjectsByRepo.get(repoId) || [];
       const repoCapabilities = candidate.matchedCapabilities.map(c => c.toLowerCase());
@@ -39,13 +71,12 @@ export class OpenRepositoryCompositionEngine {
 
       for (const req of requirements.requirements) {
         const reqWords = req.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-        const reqDescWords = req.description.toLowerCase().split(/\s+/).filter(w => w.length > 3);
 
-        const capMatch = repoCapabilities.some(c => 
+        const capMatch = repoCapabilities.some(c =>
           reqWords.some(w => c.includes(w)) || (req.canonicalSlug && c.includes(req.canonicalSlug))
         );
         const concMatch = repoConcepts.some(c => reqWords.some(w => c.includes(w)));
-        const objMatch = repoObjects.some(o => 
+        const objMatch = repoObjects.some(o =>
           reqWords.some(w => o.name.toLowerCase().includes(w) || o.description.toLowerCase().includes(w))
         );
 
@@ -56,7 +87,7 @@ export class OpenRepositoryCompositionEngine {
       }
     }
 
-    // 3. Detect Uncovered Requirements
+    // 4. Detect Uncovered Requirements
     const uncoveredRequirements: OpenRequirement[] = [];
     for (const req of requirements.requirements) {
       if (coverage[req.name].status === 'MISSING') {
@@ -64,31 +95,36 @@ export class OpenRepositoryCompositionEngine {
       }
     }
 
-    // 4. Input / Output Data Flow Matching
+    // 5. Strict Input / Output Data Flow Matching with Compatibility Levels
     const dataFlow: CompositionPlan['dataFlow'] = [];
-    const allRepoInputs = new Map<string, Array<{ name: string; format: string }>>();
-    const allRepoOutputs = new Map<string, Array<{ name: string; format: string }>>();
+    const allRepoInputs = new Map<string, Array<{ name: string; format: string; evidence?: string }>>();
+    const allRepoOutputs = new Map<string, Array<{ name: string; format: string; evidence?: string }>>();
 
-    for (const candidate of candidates) {
-      const repoKey = `${candidate.owner}/${candidate.repositoryName}`;
+    // Only executable components can participate in runtime data flow
+    for (const candidate of executableCandidates) {
+      const repoKey = candidate.owner ? `${candidate.owner}/${candidate.repositoryName}` : candidate.repositoryName;
       const repoId = candidate.repositoryId || candidate.resourceId || '';
       const repoObjects = rawObjectsByRepo.get(repoId) || [];
 
       const inputs = repoObjects.filter(o => o.objectType === 'input').map(o => ({
         name: o.name,
-        format: o.description || o.name
+        format: o.description || o.name,
+        evidence: o.metadata?.evidenceRef || o.name
       }));
       const outputs = repoObjects.filter(o => o.objectType === 'output').map(o => ({
         name: o.name,
-        format: o.description || o.name
+        format: o.description || o.name,
+        evidence: o.metadata?.evidenceRef || o.name
       }));
 
       allRepoInputs.set(repoKey, inputs);
       allRepoOutputs.set(repoKey, outputs);
     }
 
-    // Compare outputs of candidate A with inputs of candidate B
-    const candidateKeys = candidates.map(c => `${c.owner}/${c.repositoryName}`);
+    const candidateKeys = executableCandidates.map(c =>
+      c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName
+    );
+
     for (let i = 0; i < candidateKeys.length; i++) {
       for (let j = 0; j < candidateKeys.length; j++) {
         if (i === j) continue;
@@ -99,11 +135,32 @@ export class OpenRepositoryCompositionEngine {
 
         for (const out of outputsA) {
           for (const inp of inputsB) {
-            const outWords = out.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-            const isMatch = outWords.some(w => inp.name.toLowerCase().includes(w) || inp.format.toLowerCase().includes(w));
-            if (isMatch) {
-              const candidateAObj = candidates.find(c => `${c.owner}/${c.repositoryName}` === repoA);
-              const candidateBObj = candidates.find(c => `${c.owner}/${c.repositoryName}` === repoB);
+            const outLower = out.name.toLowerCase().trim();
+            const inpLower = inp.name.toLowerCase().trim();
+            const outFormatLower = out.format.toLowerCase().trim();
+            const inpFormatLower = inp.format.toLowerCase().trim();
+
+            const isExactMatch = outLower === inpLower || outFormatLower === inpFormatLower;
+            const isGenericFormat = ['json', 'string', 'stream', 'data', 'object', 'bytes'].includes(outLower) ||
+                                    ['json', 'string', 'stream', 'data', 'object', 'bytes'].includes(inpLower);
+
+            const outWords = outLower.split(/\s+/).filter(w => w.length > 3);
+            const isSemanticMatch = outWords.some(w => inpLower.includes(w) || inpFormatLower.includes(w));
+
+            let compatibilityLevel: CompatibilityLevel = 'UNKNOWN';
+            if (isExactMatch && !isGenericFormat) {
+              compatibilityLevel = 'VERIFIED';
+            } else if (isSemanticMatch && !isGenericFormat) {
+              compatibilityLevel = 'STRONGLY_INFERRED';
+            } else if (isExactMatch && isGenericFormat) {
+              compatibilityLevel = 'POSSIBLE';
+            } else if (isSemanticMatch && isGenericFormat) {
+              compatibilityLevel = 'POSSIBLE';
+            }
+
+            if (compatibilityLevel !== 'UNKNOWN') {
+              const candidateAObj = executableCandidates.find(c => (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === repoA);
+              const candidateBObj = executableCandidates.find(c => (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === repoB);
               const sameLang = candidateAObj?.primaryLanguage === candidateBObj?.primaryLanguage;
               const boundary = sameLang ? 'library' : 'http-service';
 
@@ -112,7 +169,9 @@ export class OpenRepositoryCompositionEngine {
                 output: out.name,
                 consumerRepo: repoB,
                 input: inp.name,
-                boundary
+                boundary,
+                compatibilityLevel,
+                evidence: `Producer contract '${out.name} (${out.format})' -> Consumer contract '${inp.name} (${inp.format})'`
               });
             }
           }
@@ -120,27 +179,25 @@ export class OpenRepositoryCompositionEngine {
       }
     }
 
-    // 5. Select Minimal Viable Architecture Stack
-    // Greedy set cover prioritizing MUST requirements with minimum number of components
-    const selectedRepos: CandidateScore[] = [];
+    // 6. "One Resource is Enough" & Minimal Viable Architecture Stack Selection
+    const selectedExecutableRepos: CandidateScore[] = [];
     const coveredMusts = new Set<string>();
     const mustRequirements = requirements.requirements.filter(r => r.criticality === 'MUST');
 
-    // Single-repo minimalization check:
-    // If the top candidate covers all MUST requirements, prefer a clean single-repo solution
-    if (candidates.length > 0) {
-      const topCandidate = candidates[0];
-      const topKey = `${topCandidate.owner}/${topCandidate.repositoryName}`;
+    if (executableCandidates.length > 0) {
+      const topCandidate = executableCandidates[0];
+      const topKey = topCandidate.owner ? `${topCandidate.owner}/${topCandidate.repositoryName}` : topCandidate.repositoryName;
       const topCoveredMusts = mustRequirements.filter(m => coverage[m.name]?.providedBy.includes(topKey));
 
+      // SINGLE-RESOURCE MINIMALIZATION CHECK:
+      // If one candidate covers all critical MUST requirements, select only that one without forcing a stack!
       if (mustRequirements.length > 0 && topCoveredMusts.length === mustRequirements.length) {
-        // Top candidate satisfies all critical requirements alone
-        selectedRepos.push(topCandidate);
+        selectedExecutableRepos.push(topCandidate);
         for (const m of topCoveredMusts) coveredMusts.add(m.name);
       } else {
-        // Multi-repository greedy set cover: only add candidate if it genuinely covers an uncovered requirement
-        for (const candidate of candidates) {
-          const repoKey = `${candidate.owner}/${candidate.repositoryName}`;
+        // Multi-repository greedy set cover: only add candidate if it genuinely covers an uncovered MUST requirement
+        for (const candidate of executableCandidates) {
+          const repoKey = candidate.owner ? `${candidate.owner}/${candidate.repositoryName}` : candidate.repositoryName;
           let addsNewMust = false;
 
           for (const mustReq of mustRequirements) {
@@ -151,34 +208,48 @@ export class OpenRepositoryCompositionEngine {
           }
 
           if (addsNewMust) {
-            selectedRepos.push(candidate);
-            if (selectedRepos.length >= 4) break; // Keep architectures minimal and realistic
+            selectedExecutableRepos.push(candidate);
+            if (selectedExecutableRepos.length >= 3) break;
           }
+        }
+
+        // If no MUST requirements existed, select top 1-2 relevant components
+        if (selectedExecutableRepos.length === 0 && executableCandidates.length > 0) {
+          selectedExecutableRepos.push(executableCandidates[0]);
         }
       }
     }
 
-    // 6. Redundancy & Overlap Analysis
+    // 7. Redundancy & Overlap Analysis
     const redundancies: CompositionPlan['redundancies'] = [];
     for (const [reqName, data] of Object.entries(coverage)) {
       if (data.providedBy.length > 1) {
-        const selectedOverlap = data.providedBy.filter(r => 
-          selectedRepos.some(s => `${s.owner}/${s.repositoryName}` === r)
+        const selectedOverlap = data.providedBy.filter(r =>
+          selectedExecutableRepos.some(s => (s.owner ? `${s.owner}/${s.repositoryName}` : s.repositoryName) === r)
         );
         if (selectedOverlap.length > 1) {
+          const repoA = selectedOverlap[0];
+          const repoB = selectedOverlap[1];
+          const candA = executableCandidates.find(c => (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === repoA);
+          const candB = executableCandidates.find(c => (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === repoB);
+
+          const sameLang = candA?.primaryLanguage === candB?.primaryLanguage;
+          const overlapType = sameLang ? 'full' : 'complementary';
+
           redundancies.push({
             capabilityOrFeature: reqName,
             overlappingRepositories: selectedOverlap,
-            overlapType: 'partial',
-            recommendation: `Both ${selectedOverlap.join(' and ')} implement capability for '${reqName}'. Prefer native in-process integration over wrapping duplicate functionality.`
+            overlapType,
+            recommendation: sameLang
+              ? `Both ${selectedOverlap.join(' and ')} implement '${reqName}' in the same language stack (${candA?.primaryLanguage}). Select ${candA && candB && (candA.stars || 0) >= (candB.stars || 0) ? repoA : repoB} to avoid duplicate dependencies.`
+              : `${selectedOverlap.join(' and ')} offer complementary language implementations (${candA?.primaryLanguage} vs ${candB?.primaryLanguage}) for '${reqName}'.`
           });
         }
       }
     }
 
-    // 7. Construct Architecture Graph Data
-    const nodes: ArchitectureNode[] = selectedRepos.map(repo => {
-      const repoKey = `${repo.owner}/${repo.repositoryName}`;
+    // 8. Grounded Architecture Graph Generation (NO INVENTED EDGES!)
+    const nodes: ArchitectureNode[] = selectedExecutableRepos.map(repo => {
       const repoId = repo.repositoryId || repo.resourceId || '';
       const repoObjects = rawObjectsByRepo.get(repoId) || [];
       const profile = repoObjects.find(o => o.objectType === 'repository_profile');
@@ -188,48 +259,72 @@ export class OpenRepositoryCompositionEngine {
         id: repoId,
         label: repo.repositoryName,
         role,
+        resourceType: repo.resourceType,
+        resourceRole: repo.resourceRole,
         domain: repo.domainTags?.[0] || 'engineering'
       };
     });
 
     const edges: ArchitectureEdge[] = [];
-    for (let i = 0; i < selectedRepos.length - 1; i++) {
-      const fromRepo = selectedRepos[i];
-      const toRepo = selectedRepos[i + 1];
-      const sameLang = fromRepo.primaryLanguage === toRepo.primaryLanguage;
-      const fromId = fromRepo.repositoryId || fromRepo.resourceId || '';
-      const toId = toRepo.repositoryId || toRepo.resourceId || '';
 
-      // Find if an explicit data flow exists
-      const flow = dataFlow.find(df => 
-        df.producerRepo === `${fromRepo.owner}/${fromRepo.repositoryName}` &&
-        df.consumerRepo === `${toRepo.owner}/${toRepo.repositoryName}`
+    // ONLY generate an edge if an explicit verified or strongly inferred dataFlow exists between nodes!
+    // NEVER invent arbitrary chain edges between consecutive nodes!
+    for (const flow of dataFlow) {
+      const fromCandidate = selectedExecutableRepos.find(c =>
+        (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === flow.producerRepo
+      );
+      const toCandidate = selectedExecutableRepos.find(c =>
+        (c.owner ? `${c.owner}/${c.repositoryName}` : c.repositoryName) === flow.consumerRepo
       );
 
-      edges.push({
-        from: fromId,
-        to: toId,
-        relationship: flow ? 'produces-consumes' : 'integrates-with',
-        label: flow ? `${flow.output} → ${flow.input}` : 'pipeline',
-        boundary: flow ? (flow.boundary as any) : (sameLang ? 'library' : 'http-service')
-      });
+      if (fromCandidate && toCandidate) {
+        const fromId = fromCandidate.repositoryId || fromCandidate.resourceId || '';
+        const toId = toCandidate.repositoryId || toCandidate.resourceId || '';
+
+        // Prevent duplicate edges
+        const edgeKey = `${fromId}->${toId}`;
+        const alreadyExists = edges.some(e => `${e.from}->${e.to}` === edgeKey);
+        if (!alreadyExists) {
+          edges.push({
+            from: fromId,
+            to: toId,
+            relationship: 'produces-consumes',
+            label: `${flow.output} → ${flow.input}`,
+            boundary: flow.boundary as any,
+            compatibilityLevel: flow.compatibilityLevel,
+            reason: `Component '${fromCandidate.repositoryName}' outputs '${flow.output}' which satisfies input requirement '${flow.input}' of '${toCandidate.repositoryName}'.`,
+            dataFlowSnippet: `${flow.output} -> ${flow.input}`,
+            evidenceRef: flow.evidence
+          });
+        }
+      }
     }
 
-    const graphData: ArchitectureGraphData = { nodes, edges };
+    const architectureGraph: ArchitectureGraphData = { nodes, edges };
 
-    // 8. Synthesis Summary
+    // 9. Synthesis Summary
     const totalMust = mustRequirements.length;
     const coveredMustCount = coveredMusts.size;
-    const summary = selectedRepos.length === 1
-      ? `Single-repository solution: '${selectedRepos[0].owner}/${selectedRepos[0].repositoryName}' satisfies ${coveredMustCount}/${totalMust} critical requirements.`
-      : `Composed multi-repository architecture: ${selectedRepos.length} components satisfy ${coveredMustCount}/${totalMust} critical requirements with ${dataFlow.length} inferred data flow pipelines.`;
+    let summary = '';
+
+    if (selectedExecutableRepos.length === 1) {
+      const single = selectedExecutableRepos[0];
+      summary = `Single-resource solution: '${single.owner ? `${single.owner}/` : ''}${single.repositoryName}' satisfies ${coveredMustCount}/${totalMust} critical requirements without requiring multi-repository composition.`;
+    } else if (selectedExecutableRepos.length > 1) {
+      summary = `Composed multi-component architecture: ${selectedExecutableRepos.length} executable components satisfy ${coveredMustCount}/${totalMust} critical requirements with ${edges.length} grounded integration edges.`;
+    } else if (knowledgeReferences.length > 0) {
+      summary = `Knowledge-grounded solution: ${knowledgeReferences.length} reference resources provide methodology, architectural patterns, and API specifications.`;
+    } else {
+      summary = `No verified internal resource currently satisfies the specified critical requirements.`;
+    }
 
     return {
-      recommendedRepositories: selectedRepos,
-      architectureGraph: graphData,
+      recommendedRepositories: selectedExecutableRepos,
+      architectureGraph,
       capabilityCoverage: coverage,
       redundancies,
       dataFlow,
+      knowledgeReferences,
       uncoveredRequirements,
       synthesisSummary: summary
     };

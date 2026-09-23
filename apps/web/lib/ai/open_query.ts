@@ -1,5 +1,16 @@
-import { OpenQueryRequirements, OpenRequirement, CANONICAL_CAPABILITIES } from '@repo/shared';
+import {
+  OpenQueryRequirements,
+  OpenRequirement,
+  QueryIntent,
+  RequirementConfidence,
+  RequirementCriticality,
+  RequirementType
+} from '@repo/shared';
 import { LLMProvider } from './providers';
+import {
+  ProblemDecompositionSchema,
+  ValidatedProblemDecomposition
+} from './validation/schema';
 
 export class OpenProblemDecomposer {
   constructor(private llm: LLMProvider) {}
@@ -8,22 +19,35 @@ export class OpenProblemDecomposer {
     const qLower = query.toLowerCase().trim();
 
     // Check for collection-level questions
-    const isCollectionOverview = 
+    const isCollectionOverview =
       qLower.includes('what can our collection do') ||
       qLower.includes('what can we build') ||
       qLower.includes('what repos do we have') ||
-      qLower.includes('overview of repositories');
+      qLower.includes('overview of repositories') ||
+      qLower.includes('what does our collection know');
 
     const systemPrompt = `You are the Lead Open-World Systems Architect for Open Eye.
-Analyze the user's natural language problem or question and extract its domain, technical requirements, constraints, desired outputs, and query expansions.
+Analyze the user's natural language problem or question and extract its domain, technical requirements, intent, constraints, ambiguities, desired outputs, and search expansions.
 
-OPEN-WORLD PRINCIPLES:
-1. Repositories can belong to ANY technical field, niche, or domain (e.g. satellite systems, computer vision, robotics, biology, finance, gaming, geospatial, civil engineering, data pipelines, AI/ML, etc.).
-2. Do NOT constrain requirements to a fixed list. Discover domain-specific requirements (e.g. "SGP4 orbital propagation", "photogrammetric 3D reconstruction", "Kalman filtering", "geospatial coordinate transformation", "temporal change detection").
-3. Assign criticality: MUST (essential for MVP), SHOULD (important), or NICE_TO_HAVE.
-4. If a requirement closely matches a standard capability, you may optionally provide canonicalSlug, otherwise omit it.
-5. Generate 4-8 search expansion terms (technical synonyms, algorithms, domain terminology) to assist hybrid search.
-6. Output ONLY valid JSON matching the requested schema.`;
+CRITICAL INTELLIGENCE RULES:
+1. Open-World Domain Discovery:
+   - Domains are NOT constrained to a fixed taxonomy.
+   - Discover domain-specific terminology accurately (e.g. "orbital mechanics", "photogrammetry", "hydrological modeling", "kinematic chain solving", "game collision manifolds", "phylogenetic reconstruction", "quantitative finance").
+2. Multi-Intent Classification:
+   - A query can have multiple simultaneous intents: "discovery", "comparison", "composition", "gap_analysis", "explanation".
+   - Do NOT force every query into a single rigid intent.
+3. Preserve Technical Ambiguity:
+   - If a user requirement is ambiguous (e.g. "I need memory", "make this faster", "track state"), DO NOT assume a single narrow meaning.
+   - Explicitly record ambiguous terms and their potential interpretations (e.g. "memory" -> ["in-memory cache", "persistent database", "vector embedding store", "agent conversational context"]).
+4. Requirement Confidence Levels:
+   - "explicit": Directly stated by the user (e.g. "Python", "GPU-accelerated", "using Docker").
+   - "inferred": Deduced by systems engineering logic (e.g. "coordinate transformation" needed for "satellite positions to map").
+   - "ambiguous": Requires further technical clarification.
+   - NEVER present inferred requirements as user-specified explicit requirements.
+5. Vague Query Reasoning:
+   - For queries like "make this faster", identify performance profiling, caching, parallelization, and algorithmic optimization.
+   - For queries like "turn satellite positions into visual map", infer trajectory/state data ingestion, coordinate transformation (ECI to Geodetic/WGS84), and map rendering without requiring predefined templates.
+6. Output Format: Strictly valid JSON matching the schema.`;
 
     const userPrompt = `User Problem: "${query}"
 
@@ -31,61 +55,92 @@ Return JSON matching:
 {
   "problemSummary": "Concise summary of the core technical challenge",
   "domains": ["discovered-domain-1", "discovered-domain-2"],
+  "intents": ["discovery", "composition"],
   "requirements": [
     {
       "name": "Requirement Name",
-      "description": "Technical capability needed",
+      "description": "Specific technical capability needed",
       "type": "functional" | "technical" | "domain" | "deployment" | "performance" | "integration",
       "criticality": "MUST" | "SHOULD" | "NICE_TO_HAVE",
-      "confidence": 0.95,
-      "canonicalSlug": "optional-canonical-slug-or-null"
+      "confidence": "explicit" | "inferred" | "ambiguous",
+      "isAmbiguous": false,
+      "ambiguousInterpretations": []
     }
   ],
-  "constraints": ["Constraint 1", "Constraint 2"],
+  "ambiguities": [
+    {
+      "term": "ambiguous term if any",
+      "possibleInterpretations": ["interpretation 1", "interpretation 2"]
+    }
+  ],
+  "constraints": ["Constraint 1"],
   "desiredOutputs": ["Desired output format or artifact"],
-  "queryExpansions": ["term1", "term2", "term3", "term4", "term5"]
+  "queryExpansions": ["technical synonym 1", "algorithm name", "domain keyword"]
 }`;
 
     try {
       const response = await this.llm.complete(userPrompt, systemPrompt);
-      const cleaned = response.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const rawJson = JSON.parse(jsonMatch[0]);
+        const parseResult = ProblemDecompositionSchema.safeParse(rawJson);
 
-      // Validate & clean requirements
-      const requirements: OpenRequirement[] = Array.isArray(parsed.requirements)
-        ? parsed.requirements.map((r: any) => ({
-            name: String(r.name || 'Functional Requirement'),
-            description: String(r.description || ''),
-            type: ['functional', 'technical', 'domain', 'deployment', 'performance', 'integration'].includes(r.type)
-              ? r.type
-              : 'functional',
-            criticality: ['MUST', 'SHOULD', 'NICE_TO_HAVE'].includes(r.criticality) ? r.criticality : 'MUST',
-            confidence: typeof r.confidence === 'number' ? Math.min(1.0, Math.max(0.1, r.confidence)) : 0.9,
-            canonicalSlug: r.canonicalSlug || undefined
-          }))
-        : [];
+        if (parseResult.success) {
+          const valid = parseResult.data;
+          const requirements: OpenRequirement[] = valid.requirements.map(r => ({
+            name: r.name,
+            description: r.description,
+            type: r.type as RequirementType,
+            criticality: r.criticality as RequirementCriticality,
+            confidence: r.confidence,
+            confidenceLevel: (typeof r.confidence === 'string' ? r.confidence : 'inferred') as RequirementConfidence,
+            canonicalSlug: r.canonicalSlug || undefined,
+            isAmbiguous: r.isAmbiguous,
+            ambiguousInterpretations: r.ambiguousInterpretations
+          }));
 
-      return {
-        problemSummary: parsed.problemSummary || query,
-        domains: Array.isArray(parsed.domains) && parsed.domains.length > 0 ? parsed.domains : ['general-software'],
-        requirements: requirements.length > 0 ? requirements : this.fallbackRequirements(query),
-        constraints: Array.isArray(parsed.constraints) ? parsed.constraints : [],
-        desiredOutputs: Array.isArray(parsed.desiredOutputs) ? parsed.desiredOutputs : [],
-        queryExpansions: Array.isArray(parsed.queryExpansions) && parsed.queryExpansions.length > 0
-          ? parsed.queryExpansions
-          : this.fallbackExpansions(query)
-      };
+          return {
+            problemSummary: valid.problemSummary,
+            domains: valid.domains,
+            intents: valid.intents as QueryIntent[],
+            requirements,
+            ambiguities: valid.ambiguities,
+            constraints: valid.constraints,
+            desiredOutputs: valid.desiredOutputs,
+            queryExpansions: valid.queryExpansions
+          };
+        } else {
+          console.warn('[OpenProblemDecomposer] Schema validation warning, attempting partial recovery:', parseResult.error.format());
+        }
+      }
     } catch (err) {
-      console.warn('LLM problem decomposition fallback engaged:', err);
-      return this.fallbackDecompose(query);
+      console.warn('[OpenProblemDecomposer] LLM problem decomposition fallback engaged:', err);
     }
+
+    return this.fallbackDecompose(query);
   }
 
   private fallbackDecompose(query: string): OpenQueryRequirements {
+    const qLower = query.toLowerCase().trim();
     const reqs = this.fallbackRequirements(query);
     const expansions = this.fallbackExpansions(query);
 
-    // Extract dynamic domain candidates from prominent technical tokens
+    // Multi-intent detection
+    const intents: QueryIntent[] = ['discovery'];
+    if (qLower.includes('compare') || qLower.includes('vs') || qLower.includes('difference')) {
+      intents.push('comparison');
+    }
+    if (qLower.includes('build') || qLower.includes('combine') || qLower.includes('together') || qLower.includes('architecture') || qLower.includes('compose')) {
+      intents.push('composition');
+    }
+    if (qLower.includes('missing') || qLower.includes('gap') || qLower.includes('lack')) {
+      intents.push('gap_analysis');
+    }
+    if (qLower.includes('explain') || qLower.includes('how does') || qLower.includes('what is')) {
+      intents.push('explanation');
+    }
+
+    // Dynamic domain extraction from non-stopword tokens
     const tokens = query
       .replace(/[^a-zA-Z0-9\s-]/g, ' ')
       .split(/\s+/)
@@ -95,10 +150,37 @@ Return JSON matching:
     const domains = Array.from(new Set(tokens.slice(0, 3))).map(t => `${t}-systems`);
     if (domains.length === 0) domains.push('general-engineering');
 
+    // Ambiguity detection for classic polysemic terms
+    const ambiguities: Array<{ term: string; possibleInterpretations: string[] }> = [];
+    if (/\bmemory\b/i.test(query)) {
+      ambiguities.push({
+        term: 'memory',
+        possibleInterpretations: [
+          'In-memory caching (Redis / Memcached)',
+          'Vector database / semantic memory',
+          'Agent conversational context buffer',
+          'Relational database state persistence'
+        ]
+      });
+    }
+    if (/\bfaster\b/i.test(query) || /\bperformance\b/i.test(query)) {
+      ambiguities.push({
+        term: 'performance / speed',
+        possibleInterpretations: [
+          'Algorithmic complexity reduction',
+          'Multi-threading / GPU concurrency',
+          'Caching of repeated computations',
+          'Network / database I/O batching'
+        ]
+      });
+    }
+
     return {
       problemSummary: query.trim(),
       domains,
+      intents,
       requirements: reqs,
+      ambiguities,
       constraints: [],
       desiredOutputs: [],
       queryExpansions: expansions
@@ -107,6 +189,36 @@ Return JSON matching:
 
   private fallbackRequirements(query: string): OpenRequirement[] {
     const reqs: OpenRequirement[] = [];
+
+    // Check specific known vague engineering queries
+    const qLower = query.toLowerCase();
+    if (qLower.includes('satellite') && (qLower.includes('map') || qLower.includes('visual'))) {
+      reqs.push({
+        name: 'Satellite State & Orbit Propagation',
+        description: 'Predict or ingest satellite state vectors / ephemeris from orbital parameters.',
+        type: 'domain',
+        criticality: 'MUST',
+        confidence: 'inferred',
+        confidenceLevel: 'inferred'
+      });
+      reqs.push({
+        name: 'Geospatial Coordinate Transformation',
+        description: 'Transform orbital positions (ECI/ECEF) to geodetic lat/lon/alt coordinates.',
+        type: 'technical',
+        criticality: 'MUST',
+        confidence: 'inferred',
+        confidenceLevel: 'inferred'
+      });
+      reqs.push({
+        name: 'Cartographic / Map Visualization',
+        description: 'Render geospatial ground tracks and satellite positions onto a map or 3D globe.',
+        type: 'functional',
+        criticality: 'MUST',
+        confidence: 'inferred',
+        confidenceLevel: 'inferred'
+      });
+      return reqs;
+    }
 
     // Split query by common coordination delimiters
     const clauses = query
@@ -125,17 +237,16 @@ Return JSON matching:
       if (!cleaned || cleaned.length < 3) continue;
 
       const isMust = i === 0 || /\b(must|essential|require|critical|primary)\b/i.test(clause);
-      const criticality = isMust ? 'MUST' : 'SHOULD';
-
-      // Clean requirement title
+      const criticality: RequirementCriticality = isMust ? 'MUST' : 'SHOULD';
       const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 
       reqs.push({
         name: title,
-        description: `Implementation for ${cleaned} as requested in problem specification.`,
+        description: `Implementation capability for ${cleaned}`,
         type: i === 0 ? 'functional' : 'technical',
         criticality,
-        confidence: 0.88
+        confidence: 'inferred',
+        confidenceLevel: 'inferred'
       });
     }
 
@@ -145,7 +256,8 @@ Return JSON matching:
         description: query.trim(),
         type: 'functional',
         criticality: 'MUST',
-        confidence: 0.80
+        confidence: 'inferred',
+        confidenceLevel: 'inferred'
       });
     }
 
@@ -160,17 +272,14 @@ Return JSON matching:
 
     const expansions = new Set<string>();
 
-    // Add standalone tokens
     for (const token of tokens) {
       expansions.add(token);
-      // If looks like an acronym (all caps, 2-6 chars)
       if (token === token.toUpperCase() && token.length >= 2 && token.length <= 6) {
         expansions.add(`${token} protocol`);
         expansions.add(`${token} implementation`);
       }
     }
 
-    // Add adjacent pairs as compound phrases
     for (let i = 0; i < tokens.length - 1; i++) {
       expansions.add(`${tokens[i]} ${tokens[i + 1]}`);
     }

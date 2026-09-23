@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // First emit metadata event with requirements, composition, architectureGraph, citations, webSources, sourcesUsed
         const metaEvent = `event: metadata\ndata: ${JSON.stringify({
           requirements: result.requirements,
           composition: result.composition,
@@ -38,7 +37,8 @@ export async function POST(req: NextRequest) {
           citations: result.citations,
           webSources: result.webSources,
           sourcesUsed: result.sourcesUsed,
-          sourceMode
+          sourceMode,
+          trace: result.trace
         })}\n\n`;
         controller.enqueue(encoder.encode(metaEvent));
 

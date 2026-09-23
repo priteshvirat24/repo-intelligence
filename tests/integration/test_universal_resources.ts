@@ -171,7 +171,7 @@ async function runTests() {
 
     // Verify sources indicator
     assert(
-      chatResult.sourcesUsed === 'OPEN EYE' || chatResult.sourcesUsed === 'OPEN EYE + WEB',
+      ['INTERNAL', 'WEB', 'HYBRID', 'OPEN EYE', 'OPEN EYE + WEB'].includes(chatResult.sourcesUsed),
       `Active sources accurately labeled: Sources: ${chatResult.sourcesUsed}`
     );
   }

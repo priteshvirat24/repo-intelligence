@@ -238,18 +238,29 @@ export interface IngestionJob {
 }
 export type RequirementCriticality = 'MUST' | 'SHOULD' | 'NICE_TO_HAVE';
 export type RequirementType = 'functional' | 'technical' | 'domain' | 'deployment' | 'performance' | 'integration';
+export type RequirementConfidence = 'explicit' | 'inferred' | 'ambiguous';
+export type QueryIntent = 'discovery' | 'comparison' | 'composition' | 'gap_analysis' | 'explanation';
+export type CompatibilityLevel = 'VERIFIED' | 'STRONGLY_INFERRED' | 'POSSIBLE' | 'UNKNOWN';
 export interface OpenRequirement {
     name: string;
     description: string;
     type: RequirementType;
     criticality: RequirementCriticality;
-    confidence: number;
+    confidence: number | RequirementConfidence;
+    confidenceLevel?: RequirementConfidence;
     canonicalSlug?: string;
+    isAmbiguous?: boolean;
+    ambiguousInterpretations?: string[];
 }
 export interface OpenQueryRequirements {
     problemSummary: string;
     domains: string[];
+    intents?: QueryIntent[];
     requirements: OpenRequirement[];
+    ambiguities?: Array<{
+        term: string;
+        possibleInterpretations: string[];
+    }>;
     constraints: string[];
     desiredOutputs: string[];
     queryExpansions: string[];
@@ -302,7 +313,11 @@ export interface ArchitectureEdge {
     to: string;
     relationship: string;
     label?: string;
-    boundary?: 'same-process' | 'library' | 'sdk' | 'http-service' | 'cli' | 'file-exchange' | 'database' | 'message-queue' | 'knowledge-reference' | 'tutorial-guide';
+    boundary?: 'same-process' | 'library' | 'sdk' | 'http-service' | 'cli' | 'file-exchange' | 'database' | 'message-queue';
+    compatibilityLevel?: CompatibilityLevel;
+    reason?: string;
+    dataFlowSnippet?: string;
+    evidenceRef?: string;
 }
 export interface ArchitectureGraphData {
     nodes: ArchitectureNode[];
@@ -319,7 +334,7 @@ export interface CompositionPlan {
     redundancies: Array<{
         capabilityOrFeature: string;
         overlappingRepositories: string[];
-        overlapType: 'full' | 'partial' | 'complementary';
+        overlapType: 'full' | 'partial' | 'complementary' | 'optional_alternative';
         recommendation: string;
     }>;
     dataFlow: Array<{
@@ -328,6 +343,16 @@ export interface CompositionPlan {
         consumerRepo: string;
         input: string;
         boundary: string;
+        compatibilityLevel?: CompatibilityLevel;
+        evidence?: string;
+    }>;
+    knowledgeReferences?: Array<{
+        resourceId: string;
+        resourceTitle: string;
+        resourceRole: ResourceRole;
+        sourceUrl: string;
+        contributionType: 'methodology' | 'tutorial_guide' | 'api_specification' | 'conceptual_background';
+        explanation: string;
     }>;
     uncoveredRequirements: OpenRequirement[];
     synthesisSummary: string;

@@ -41,17 +41,25 @@ async function runMigrations() {
     const dimensions = process.env.EMBEDDING_DIMENSIONS || '1024';
     console.log(`[Database] Running migrations with EMBEDDING_DIMENSIONS=${dimensions}...`);
     const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-    const migrationPath = path.resolve(currentDir, '../migrations/001_initial_schema.sql');
-    let sql = fs.readFileSync(migrationPath, 'utf8');
-    // Replace configurable dimension placeholder
-    sql = sql.replace(/\{\{EMBEDDING_DIMENSIONS\}\}/g, dimensions);
-    try {
-        await (0, client_js_1.query)(sql);
-        console.log('[Database] Migrations applied successfully.');
-    }
-    catch (error) {
-        console.error('[Database] Migration failed:', error);
-        throw error;
+    const migrationsDir = path.resolve(currentDir, '../migrations');
+    // Read and sort all .sql migration files
+    const files = fs.readdirSync(migrationsDir)
+        .filter(f => f.endsWith('.sql') && !f.includes('alter_embedding'))
+        .sort();
+    for (const file of files) {
+        console.log(`[Database] Applying migration: ${file}...`);
+        const filePath = path.join(migrationsDir, file);
+        let sql = fs.readFileSync(filePath, 'utf8');
+        // Replace configurable dimension placeholder
+        sql = sql.replace(/\{\{EMBEDDING_DIMENSIONS\}\}/g, dimensions);
+        try {
+            await (0, client_js_1.query)(sql);
+            console.log(`[Database] Migration ${file} applied successfully.`);
+        }
+        catch (error) {
+            console.error(`[Database] Migration ${file} failed:`, error);
+            throw error;
+        }
     }
 }
 // If run directly via tsx/node

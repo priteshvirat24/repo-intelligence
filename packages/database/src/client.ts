@@ -11,9 +11,11 @@ const connectionString =
   process.env.DATABASE_URL ||
   'postgres://postgres:postgrespassword@localhost:5432/repo_intelligence';
 
+const isLocal = connectionString.includes('localhost') || connectionString.includes('127.0.0.1') || connectionString.includes('postgres.railway.internal');
+
 export const pool = new Pool({
   connectionString,
-  ssl: connectionString.includes('neon.tech') ? { rejectUnauthorized: false } : undefined,
+  ssl: (!isLocal || connectionString.includes('sslmode=require') || connectionString.includes('neon.tech') || connectionString.includes('rlwy.net')) && !connectionString.includes('sslmode=disable') ? { rejectUnauthorized: false } : undefined,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

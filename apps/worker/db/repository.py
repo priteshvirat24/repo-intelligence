@@ -84,6 +84,40 @@ class DatabaseRepository:
         finally:
             conn.close()
 
+    def mark_job_failed(self, job_id: str, repo_id: str, error_message: str):
+        """Marks an ingestion job and associated repository/resource as failed."""
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE ingestion_jobs 
+                    SET status = 'FAILED', error_message = %s, step = 'FAILED', completed_at = NOW(), updated_at = NOW() 
+                    WHERE id = %s
+                    """,
+                    (error_message, job_id)
+                )
+                cur.execute(
+                    """
+                    UPDATE repositories 
+                    SET status = 'FAILED', error_message = %s, updated_at = NOW() 
+                    WHERE id = %s
+                    """,
+                    (error_message, repo_id)
+                )
+                cur.execute(
+                    """
+                    UPDATE resources 
+                    SET status = 'FAILED', error_message = %s, updated_at = NOW() 
+                    WHERE source_url IN (SELECT url FROM repositories WHERE id = %s)
+                       OR id::text = %s
+                    """,
+                    (error_message, repo_id, repo_id)
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
     def record_heartbeat(self, worker_id: str, current_job_id: Optional[str] = None, status: str = "ALIVE", metadata: Optional[Dict[str, Any]] = None):
         """Records or updates heartbeat in worker_heartbeats table."""
         conn = self.get_connection()
@@ -145,6 +179,21 @@ class DatabaseRepository:
                     WHERE id = %s
                     """,
                     (commit_hash, domain_tags or [], Json(open_knowledge_json or {}), Json(analysis_completeness or {}), repo_id)
+                )
+
+                # Also update corresponding resource in resources table
+                cur.execute(
+                    """
+                    UPDATE resources
+                    SET status = 'READY',
+                        domain_tags = %s,
+                        error_message = NULL,
+                        indexed_at = NOW(),
+                        updated_at = NOW()
+                    WHERE source_url IN (SELECT url FROM repositories WHERE id = %s)
+                       OR id::text = %s
+                    """,
+                    (domain_tags or [], repo_id, repo_id)
                 )
 
                 # Clean previous data if re-indexing

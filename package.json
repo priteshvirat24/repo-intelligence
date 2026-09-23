@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "start": "pnpm db:migrate && pnpm --filter @repo/web run start",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "eval": "pnpm --filter @repo/web eval",

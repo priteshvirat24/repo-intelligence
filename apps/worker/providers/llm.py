@@ -53,25 +53,32 @@ class MistralLLMProvider(BaseLLMProvider):
             "response_format": {"type": "json_object"}
         }
 
-        # Try with exponential backoff on 429 rate limits
+        # Try with exponential backoff on rate limits and timeouts
         for attempt in range(3):
             try:
-                with httpx.Client(timeout=60.0) as client:
+                with httpx.Client(timeout=120.0) as client:
                     resp = client.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
                     if resp.status_code == 429:
-                        time.sleep(1.5 * (attempt + 1))
+                        time.sleep(2.0 * (attempt + 1))
                         continue
                     resp.raise_for_status()
                     data = resp.json()
                     return data["choices"][0]["message"]["content"]
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 and attempt < 2:
-                    time.sleep(2)
+            except (httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as e:
+                print(f"[MistralLLMProvider] Attempt {attempt + 1}/3 error: {e}")
+                if attempt < 2:
+                    time.sleep(2.0 * (attempt + 1))
+                    continue
+                break
+            except Exception as e:
+                print(f"[MistralLLMProvider] Unexpected error on attempt {attempt + 1}: {e}")
+                if attempt < 2:
+                    time.sleep(2.0)
                     continue
                 break
 
-        # Fallback to heuristic structured response if provider rate-limited
-        print("[MistralLLMProvider] Rate limit hit on chat completions; falling back to heuristic capability extraction.")
+        # Fallback to heuristic structured response if provider rate-limited or timed out
+        print("[MistralLLMProvider] Error or timeout on chat completions; falling back to heuristic capability extraction.")
         return MockLLMProvider().complete(prompt, system)
 
 class OpenAILLMProvider(BaseLLMProvider):
