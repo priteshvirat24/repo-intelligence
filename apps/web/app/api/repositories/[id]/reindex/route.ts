@@ -25,20 +25,36 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     const repo = repoRes.rows[0];
 
-    // 2. Prevent duplicate simultaneous running jobs
+    const url = new URL(req.url);
+    const force = url.searchParams.get('force') === 'true';
+
+    // 2. Prevent duplicate simultaneous running jobs unless force=true or job is stale (>10m)
     const activeJobRes = await query(`
-      SELECT id, status, step FROM ingestion_jobs
+      SELECT id, status, step, updated_at FROM ingestion_jobs
       WHERE repository_id = $1 AND status IN ('QUEUED', 'RUNNING')
+      ORDER BY created_at DESC
       LIMIT 1
     `, [id]);
 
     if (activeJobRes.rows.length > 0) {
-      return NextResponse.json({
-        message: 'An ingestion job is already active for this repository.',
-        jobId: activeJobRes.rows[0].id,
-        status: activeJobRes.rows[0].status,
-        step: activeJobRes.rows[0].step
-      }, { status: 409 });
+      const activeJob = activeJobRes.rows[0];
+      const isStale = (Date.now() - new Date(activeJob.updated_at).getTime()) > 10 * 60 * 1000;
+
+      if (!force && !isStale) {
+        return NextResponse.json({
+          message: 'An ingestion job is already active for this repository.',
+          jobId: activeJob.id,
+          status: activeJob.status,
+          step: activeJob.step
+        }, { status: 409 });
+      }
+
+      // Mark stale or force-overridden job as SUPERSEDED/FAILED
+      await query(`
+        UPDATE ingestion_jobs 
+        SET status = 'FAILED', error_message = 'Superseded by reindex request', updated_at = NOW() 
+        WHERE id = $1
+      `, [activeJob.id]);
     }
 
     // 3. Fetch latest commit SHA from GitHub
@@ -68,9 +84,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       WHERE id = $1
     `, [id]);
 
+    await query(`
+      UPDATE resources
+      SET status = 'PENDING', error_message = NULL, updated_at = NOW()
+      WHERE id = (SELECT resource_id FROM repositories WHERE id = $1) OR id = $1
+    `, [id]);
+
     const jobRes = await query(`
-      INSERT INTO ingestion_jobs (repository_id, status, step)
-      VALUES ($1, 'QUEUED', 'QUEUED')
+      INSERT INTO ingestion_jobs (repository_id, resource_id, status, step)
+      VALUES ($1, (SELECT resource_id FROM repositories WHERE id = $1), 'QUEUED', 'QUEUED')
       RETURNING id, status, step;
     `, [id]);
 

@@ -137,6 +137,13 @@ export class GitHubResourceAdapter implements ResourceAdapter {
 
     const repositoryId = repoRes.rows[0].id;
 
+    // Cancel any stale/existing active jobs for this repository
+    await query(`
+      UPDATE ingestion_jobs
+      SET status = 'FAILED', error_message = 'Superseded by new ingestion job', updated_at = NOW()
+      WHERE repository_id = $1 AND status IN ('QUEUED', 'RUNNING')
+    `, [repositoryId]);
+
     // Queue ingestion job
     const jobRes = await query(`
       INSERT INTO ingestion_jobs (repository_id, resource_id, status, step)
