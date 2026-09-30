@@ -105,15 +105,24 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const rawUrl = body.url;
+    const forceReindex = Boolean(body.forceReindex);
 
-    if (!rawUrl || typeof rawUrl !== 'string') {
+    if (!rawUrl || typeof rawUrl !== 'string' || !rawUrl.trim()) {
       return NextResponse.json({ error: 'Valid URL is required' }, { status: 400 });
     }
 
-    const detected = ResourceTypeDetector.detect(rawUrl);
+    // SSRF & Security pre-check
+    const { validateResourceUrlSecurity } = await import('@/lib/security/ssrf');
+    const ssrfCheck = await validateResourceUrlSecurity(rawUrl.trim());
+    if (!ssrfCheck.valid) {
+      return NextResponse.json({
+        error: ssrfCheck.error || 'Prohibited destination URL',
+        status: 'BLOCKED'
+      }, { status: 400 });
+    }
 
-    // Trigger universal ingestion
-    const result = await UniversalIngestionService.ingestResource(rawUrl);
+    // Trigger universal ingestion with forceReindex option
+    const result = await UniversalIngestionService.ingestResource(rawUrl.trim(), { forceReindex });
 
     return NextResponse.json({
       resourceId: result.resourceId,
@@ -121,6 +130,9 @@ export async function POST(req: NextRequest) {
       status: result.status,
       title: result.title,
       jobId: result.jobId,
+      alreadyExists: result.alreadyExists,
+      alreadyProcessing: result.alreadyProcessing,
+      indexedAt: result.indexedAt,
       errorMessage: result.errorMessage
     }, { status: result.status === 'PENDING' ? 202 : 200 });
 

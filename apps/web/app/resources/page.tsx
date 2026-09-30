@@ -91,6 +91,7 @@ export default function ResourcesPage() {
 
   const handleReindex = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!confirm('Reindex this resource?\nOpen Eye will fetch the latest accessible content.')) return;
     try {
       await fetch(`/api/resources/${id}/reindex`, { method: 'POST' });
       fetchResources();

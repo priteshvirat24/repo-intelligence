@@ -106,7 +106,7 @@ class DatabaseRepository:
                 cur.execute(
                     """
                     UPDATE ingestion_jobs 
-                    SET status = 'FAILED', error_message = %s, step = 'FAILED', completed_at = NOW(), updated_at = NOW() 
+                    SET status = 'FAILED', error_message = %s, step = 'FAILED', updated_at = NOW() 
                     WHERE id = %s
                     """,
                     (error_message, job_id)

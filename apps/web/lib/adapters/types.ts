@@ -6,6 +6,11 @@ export interface ResourceDescriptor {
   canonicalUrl: string;
   domain: string;
   estimatedRole: ResourceRole;
+  isValid?: boolean;
+  isSupported?: boolean;
+  unsupportedReason?: string;
+  previewTitle?: string;
+  previewDescription?: string;
   metadata?: Record<string, any>;
 }
 

@@ -123,6 +123,13 @@ export async function DELETE(
   try {
     const { id } = params;
 
+    // Safely mark active jobs as cancelled first
+    await query(`
+      UPDATE ingestion_jobs
+      SET status = 'CANCELLED', error_message = 'Resource was deleted by user'
+      WHERE resource_id = $1 AND status IN ('PENDING', 'RUNNING')
+    `, [id]);
+
     const deleteRes = await query(`
       DELETE FROM resources
       WHERE id = $1

@@ -5,6 +5,7 @@ import {
   ScrapedPage,
   CrawlOptions
 } from './types';
+import { validateResourceUrlSecurity } from '../security/ssrf';
 
 export class FirecrawlProvider implements WebExtractionProvider {
   private apiKey: string | null;
@@ -105,29 +106,71 @@ export class FirecrawlProvider implements WebExtractionProvider {
 
   private async nativeScrapeFallback(url: string, startTime: number): Promise<ScrapedPage> {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (Open Eye Universal Resource Bot)',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        },
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-
-      const durationMs = Date.now() - startTime;
-
-      if (!res.ok) {
-        await this.logUsage('native_fetch', durationMs, false, `HTTP ${res.status}`);
+      const ssrfCheck = await validateResourceUrlSecurity(url);
+      if (!ssrfCheck.valid) {
         return {
           url,
           title: this.extractTitleFromUrl(url),
           markdown: '',
-          statusCode: res.status,
+          statusCode: 403,
           success: false,
-          errorMessage: `HTTP ${res.status} ${res.statusText}`
+          errorMessage: `RESOURCE_ACCESS_BLOCKED: ${ssrfCheck.error}`
+        };
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      // Perform fetch with manual redirect check to prevent SSRF via open redirect
+      let currentUrl = url;
+      let redirectsCount = 0;
+      let res: Response | null = null;
+
+      while (redirectsCount < 4) {
+        res = await fetch(currentUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 (Open Eye Universal Resource Bot)',
+            Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+          },
+          redirect: 'manual',
+          signal: controller.signal
+        });
+
+        if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+          const redirectLocation = res.headers.get('location')!;
+          const resolvedRedirect = new URL(redirectLocation, currentUrl).toString();
+          const redirectSsrfCheck = await validateResourceUrlSecurity(resolvedRedirect);
+          if (!redirectSsrfCheck.valid) {
+            clearTimeout(timeout);
+            return {
+              url,
+              title: this.extractTitleFromUrl(url),
+              markdown: '',
+              statusCode: 403,
+              success: false,
+              errorMessage: `RESOURCE_ACCESS_BLOCKED: Redirect destination is prohibited (${redirectSsrfCheck.error})`
+            };
+          }
+          currentUrl = resolvedRedirect;
+          redirectsCount++;
+          continue;
+        }
+        break;
+      }
+      clearTimeout(timeout);
+      const durationMs = Date.now() - startTime;
+
+      if (!res || !res.ok) {
+        const status = res ? res.status : 500;
+        const statusText = res ? res.statusText : 'Request Failed';
+        await this.logUsage('native_fetch', durationMs, false, `HTTP ${status}`);
+        return {
+          url,
+          title: this.extractTitleFromUrl(url),
+          markdown: '',
+          statusCode: status,
+          success: false,
+          errorMessage: `HTTP ${status} ${statusText}`
         };
       }
 

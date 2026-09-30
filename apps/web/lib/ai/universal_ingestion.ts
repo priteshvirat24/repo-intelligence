@@ -9,24 +9,92 @@ import {
   ResourceQualityEvaluation
 } from './validation/schema';
 
+import { validateResourceUrlSecurity } from '../security/ssrf';
+
 export class UniversalIngestionService {
   /**
    * Ingest any resource URL (YouTube, Web, PDF, LinkedIn, GitHub).
+   * Checks SSRF, verifies canonical deduplication, and tracks stage progress in ingestion_jobs.
    */
-  static async ingestResource(rawUrl: string): Promise<{
+  static async ingestResource(
+    rawUrl: string,
+    options?: { forceReindex?: boolean }
+  ): Promise<{
     resourceId: string;
     resourceType: ResourceType;
     status: ResourceStatus;
     title: string;
     jobId?: string;
     errorMessage?: string;
+    alreadyExists?: boolean;
+    alreadyProcessing?: boolean;
+    indexedAt?: string;
   }> {
-    const descriptor = AdapterRegistry.detect(rawUrl);
-    const adapter = AdapterRegistry.getAdapter(rawUrl);
+    // 1. Server-side SSRF validation
+    const ssrfCheck = await validateResourceUrlSecurity(rawUrl);
+    if (!ssrfCheck.valid) {
+      return {
+        resourceId: '',
+        resourceType: 'generic_url',
+        status: 'BLOCKED',
+        title: rawUrl,
+        errorMessage: ssrfCheck.error
+      };
+    }
 
-    // If GitHub, use existing GitHub adapter queue flow
+    const descriptor = AdapterRegistry.detect(rawUrl);
+
+    // 2. Validate resource support
+    if (!descriptor.isValid || !descriptor.isSupported) {
+      return {
+        resourceId: '',
+        resourceType: descriptor.resourceType,
+        status: 'FAILED',
+        title: rawUrl,
+        errorMessage: descriptor.unsupportedReason || 'This URL is not supported for indexing.'
+      };
+    }
+
+    // 3. Deduplication check: Detect if canonical resource already exists or is being analyzed
+    const existingRes = await query(`
+      SELECT id, title, status, error_message as "errorMessage", indexed_at as "indexedAt", updated_at as "updatedAt"
+      FROM resources
+      WHERE canonical_url = $1 OR source_url = $2
+      LIMIT 1
+    `, [descriptor.canonicalUrl, descriptor.canonicalUrl]);
+
+    if (existingRes.rows.length > 0 && !options?.forceReindex) {
+      const existing = existingRes.rows[0];
+
+      if (existing.status === 'READY' || existing.status === 'PARTIAL') {
+        return {
+          resourceId: existing.id,
+          resourceType: descriptor.resourceType,
+          status: existing.status,
+          title: existing.title,
+          alreadyExists: true,
+          indexedAt: existing.indexedAt,
+          errorMessage: existing.errorMessage || undefined
+        };
+      }
+
+      if (['FETCHING', 'ANALYZING', 'INDEXING', 'PENDING', 'CLONING'].includes(existing.status)) {
+        return {
+          resourceId: existing.id,
+          resourceType: descriptor.resourceType,
+          status: existing.status,
+          title: existing.title,
+          alreadyProcessing: true,
+          errorMessage: undefined
+        };
+      }
+    }
+
+    const adapter = AdapterRegistry.getAdapter(descriptor.canonicalUrl);
+
+    // 4. GitHub repository delegation
     if (descriptor.resourceType === 'github_repository') {
-      const ghResult = await adapter.ingest(rawUrl);
+      const ghResult = await adapter.ingest(descriptor.canonicalUrl);
       return {
         resourceId: ghResult.metadata.resourceId,
         resourceType: 'github_repository',
@@ -37,7 +105,7 @@ export class UniversalIngestionService {
       };
     }
 
-    // 1. Initial Resource Record in PENDING state
+    // 5. Initial Resource & Job Record creation for Universal Resources
     const insertRes = await query(`
       INSERT INTO resources (
         resource_type,
@@ -53,6 +121,7 @@ export class UniversalIngestionService {
         $1, $2, $3, $4, $5, 'FETCHING', $6, NOW(), NOW()
       )
       ON CONFLICT (source_url) DO UPDATE SET
+        canonical_url = EXCLUDED.canonical_url,
         status = 'FETCHING',
         error_message = NULL,
         updated_at = NOW()
@@ -62,15 +131,59 @@ export class UniversalIngestionService {
       descriptor.estimatedRole,
       descriptor.sourceUrl,
       descriptor.canonicalUrl,
-      descriptor.canonicalUrl,
+      descriptor.previewTitle || descriptor.canonicalUrl,
       descriptor.domain
     ]);
 
     const resourceId = insertRes.rows[0].id;
 
-    // 2. Run extraction via adapter
+    // Create an ingestion_job for tracking progress
+    const jobRes = await query(`
+      INSERT INTO ingestion_jobs (resource_id, status, step)
+      VALUES ($1, 'RUNNING', 'FETCHING')
+      RETURNING id;
+    `, [resourceId]);
+
+    const jobId = jobRes.rows[0].id;
+
+    // Trigger processing asynchronously in background so client receives fast response
+    // and can poll stage progression without HTTP request timeout
+    this.processUniversalResourceAsync(resourceId, jobId, descriptor, adapter).catch(err => {
+      console.error(`[UniversalIngestionService] Unhandled async ingestion error for ${resourceId}:`, err);
+    });
+
+    return {
+      resourceId,
+      resourceType: descriptor.resourceType,
+      status: 'FETCHING',
+      title: descriptor.previewTitle || descriptor.canonicalUrl,
+      jobId
+    };
+  }
+
+  /**
+   * Asynchronous stage progression worker for Universal Resources (Web, YouTube, PDF, LinkedIn).
+   */
+  private static async processUniversalResourceAsync(
+    resourceId: string,
+    jobId: string,
+    descriptor: any,
+    adapter: any
+  ): Promise<void> {
     try {
+      // Helper to check if job has been cancelled by user
+      const isJobCancelled = async (): Promise<boolean> => {
+        const checkRes = await query(`SELECT status FROM ingestion_jobs WHERE id = $1`, [jobId]);
+        return checkRes.rows.length > 0 && checkRes.rows[0].status === 'FAILED';
+      };
+
+      // Stage 1: Extraction via Adapter
       const ingestResult = await adapter.ingest(descriptor.canonicalUrl);
+
+      if (await isJobCancelled()) {
+        console.log(`[UniversalIngestionService] Job ${jobId} was cancelled during extraction.`);
+        return;
+      }
 
       if (!ingestResult.success) {
         await query(`
@@ -85,16 +198,16 @@ export class UniversalIngestionService {
           resourceId
         ]);
 
-        return {
-          resourceId,
-          resourceType: descriptor.resourceType,
-          status: ingestResult.status,
-          title: ingestResult.title,
-          errorMessage: ingestResult.errorMessage
-        };
+        await query(`
+          UPDATE ingestion_jobs
+          SET status = 'FAILED', error_message = $1, updated_at = NOW()
+          WHERE id = $2
+        `, [ingestResult.errorMessage || 'Ingestion failed', jobId]);
+
+        return;
       }
 
-      // 3. Mark ANALYZING
+      // Stage 2: Semantic Analysis via LLM
       await query(`
         UPDATE resources
         SET status = 'ANALYZING', title = $1, description = $2, author = $3, publisher = $4,
@@ -110,7 +223,14 @@ export class UniversalIngestionService {
         resourceId
       ]);
 
-      // 4. Perform LLM semantic analysis with strict security isolation
+      await query(`
+        UPDATE ingestion_jobs
+        SET step = 'ANALYZING', updated_at = NOW()
+        WHERE id = $1
+      `, [jobId]);
+
+      if (await isJobCancelled()) return;
+
       const analysis = await this.analyzeContentWithLLM(
         ingestResult.title,
         descriptor.resourceType,
@@ -118,21 +238,25 @@ export class UniversalIngestionService {
         ingestResult.description
       );
 
-      // 5. Index chunks and embeddings
+      if (await isJobCancelled()) return;
+
+      // Stage 3: Indexing Chunks, Vectors, and Knowledge Objects
       await query(`UPDATE resources SET status = 'INDEXING', updated_at = NOW() WHERE id = $1`, [resourceId]);
+      await query(`UPDATE ingestion_jobs SET step = 'INDEXING', updated_at = NOW() WHERE id = $1`, [jobId]);
+
       await this.indexResourceSegments(resourceId, descriptor.resourceType, ingestResult.segments);
 
-      // 6. Persist Knowledge Objects & Evidence
+      if (await isJobCancelled()) return;
+
       const qualityEval = await this.persistKnowledgeObjects(resourceId, descriptor.resourceType, analysis, ingestResult.segments);
 
-      // Merge quality evaluation into metadata
       const enrichedMetadata = {
         ...(ingestResult.metadata || {}),
         understandingQuality: qualityEval.understandingQuality,
         evaluationNotes: qualityEval.evaluationNotes
       };
 
-      // 7. Mark READY
+      // Stage 4: Ready
       await query(`
         UPDATE resources
         SET status = 'READY',
@@ -159,6 +283,12 @@ export class UniversalIngestionService {
         resourceId
       ]);
 
+      await query(`
+        UPDATE ingestion_jobs
+        SET status = 'COMPLETED', step = 'DONE', updated_at = NOW()
+        WHERE id = $1
+      `, [jobId]);
+
       // Record version
       await query(`
         INSERT INTO resource_versions (resource_id, version_number, content_hash, change_summary)
@@ -166,27 +296,20 @@ export class UniversalIngestionService {
         ON CONFLICT DO NOTHING
       `, [resourceId, ingestResult.contentHash]);
 
-      return {
-        resourceId,
-        resourceType: descriptor.resourceType,
-        status: 'READY',
-        title: ingestResult.title
-      };
+      console.log(`[UniversalIngestionService] Successfully completed ingestion for ${resourceId} (${ingestResult.title}).`);
     } catch (err: any) {
-      console.error(`[UniversalIngestionService] Error ingesting ${rawUrl}:`, err);
+      console.error(`[UniversalIngestionService] Error ingesting ${resourceId}:`, err);
       await query(`
         UPDATE resources
         SET status = 'FAILED', error_message = $1, updated_at = NOW()
         WHERE id = $2
       `, [err.message || 'Universal ingestion error', resourceId]);
 
-      return {
-        resourceId,
-        resourceType: descriptor.resourceType,
-        status: 'FAILED',
-        title: descriptor.canonicalUrl,
-        errorMessage: err.message
-      };
+      await query(`
+        UPDATE ingestion_jobs
+        SET status = 'FAILED', error_message = $1, updated_at = NOW()
+        WHERE id = $2
+      `, [err.message || 'Universal ingestion error', jobId]);
     }
   }
 

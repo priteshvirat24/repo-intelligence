@@ -42,7 +42,23 @@ export class PDFResourceAdapter implements ResourceAdapter {
 
       // 2. Network acquisition if not cached
       if (!buffer) {
-        const response = await fetch(desc.canonicalUrl, {
+        const downloadUrl = desc.metadata?.pdfUrl || desc.canonicalUrl;
+        const { validateResourceUrlSecurity } = await import('../security/ssrf');
+        const ssrfCheck = await validateResourceUrlSecurity(downloadUrl);
+        if (!ssrfCheck.valid) {
+          return {
+            success: false,
+            status: 'BLOCKED',
+            title: desc.previewTitle || 'Protected PDF Resource',
+            content: '',
+            segments: [],
+            metadata: { domain: desc.domain },
+            contentHash: '',
+            errorMessage: `RESOURCE_ACCESS_BLOCKED: ${ssrfCheck.error}`
+          };
+        }
+
+        const response = await fetch(downloadUrl, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
           },
