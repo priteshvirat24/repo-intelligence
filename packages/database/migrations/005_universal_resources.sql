@@ -163,14 +163,14 @@ ON CONFLICT (source_url) DO UPDATE SET
     updated_at = NOW();
 
 -- Update backfilled references
-UPDATE repositories SET resource_id = id WHERE resource_id IS NULL;
-UPDATE knowledge_objects SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL;
-UPDATE knowledge_relationships SET source_resource_id = source_repo_id WHERE source_resource_id IS NULL AND source_repo_id IS NOT NULL;
-UPDATE knowledge_relationships SET target_resource_id = target_repo_id WHERE target_resource_id IS NULL AND target_repo_id IS NOT NULL;
-UPDATE documents SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL;
-UPDATE chunks SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL;
-UPDATE evidence SET resource_id = (SELECT repository_id FROM repository_capabilities WHERE id = evidence.repository_capability_id) WHERE resource_id IS NULL AND repository_capability_id IS NOT NULL;
-UPDATE ingestion_jobs SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL;
+UPDATE repositories SET resource_id = id WHERE resource_id IS NULL AND id IN (SELECT id FROM resources);
+UPDATE knowledge_objects SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL AND repository_id IN (SELECT id FROM resources);
+UPDATE knowledge_relationships SET source_resource_id = source_repo_id WHERE source_resource_id IS NULL AND source_repo_id IS NOT NULL AND source_repo_id IN (SELECT id FROM resources);
+UPDATE knowledge_relationships SET target_resource_id = target_repo_id WHERE target_resource_id IS NULL AND target_repo_id IS NOT NULL AND target_repo_id IN (SELECT id FROM resources);
+UPDATE documents SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL AND repository_id IN (SELECT id FROM resources);
+UPDATE chunks SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL AND repository_id IN (SELECT id FROM resources);
+UPDATE evidence SET resource_id = (SELECT repository_id FROM repository_capabilities WHERE id = evidence.repository_capability_id) WHERE resource_id IS NULL AND repository_capability_id IS NOT NULL AND (SELECT repository_id FROM repository_capabilities WHERE id = evidence.repository_capability_id) IN (SELECT id FROM resources);
+UPDATE ingestion_jobs SET resource_id = repository_id WHERE resource_id IS NULL AND repository_id IS NOT NULL AND repository_id IN (SELECT id FROM resources);
 
 -- 4. Resource Versions Table (lightweight version & change tracking)
 CREATE TABLE IF NOT EXISTS resource_versions (
