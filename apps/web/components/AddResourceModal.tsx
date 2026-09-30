@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   X,
@@ -23,6 +23,7 @@ import {
   Info
 } from 'lucide-react';
 import { ResourceType } from '@repo/shared';
+import { ResourceTypeDetector } from '../lib/adapters/detector';
 
 interface AddResourceModalProps {
   isOpen: boolean;
@@ -67,6 +68,64 @@ interface IngestionStatusData {
   jobStep?: string;
 }
 
+const getTargetProgress = (step?: string, status?: string): number => {
+  if (status === 'READY' || step === 'DONE') return 100;
+  if (status === 'FAILED' || status === 'BLOCKED' || status === 'CANCELLED') return 0;
+
+  const current = (step || status || '').toUpperCase();
+  switch (current) {
+    case 'QUEUED':
+    case 'PENDING':
+    case 'INITIALIZING':
+      return 22;
+    case 'CLONING':
+    case 'FETCHING':
+      return 45;
+    case 'FILE_FILTERING':
+    case 'MANIFEST_ANALYSIS':
+      return 60;
+    case 'AST_ANALYSIS':
+    case 'ANALYZING':
+      return 76;
+    case 'CAPABILITY_EXTRACTION':
+      return 88;
+    case 'INDEXING':
+      return 95;
+    default:
+      return 15;
+  }
+};
+
+const getStageDescription = (step?: string, status?: string, resType?: string): string => {
+  const current = (step || status || '').toUpperCase();
+  const isRepo = resType === 'github_repository';
+
+  switch (current) {
+    case 'QUEUED':
+    case 'PENDING':
+    case 'INITIALIZING':
+      return isRepo ? 'Initializing repository pipeline...' : 'Queuing resource for ingestion...';
+    case 'CLONING':
+    case 'FETCHING':
+      return isRepo ? 'Cloning repository & file manifest...' : 'Fetching web content & clean DOM...';
+    case 'FILE_FILTERING':
+    case 'MANIFEST_ANALYSIS':
+      return 'Analyzing package dependencies & structure...';
+    case 'AST_ANALYSIS':
+    case 'ANALYZING':
+      return isRepo ? 'Extracting AST symbols, functions & syntax tree...' : 'Extracting semantic content & structured outline...';
+    case 'CAPABILITY_EXTRACTION':
+      return 'Synthesizing domain capabilities with evidence...';
+    case 'INDEXING':
+      return 'Indexing knowledge objects & vector graph...';
+    case 'READY':
+    case 'DONE':
+      return 'Ingestion complete! Preparing summary...';
+    default:
+      return 'Analyzing and extracting resource...';
+  }
+};
+
 export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   isOpen,
   onClose,
@@ -91,6 +150,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const [activeResourceId, setActiveResourceId] = useState<string | null>(null);
   const [ingestionStatus, setIngestionStatus] = useState<IngestionStatusData | null>(null);
   const [pollingActive, setPollingActive] = useState(false);
+  const [displayProgress, setDisplayProgress] = useState(0);
 
   // Focus input automatically on open & reset state when closed
   useEffect(() => {
@@ -106,6 +166,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
       setActiveResourceId(null);
       setIngestionStatus(null);
       setPollingActive(false);
+      setDisplayProgress(0);
       submittingRef.current = false;
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     }
@@ -198,11 +259,15 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
         // Terminal States stop polling
         if (data.status === 'READY') {
-          clearInterval(interval);
-          setPollingActive(false);
-          setIsSubmitting(false);
-          submittingRef.current = false;
-          if (onResourceAdded) onResourceAdded();
+          setDisplayProgress(100);
+          setTimeout(() => {
+            if (!isMounted) return;
+            clearInterval(interval);
+            setPollingActive(false);
+            setIsSubmitting(false);
+            submittingRef.current = false;
+            if (onResourceAdded) onResourceAdded();
+          }, 650);
         } else if (data.status === 'FAILED' || data.status === 'BLOCKED' || data.status === 'CANCELLED') {
           clearInterval(interval);
           setPollingActive(false);
@@ -231,6 +296,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     submittingRef.current = true;
     setIsSubmitting(true);
     setIngestionStatus(null);
+    setDisplayProgress(15);
 
     try {
       const res = await fetch('/api/resources', {
@@ -306,15 +372,18 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
       // Resource is queued or processing
       setActiveResourceId(data.resourceId);
       if (data.status === 'READY') {
-        setIsSubmitting(false);
-        submittingRef.current = false;
-        // Fetch full status to display Ready view
-        const statusRes = await fetch(`/api/resources/${data.resourceId}/status`);
-        if (statusRes.ok) {
-          const statusData = await statusRes.json();
-          setIngestionStatus(statusData);
-        }
-        if (onResourceAdded) onResourceAdded();
+        setDisplayProgress(100);
+        setTimeout(async () => {
+          setIsSubmitting(false);
+          submittingRef.current = false;
+          // Fetch full status to display Ready view
+          const statusRes = await fetch(`/api/resources/${data.resourceId}/status`);
+          if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            setIngestionStatus(statusData);
+          }
+          if (onResourceAdded) onResourceAdded();
+        }, 650);
       } else {
         setPollingActive(true);
         setIngestionStatus({
@@ -410,11 +479,59 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const isReady = ingestionStatus?.status === 'READY';
   const isAlreadyExists = ingestionStatus?.status === 'ALREADY_EXISTS';
 
+  // Immediate client-side type detection on URL keystroke
+  const clientDetection = useMemo(() => {
+    if (!url.trim()) return null;
+    return ResourceTypeDetector.detect(url);
+  }, [url]);
+
+  const activeResourceType = ingestionStatus?.resourceType || preview?.resourceType || (clientDetection?.isValid ? clientDetection.resourceType : 'web_page');
+  const activeCanonicalUrl = (clientDetection?.isValid && clientDetection.canonicalUrl)
+    ? clientDetection.canonicalUrl
+    : (preview?.canonicalUrl || url);
+
+  // Smooth animation effect towards targetProgress with continuous micro-motion
+  useEffect(() => {
+    if (!isIngesting) {
+      if (!isReady) {
+        setDisplayProgress(0);
+      }
+      return;
+    }
+
+    const target = getTargetProgress(ingestionStatus?.jobStep, ingestionStatus?.status);
+
+    const timer = setInterval(() => {
+      setDisplayProgress((prev) => {
+        if (target === 100) {
+          const jump = Math.max(1.5, (100 - prev) * 0.35);
+          const next = prev + jump;
+          return next >= 99.5 ? 100 : next;
+        }
+        if (prev < target) {
+          const diff = target - prev;
+          const step = Math.max(0.35, diff * 0.09);
+          return Math.min(target, prev + step);
+        }
+        // Micro-motion so loading is NEVER static while waiting on server
+        if (prev < target + 4 && prev < 97) {
+          return prev + 0.05;
+        }
+        return prev;
+      });
+    }, 50);
+
+    return () => clearInterval(timer);
+  }, [isIngesting, ingestionStatus?.jobStep, ingestionStatus?.status, isReady]);
+
   // Compute stage checklist states
-  const currentStep = ingestionStatus?.jobStep || ingestionStatus?.status;
-  const isFetchingDone = ['ANALYZING', 'INDEXING', 'READY'].includes(currentStep || '');
-  const isAnalyzingDone = ['INDEXING', 'READY'].includes(currentStep || '');
-  const isIndexingDone = currentStep === 'READY';
+  const currentStep = (ingestionStatus?.jobStep || ingestionStatus?.status || '').toUpperCase();
+  const isFetchingDone = ['ANALYZING', 'FILE_FILTERING', 'MANIFEST_ANALYSIS', 'AST_ANALYSIS', 'CAPABILITY_EXTRACTION', 'INDEXING', 'READY', 'DONE'].includes(currentStep);
+  const isAnalyzingDone = ['INDEXING', 'READY', 'DONE'].includes(currentStep);
+  const isIndexingDone = ['READY', 'DONE'].includes(currentStep);
+  const isFetchingActive = !isFetchingDone && ['CLONING', 'FETCHING', 'QUEUED', 'PENDING', 'INITIALIZING'].includes(currentStep);
+  const isAnalyzingActive = !isAnalyzingDone && ['ANALYZING', 'FILE_FILTERING', 'MANIFEST_ANALYSIS', 'AST_ANALYSIS', 'CAPABILITY_EXTRACTION'].includes(currentStep);
+  const isIndexingActive = !isIndexingDone && currentStep === 'INDEXING';
 
   return (
     <div
@@ -454,6 +571,22 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
       >
+        <style>{`
+          @keyframes openEyeShimmer {
+            0% { transform: translateX(-150%); }
+            100% { transform: translateX(250%); }
+          }
+          @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.8); }
+          }
+          @keyframes pulseHalo {
+            0% { transform: scale(0.85); opacity: 0.8; }
+            50% { transform: scale(1.35); opacity: 0.15; }
+            100% { transform: scale(0.85); opacity: 0.8; }
+          }
+        `}</style>
+
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
           <div>
@@ -493,7 +626,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 <label htmlFor="resource-url-input" style={{ fontSize: '0.825rem', fontWeight: 600, color: '#334155' }}>
                   Paste a public URL
                 </label>
-                {preview?.supported && (
+                {(preview?.supported || (clientDetection?.isValid && clientDetection?.isSupported)) && (
                   <span style={{
                     display: 'inline-flex',
                     alignItems: 'center',
@@ -506,8 +639,8 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                     borderRadius: '6px',
                     border: '1px solid #e2e8f0'
                   }}>
-                    {getTypeIcon(preview.resourceType)}
-                    <span>✓ {getTypeLabel(preview.resourceType)} detected</span>
+                    {getTypeIcon(activeResourceType)}
+                    <span>✓ {getTypeLabel(activeResourceType)} detected</span>
                   </span>
                 )}
               </div>
@@ -682,78 +815,244 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
               </div>
             )}
 
-            {/* Ingestion In-Progress Checklist (Section 8) */}
+            {/* Ingestion In-Progress Card with Motion & Percentage Done */}
             {isIngesting && (
               <div style={{
-                backgroundColor: '#f8fafc',
+                backgroundColor: '#ffffff',
                 border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                padding: '16px'
+                borderRadius: '12px',
+                padding: '18px 20px',
+                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>
-                      Analyzing Resource
+                {/* Header Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ minWidth: 0, flex: 1, marginRight: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
+                        Analyzing Resource
+                      </span>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '2px 8px',
+                        backgroundColor: '#f1f5f9',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        fontSize: '0.725rem',
+                        fontWeight: 600,
+                        color: '#334155'
+                      }}>
+                        {getTypeIcon(activeResourceType)}
+                        <span>{getTypeLabel(activeResourceType)}</span>
+                      </span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                      {getTypeLabel(preview?.resourceType || 'web_page')} · {url}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelJob}
-                    style={{
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #cbd5e1',
+                    <div style={{
                       fontSize: '0.75rem',
                       color: '#64748b',
-                      display: 'flex',
+                      marginTop: 3,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {activeCanonicalUrl}
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                    {/* Live Processing Indicator */}
+                    <div style={{
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 4
-                    }}
-                  >
-                    <Ban size={12} />
-                    <span>Cancel</span>
-                  </button>
+                      gap: 6,
+                      padding: '3px 10px',
+                      borderRadius: '9999px',
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      fontSize: '0.725rem',
+                      fontWeight: 600,
+                      color: '#1d4ed8'
+                    }}>
+                      <span style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        backgroundColor: '#2563eb',
+                        animation: 'pulseDot 1.4s ease-in-out infinite'
+                      }} />
+                      <span>Processing</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleCancelJob}
+                      style={{
+                        padding: '4px 9px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.75rem',
+                        fontWeight: 500,
+                        color: '#64748b',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <Ban size={12} />
+                      <span>Cancel</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.825rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#0f172a' }}>
-                    <CheckCircle2 size={16} color="#10b981" />
-                    <span>Source detected</span>
+                {/* Percentage Done & Motion Progress Bar */}
+                <div style={{
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  padding: '12px 14px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Loader2 size={13} className="animate-spin" color="#2563eb" />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                        {getStageDescription(ingestionStatus?.jobStep, ingestionStatus?.status, activeResourceType)}
+                      </span>
+                    </div>
+                    <div style={{
+                      fontSize: '1.15rem',
+                      fontWeight: 700,
+                      fontVariantNumeric: 'tabular-nums',
+                      color: '#0f172a',
+                      letterSpacing: '-0.02em'
+                    }}>
+                      {Math.round(displayProgress)}%
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: isFetchingDone ? '#0f172a' : '#64748b' }}>
+                  {/* Animated Progress Bar Track */}
+                  <div style={{
+                    width: '100%',
+                    height: '8px',
+                    backgroundColor: '#e2e8f0',
+                    borderRadius: '9999px',
+                    overflow: 'hidden',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      width: `${Math.max(4, Math.round(displayProgress))}%`,
+                      height: '100%',
+                      borderRadius: '9999px',
+                      background: 'linear-gradient(90deg, #0f172a 0%, #2563eb 55%, #38bdf8 100%)',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      transition: 'width 200ms ease-out'
+                    }}>
+                      {/* Fluid Shimmer Wave with Motion */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        bottom: 0,
+                        width: '100%',
+                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)',
+                        animation: 'openEyeShimmer 1.8s infinite cubic-bezier(0.4, 0, 0.2, 1)'
+                      }} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stage Checklist with Live Motion Icons */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.825rem' }}>
+                  {/* Step 1 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#0f172a' }}>
+                    <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
+                    <span style={{ fontWeight: 500 }}>Source detected & validated</span>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {isFetchingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" />
+                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
+                    ) : isFetchingActive ? (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
+                        <span style={{
+                          position: 'absolute',
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          backgroundColor: '#2563eb',
+                          animation: 'pulseHalo 1.5s ease-out infinite'
+                        }} />
+                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
+                      </div>
                     ) : (
-                      <Loader2 size={16} className="animate-spin" color="#0f172a" />
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
                     )}
-                    <span>Resource fetched</span>
+                    <span style={{
+                      color: isFetchingDone ? '#0f172a' : isFetchingActive ? '#0f172a' : '#64748b',
+                      fontWeight: isFetchingActive ? 600 : isFetchingDone ? 500 : 400
+                    }}>
+                      {activeResourceType === 'github_repository' ? 'Repository & dependencies fetched' : 'Resource content fetched'}
+                    </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: isAnalyzingDone ? '#0f172a' : '#64748b' }}>
+                  {/* Step 3 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {isAnalyzingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" />
-                    ) : currentStep === 'ANALYZING' ? (
-                      <Loader2 size={16} className="animate-spin" color="#0f172a" />
+                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
+                    ) : isAnalyzingActive ? (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
+                        <span style={{
+                          position: 'absolute',
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          backgroundColor: '#2563eb',
+                          animation: 'pulseHalo 1.5s ease-out infinite'
+                        }} />
+                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
+                      </div>
                     ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1' }} />
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
                     )}
-                    <span>Content analyzed</span>
+                    <span style={{
+                      color: isAnalyzingDone ? '#0f172a' : isAnalyzingActive ? '#0f172a' : '#64748b',
+                      fontWeight: isAnalyzingActive ? 600 : isAnalyzingDone ? 500 : 400
+                    }}>
+                      {activeResourceType === 'github_repository' ? 'AST syntax & domain capabilities extracted' : 'Content analyzed & structured'}
+                    </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: isIndexingDone ? '#0f172a' : '#64748b' }}>
+                  {/* Step 4 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {isIndexingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" />
-                    ) : currentStep === 'INDEXING' ? (
-                      <Loader2 size={16} className="animate-spin" color="#0f172a" />
+                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
+                    ) : isIndexingActive ? (
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
+                        <span style={{
+                          position: 'absolute',
+                          width: 18,
+                          height: 18,
+                          borderRadius: '50%',
+                          backgroundColor: '#2563eb',
+                          animation: 'pulseHalo 1.5s ease-out infinite'
+                        }} />
+                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
+                      </div>
                     ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1' }} />
+                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
                     )}
-                    <span>Indexing knowledge & capabilities</span>
+                    <span style={{
+                      color: isIndexingDone ? '#0f172a' : isIndexingActive ? '#0f172a' : '#64748b',
+                      fontWeight: isIndexingActive ? 600 : isIndexingDone ? 500 : 400
+                    }}>
+                      Knowledge graph & search vectors indexed
+                    </span>
                   </div>
                 </div>
               </div>
@@ -934,7 +1233,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 {isIngesting ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    <span>Adding...</span>
+                    <span>Adding... {Math.round(displayProgress)}%</span>
                   </>
                 ) : (
                   <>
