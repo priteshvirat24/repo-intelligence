@@ -65,7 +65,11 @@ async function query(text, params) {
         return res;
     }
     catch (error) {
-        console.error('Database query error:', { text, error });
+        console.error('Database query error:', {
+            text: text.length > 200 ? text.slice(0, 200) + '... (truncated)' : text,
+            message: error?.message,
+            code: error?.code
+        });
         throw error;
     }
 }

@@ -6,8 +6,18 @@ export async function runMigrations() {
   const dimensions = process.env.EMBEDDING_DIMENSIONS || '1024';
   console.log(`[Database] Running migrations with EMBEDDING_DIMENSIONS=${dimensions}...`);
 
-  const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-  const migrationsDir = path.resolve(currentDir, '../migrations');
+  const candidateDirs = [
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../migrations') : '',
+    typeof __dirname !== 'undefined' ? path.resolve(__dirname, '../../migrations') : '',
+    path.resolve(process.cwd(), 'packages/database/migrations'),
+    path.resolve(process.cwd(), 'migrations')
+  ].filter(Boolean);
+
+  const migrationsDir = candidateDirs.find(d => fs.existsSync(d));
+  if (!migrationsDir) {
+    console.warn('[Database] No migrations directory found. Skipping migrations.');
+    return;
+  }
   
   // Read and sort all .sql migration files
   const files = fs.readdirSync(migrationsDir)

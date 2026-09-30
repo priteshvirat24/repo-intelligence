@@ -33,8 +33,12 @@ export async function query<T extends QueryResultRow = any>(
       console.log('Executed query', { text, duration, rows: res.rowCount });
     }
     return res;
-  } catch (error) {
-    console.error('Database query error:', { text, error });
+  } catch (error: any) {
+    console.error('Database query error:', {
+      text: text.length > 200 ? text.slice(0, 200) + '... (truncated)' : text,
+      message: error?.message,
+      code: error?.code
+    });
     throw error;
   }
 }
