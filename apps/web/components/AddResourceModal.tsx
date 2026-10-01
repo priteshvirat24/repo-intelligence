@@ -440,8 +440,6 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   const quickPicks = [
     { label: 'GitHub: Agent-Reach', url: 'https://github.com/Panniantong/Agent-Reach' },
     { label: 'YouTube: Production RAG', url: 'https://www.youtube.com/watch?v=0k_2hY5VvN0' },
@@ -479,7 +477,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const isReady = ingestionStatus?.status === 'READY';
   const isAlreadyExists = ingestionStatus?.status === 'ALREADY_EXISTS';
 
-  // Immediate client-side type detection on URL keystroke
+  // Immediate client-side type detection on URL keystroke (Hook must be called unconditionally)
   const clientDetection = useMemo(() => {
     if (!url.trim()) return null;
     return ResourceTypeDetector.detect(url);
@@ -490,7 +488,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     ? clientDetection.canonicalUrl
     : (preview?.canonicalUrl || url);
 
-  // Smooth animation effect towards targetProgress with continuous micro-motion
+  // Smooth animation effect towards targetProgress with continuous micro-motion (Hook must be called unconditionally)
   useEffect(() => {
     if (!isIngesting) {
       if (!isReady) {
@@ -532,6 +530,8 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const isFetchingActive = !isFetchingDone && ['CLONING', 'FETCHING', 'QUEUED', 'PENDING', 'INITIALIZING'].includes(currentStep);
   const isAnalyzingActive = !isAnalyzingDone && ['ANALYZING', 'FILE_FILTERING', 'MANIFEST_ANALYSIS', 'AST_ANALYSIS', 'CAPABILITY_EXTRACTION'].includes(currentStep);
   const isIndexingActive = !isIndexingDone && currentStep === 'INDEXING';
+
+  if (!isOpen) return null;
 
   return (
     <div
