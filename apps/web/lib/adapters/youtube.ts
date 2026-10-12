@@ -18,22 +18,40 @@ export class YouTubeResourceAdapter implements ResourceAdapter {
     const desc = this.detect(url);
     const videoId = desc.metadata?.videoId || '';
 
-    let title = `YouTube Video (${videoId || desc.canonicalUrl})`;
-    let channel = 'YouTube Channel';
-    let thumbnailUrl = '';
+    const failure = (status: 'FAILED' | 'BLOCKED' | 'PARTIAL', errorMessage: string, title = desc.canonicalUrl): IngestResult => ({
+      success: false,
+      status,
+      title,
+      content: '',
+      segments: [],
+      metadata: { videoId },
+      contentHash: '',
+      errorMessage
+    });
 
-    // 1. Fetch metadata via YouTube oEmbed API (public, no key required)
+    // 1. Fetch metadata via YouTube oEmbed API (public, no key required). Real metadata or nothing:
+    // a missing/private video must not be indexed under a placeholder title and channel.
+    let title: string;
+    let channel: string;
+    let thumbnailUrl = '';
     try {
       const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(desc.canonicalUrl)}&format=json`;
       const res = await fetch(oembedUrl, { signal: AbortSignal.timeout(10000) });
-      if (res.ok) {
-        const data = await res.json();
-        title = data.title || title;
-        channel = data.author_name || channel;
-        thumbnailUrl = data.thumbnail_url || '';
+      if (res.status === 401 || res.status === 403) {
+        return failure('BLOCKED', 'RESOURCE_ACCESS_BLOCKED: This video is private or embedding is disabled.');
       }
-    } catch (err) {
-      console.warn('[YouTubeResourceAdapter] oEmbed fetch warning:', err);
+      if (!res.ok) {
+        return failure('FAILED', `RESOURCE_NOT_FOUND: YouTube returned HTTP ${res.status} for this video (it may not exist).`);
+      }
+      const data = await res.json();
+      if (!data.title) {
+        return failure('FAILED', 'RESOURCE_ACCESS_FAILED: YouTube returned no metadata for this video.');
+      }
+      title = data.title;
+      channel = data.author_name || '';
+      thumbnailUrl = data.thumbnail_url || '';
+    } catch (err: any) {
+      return failure('FAILED', `RESOURCE_ACCESS_FAILED: Could not reach YouTube (${err?.message || 'network error'}).`);
     }
 
     // 2. Fetch transcript if publicly accessible
@@ -67,22 +85,12 @@ export class YouTubeResourceAdapter implements ResourceAdapter {
       console.log('[YouTubeResourceAdapter] Captions not available or restricted');
     }
 
-    // If transcript unavailable, do NOT fabricate! Use verified metadata
-    let content = '';
-    if (transcriptAvailable && transcriptText) {
-      content = `# ${title}\n**Channel**: ${channel}\n**Video ID**: ${videoId}\n\n## Transcript\n${transcriptText}`;
-    } else {
-      content = `# ${title}\n**Channel**: ${channel}\n**Video ID**: ${videoId}\n\n*Note: Full automated transcript is not publicly accessible for this video. Analysis is grounded in video metadata, title, and channel information.*`;
-      segments.push({
-        title: 'Video Metadata',
-        content: `Title: ${title}\nChannel: ${channel}\nVideo ID: ${videoId}`,
-        locatorType: 'metadata',
-        locator: {
-          videoId,
-          channel
-        }
-      });
+    // Without a transcript there is no content to analyze: stop instead of letting the LLM
+    // "analyze" a video from its title alone (which can only produce invented knowledge)
+    if (!transcriptAvailable || !transcriptText) {
+      return failure('PARTIAL', 'No public transcript is available for this video, so its content cannot be analyzed.', title);
     }
+    const content = `# ${title}\n**Channel**: ${channel}\n**Video ID**: ${videoId}\n\n## Transcript\n${transcriptText}`;
 
     const contentHash = crypto.createHash('sha256').update(content).digest('hex');
 
@@ -90,8 +98,8 @@ export class YouTubeResourceAdapter implements ResourceAdapter {
       success: true,
       status: 'READY',
       title,
-      description: `YouTube video by ${channel}`,
-      author: channel,
+      description: channel ? `YouTube video by ${channel}` : '',
+      author: channel || undefined,
       publisher: 'YouTube',
       content,
       segments,

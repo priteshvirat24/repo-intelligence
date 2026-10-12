@@ -19,6 +19,7 @@ class GitCloner:
         cmd = [
             "git",
             "-c", "core.hooksPath=/dev/null",  # Neutralize any malicious git hooks
+            "-c", "core.symlinks=false",  # Check out symlinks as plain files so they can't point at host files
             "clone",
             "--depth", "1",
             "--single-branch",
@@ -37,9 +38,13 @@ class GitCloner:
 
             # If specific branch failed, try cloning default without --branch flag
             if res.returncode != 0:
+                # A failed clone may leave a partial checkout behind, which makes the retry fail
+                shutil.rmtree(scratch_dir, ignore_errors=True)
+                scratch_dir.mkdir(parents=True, exist_ok=True)
                 fallback_cmd = [
                     "git",
                     "-c", "core.hooksPath=/dev/null",
+                    "-c", "core.symlinks=false",
                     "clone",
                     "--depth", "1",
                     url,
@@ -85,6 +90,6 @@ class GitCloner:
         """
         resolved = (base_dir / relative_path).resolve()
         base_resolved = base_dir.resolve()
-        if not str(resolved).startswith(str(base_resolved)):
+        if not resolved.is_relative_to(base_resolved):
             raise ValueError(f"PATH_TRAVERSAL_DETECTED: Path {relative_path} attempts to escape repository root.")
         return resolved

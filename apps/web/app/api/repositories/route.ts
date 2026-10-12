@@ -4,6 +4,9 @@ import { validateGitHubUrl } from '@/lib/validation/url';
 import { GitHubClient } from '@/lib/github/client';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 
+// Reads live database state: must never be prerendered/cached at build time
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -81,19 +84,12 @@ export async function POST(req: NextRequest) {
       if (msg.startsWith('REPOSITORY_TOO_LARGE')) {
         return NextResponse.json({ error: msg, code: 'REPOSITORY_TOO_LARGE' }, { status: 413 });
       }
-      // If GitHub is unreachable or rate limited, fallback to basic record creation with warning
-      console.warn('GitHub pre-flight check warning:', err.message);
-      meta = {
-        owner,
-        name: repo,
-        description: null,
-        defaultBranch: 'main',
-        stars: 0,
-        license: null,
-        primaryLanguage: null,
-        sizeKb: 0,
-        commitSha: null
-      };
+      // No placeholder metadata: without GitHub's real data we cannot describe the repo or enforce limits
+      console.warn('GitHub pre-flight check failed:', err.message);
+      return NextResponse.json({
+        error: `Could not fetch repository metadata from GitHub (${msg || 'network error'}). Please retry shortly.`,
+        code: 'GITHUB_UNAVAILABLE'
+      }, { status: 503 });
     }
 
     // 3. Create or update repository record

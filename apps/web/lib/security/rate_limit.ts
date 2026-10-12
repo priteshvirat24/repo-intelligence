@@ -30,8 +30,11 @@ export function checkRateLimit(
   action: string,
   config: RateLimitConfig
 ): { allowed: boolean; remaining: number; resetTime: number; response?: NextResponse } {
+  // The left-most X-Forwarded-For entry is client-controlled (a random value per request would get a
+  // fresh bucket every time). Use the right-most entry, which is appended by our own edge proxy.
+  const forwardedFor = request.headers.get('x-forwarded-for');
   const ip =
-    request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+    forwardedFor?.split(',').map((part) => part.trim()).filter(Boolean).pop() ||
     request.headers.get('x-real-ip') ||
     '127.0.0.1';
 

@@ -214,7 +214,7 @@ export default function CapabilityExplorerPage() {
                   </span>
 
                   <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    {cap.description || 'Discovered implementation capability.'}
+                    {cap.description || ''}
                   </p>
                 </div>
 

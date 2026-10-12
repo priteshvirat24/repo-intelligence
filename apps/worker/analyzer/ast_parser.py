@@ -3,21 +3,33 @@ from typing import List, Dict, Any, Optional
 
 try:
     from tree_sitter import Language, Parser
-    import tree_sitter_python as tspython
-    import tree_sitter_javascript as tsjs
-    import tree_sitter_typescript as tstypescript
-    import tree_sitter_go as tsgo
-    import tree_sitter_rust as tsrust
-
-    PY_LANG = Language(tspython.language())
-    JS_LANG = Language(tsjs.language())
-    TS_LANG = Language(tstypescript.language_typescript())
-    TSX_LANG = Language(tstypescript.language_tsx())
-    GO_LANG = Language(tsgo.language())
-    RUST_LANG = Language(tsrust.language())
     TREE_SITTER_AVAILABLE = True
-except Exception as e:
+except Exception:
     TREE_SITTER_AVAILABLE = False
+
+
+def _load_language(module_name: str, attr: str):
+    """Loads one grammar; a missing grammar package must not disable the others."""
+    if not TREE_SITTER_AVAILABLE:
+        return None
+    try:
+        module = __import__(module_name)
+        return Language(getattr(module, attr)())
+    except Exception:
+        return None
+
+
+PY_LANG = _load_language("tree_sitter_python", "language")
+JS_LANG = _load_language("tree_sitter_javascript", "language")
+TS_LANG = _load_language("tree_sitter_typescript", "language_typescript")
+TSX_LANG = _load_language("tree_sitter_typescript", "language_tsx")
+GO_LANG = _load_language("tree_sitter_go", "language")
+RUST_LANG = _load_language("tree_sitter_rust", "language")
+
+
+def _node_text(src: bytes, node) -> str:
+    """Tree-sitter offsets are byte offsets; slice the UTF-8 bytes, not the decoded str."""
+    return src[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 class CodeSymbol:
     def __init__(
@@ -55,17 +67,18 @@ class TreeSitterAnalyzer:
     @classmethod
     def parse_python(cls, content: str) -> List[CodeSymbol]:
         symbols: List[CodeSymbol] = []
-        if not TREE_SITTER_AVAILABLE:
+        if PY_LANG is None:
             return cls._fallback_python(content)
 
         parser = Parser(PY_LANG)
-        tree = parser.parse(content.encode("utf-8"))
+        src = content.encode("utf-8")
+        tree = parser.parse(src)
         lines = content.splitlines()
 
         def visit(node, parent_class: Optional[str] = None):
             if node.type == "class_definition":
                 name_node = node.child_by_field_name("name")
-                class_name = content[name_node.start_byte:name_node.end_byte] if name_node else "UnknownClass"
+                class_name = _node_text(src, name_node) if name_node else "UnknownClass"
                 symbols.append(CodeSymbol(
                     name=class_name,
                     symbol_type="class",
@@ -81,7 +94,7 @@ class TreeSitterAnalyzer:
 
             elif node.type in ("function_definition", "async_function_definition"):
                 name_node = node.child_by_field_name("name")
-                func_name = content[name_node.start_byte:name_node.end_byte] if name_node else "unknown_func"
+                func_name = _node_text(src, name_node) if name_node else "unknown_func"
                 full_name = f"{parent_class}.{func_name}" if parent_class else func_name
                 is_async = node.type == "async_function_definition"
                 prefix = "async def " if is_async else "def "
@@ -102,20 +115,21 @@ class TreeSitterAnalyzer:
         return symbols
 
     @classmethod
-    def parse_javascript_typescript(cls, content: str, is_typescript: bool = False) -> List[CodeSymbol]:
+    def parse_javascript_typescript(cls, content: str, is_typescript: bool = False, is_tsx: bool = False) -> List[CodeSymbol]:
         symbols: List[CodeSymbol] = []
-        if not TREE_SITTER_AVAILABLE:
+        lang = (TSX_LANG if is_tsx else TS_LANG) if is_typescript else JS_LANG
+        if lang is None:
             return []
 
-        lang = TS_LANG if is_typescript else JS_LANG
         parser = Parser(lang)
-        tree = parser.parse(content.encode("utf-8"))
+        src = content.encode("utf-8")
+        tree = parser.parse(src)
 
         def visit(node):
             if node.type == "class_declaration":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    cname = content[name_node.start_byte:name_node.end_byte]
+                    cname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=cname,
                         symbol_type="class",
@@ -126,7 +140,7 @@ class TreeSitterAnalyzer:
             elif node.type == "interface_declaration":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    iname = content[name_node.start_byte:name_node.end_byte]
+                    iname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=iname,
                         symbol_type="interface",
@@ -137,7 +151,7 @@ class TreeSitterAnalyzer:
             elif node.type == "function_declaration":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    fname = content[name_node.start_byte:name_node.end_byte]
+                    fname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=fname,
                         symbol_type="function",
@@ -159,11 +173,12 @@ class TreeSitterAnalyzer:
     @classmethod
     def parse_go(cls, content: str) -> List[CodeSymbol]:
         symbols: List[CodeSymbol] = []
-        if not TREE_SITTER_AVAILABLE:
+        if GO_LANG is None:
             return []
 
         parser = Parser(GO_LANG)
-        tree = parser.parse(content.encode("utf-8"))
+        src = content.encode("utf-8")
+        tree = parser.parse(src)
 
         def visit(node):
             if node.type == "type_declaration":
@@ -172,7 +187,7 @@ class TreeSitterAnalyzer:
                         name_node = child.child_by_field_name("name")
                         type_node = child.child_by_field_name("type")
                         if name_node:
-                            tname = content[name_node.start_byte:name_node.end_byte]
+                            tname = _node_text(src, name_node)
                             stype = "struct" if type_node and type_node.type == "struct_type" else "type"
                             if type_node and type_node.type == "interface_type":
                                 stype = "interface"
@@ -187,7 +202,7 @@ class TreeSitterAnalyzer:
             elif node.type == "function_declaration":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    fname = content[name_node.start_byte:name_node.end_byte]
+                    fname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=fname,
                         symbol_type="function",
@@ -200,8 +215,8 @@ class TreeSitterAnalyzer:
                 name_node = node.child_by_field_name("name")
                 receiver = node.child_by_field_name("receiver")
                 if name_node:
-                    mname = content[name_node.start_byte:name_node.end_byte]
-                    rcv_text = content[receiver.start_byte:receiver.end_byte] if receiver else ""
+                    mname = _node_text(src, name_node)
+                    rcv_text = _node_text(src, receiver) if receiver else ""
                     symbols.append(CodeSymbol(
                         name=mname,
                         symbol_type="method",
@@ -219,17 +234,18 @@ class TreeSitterAnalyzer:
     @classmethod
     def parse_rust(cls, content: str) -> List[CodeSymbol]:
         symbols: List[CodeSymbol] = []
-        if not TREE_SITTER_AVAILABLE:
+        if RUST_LANG is None:
             return []
 
         parser = Parser(RUST_LANG)
-        tree = parser.parse(content.encode("utf-8"))
+        src = content.encode("utf-8")
+        tree = parser.parse(src)
 
         def visit(node):
             if node.type == "struct_item":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    sname = content[name_node.start_byte:name_node.end_byte]
+                    sname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=sname,
                         symbol_type="struct",
@@ -240,7 +256,7 @@ class TreeSitterAnalyzer:
             elif node.type == "trait_item":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    tname = content[name_node.start_byte:name_node.end_byte]
+                    tname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=tname,
                         symbol_type="trait",
@@ -251,7 +267,7 @@ class TreeSitterAnalyzer:
             elif node.type == "function_item":
                 name_node = node.child_by_field_name("name")
                 if name_node:
-                    fname = content[name_node.start_byte:name_node.end_byte]
+                    fname = _node_text(src, name_node)
                     symbols.append(CodeSymbol(
                         name=fname,
                         symbol_type="function",
@@ -298,7 +314,7 @@ class TreeSitterAnalyzer:
         if ext in (".py", ".pyw"):
             return cls.parse_python(content)
         elif ext in (".ts", ".tsx"):
-            return cls.parse_javascript_typescript(content, is_typescript=True)
+            return cls.parse_javascript_typescript(content, is_typescript=True, is_tsx=(ext == ".tsx"))
         elif ext in (".js", ".jsx", ".mjs"):
             return cls.parse_javascript_typescript(content, is_typescript=False)
         elif ext == ".go":

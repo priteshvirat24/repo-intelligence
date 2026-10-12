@@ -2,6 +2,14 @@ import { OpenQueryRequirements, CandidateScore, KnowledgeObject, RetrievalTrace,
 import { query } from '@repo/database';
 import { EmbeddingProvider } from './providers';
 
+// Coerces a SQL score to a number. Only NULL falls back: a genuine 0 (e.g. ts_rank_cd with no text
+// match) must stay 0, which `value || fallback` would turn into the fallback.
+function toScore(value: unknown, fallback: number): number {
+  if (value === null || value === undefined) return fallback;
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export interface RetrievedChunk {
   chunkId: string;
   repositoryId: string;
@@ -176,7 +184,7 @@ export class MultiLevelHybridRetrievalEngine {
             ko.importance,
             ko.confidence,
             ko.metadata_json,
-            0.6 as vector_sim,
+            NULL::float as vector_sim,  -- keyword-only match: no vector similarity was computed
             ts_rank_cd(ko.tsv_content, plainto_tsquery('english', $1)) as text_rank
           FROM knowledge_objects ko
           JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
@@ -193,38 +201,9 @@ export class MultiLevelHybridRetrievalEngine {
         koRows = koRes.rows;
       }
     } catch (err) {
-      console.warn('Knowledge objects query fallback:', err);
-      const fallbackRes = await query(`
-        SELECT 
-          ko.id,
-          COALESCE(ko.resource_id, ko.repository_id) as resource_id,
-          res.resource_type,
-          res.resource_role,
-          res.title as resource_title,
-          res.source_url,
-          COALESCE(r.owner, res.author, res.source_domain) as owner,
-          COALESCE(r.name, res.title) as repo_name,
-          r.primary_language,
-          COALESCE(r.stars, 0) as stars,
-          res.domain_tags,
-          res.problems_solved,
-          res.practical_uses,
-          ko.object_type,
-          ko.name,
-          ko.description,
-          ko.category,
-          ko.importance,
-          ko.confidence,
-          ko.metadata_json,
-          0.6 as vector_sim,
-          0.5 as text_rank
-        FROM knowledge_objects ko
-        JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
-        LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
-        WHERE res.status = 'READY'
-        LIMIT 30;
-      `);
-      koRows = fallbackRes.rows;
+      // Surface the failure instead of returning arbitrary, unranked objects as if they matched
+      console.error('Knowledge objects query failed:', err);
+      throw err;
     }
 
     // 3. Query Code, Transcript, and Document Chunks
@@ -269,7 +248,7 @@ export class MultiLevelHybridRetrievalEngine {
             COALESCE(r.name, res.title) as repo_name,
             d.file_path,
             c.content,
-            0.6 as vector_sim,
+            NULL::float as vector_sim,  -- keyword-only match: no vector similarity was computed
             ts_rank_cd(c.tsv_content, plainto_tsquery('english', $1)) as text_rank
           FROM chunks c
           JOIN resources res ON (c.resource_id = res.id OR c.repository_id = res.id)
@@ -281,8 +260,9 @@ export class MultiLevelHybridRetrievalEngine {
         `, [ftsSearchText]);
         chunkRows = chunkRes.rows;
       }
-    } catch {
-      chunkRows = [];
+    } catch (err) {
+      console.error('Chunk query failed:', err);
+      throw err;
     }
 
     // Apply anti-clustering on chunks (max 3 per resource)
@@ -303,7 +283,7 @@ export class MultiLevelHybridRetrievalEngine {
           sourceUrl: row.source_url,
           content: row.content,
           filePath: row.file_path,
-          score: Math.max(parseFloat(row.vector_sim || '0.5'), parseFloat(row.text_rank || '0.5'))
+          score: Math.max(toScore(row.vector_sim, 0), toScore(row.text_rank, 0))
         });
         resourceChunkCount.set(resId, count + 1);
       }
@@ -374,8 +354,8 @@ export class MultiLevelHybridRetrievalEngine {
       }
 
       const agg = resourceAggregates.get(resId)!;
-      const vSim = parseFloat(row.vector_sim || '0.5');
-      const tRank = parseFloat(row.text_rank || '0.5');
+      const vSim = toScore(row.vector_sim, 0);
+      const tRank = toScore(row.text_rank, 0);
       if (vSim > agg.maxVectorSim) agg.maxVectorSim = vSim;
       if (tRank > agg.maxTextRank) agg.maxTextRank = tRank;
 

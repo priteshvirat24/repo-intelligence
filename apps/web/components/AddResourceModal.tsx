@@ -135,6 +135,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const previewRequestIdRef = useRef(0);
 
   const [url, setUrl] = useState('');
   const [forceReindex, setForceReindex] = useState(false);
@@ -168,6 +169,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
       setPollingActive(false);
       setDisplayProgress(0);
       submittingRef.current = false;
+      previewRequestIdRef.current++;
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     }
   }, [isOpen]);
@@ -185,6 +187,8 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
   // Debounced Live Preview Fetch
   const fetchPreview = useCallback(async (inputUrl: string) => {
+    // Responses can arrive out of order; only the latest request may update state
+    const requestId = ++previewRequestIdRef.current;
     const trimmed = inputUrl.trim();
     if (!trimmed || trimmed.length < 4) {
       setPreview(null);
@@ -199,6 +203,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     try {
       const res = await fetch(`/api/resources/preview?url=${encodeURIComponent(trimmed)}`);
       const data = await res.json();
+      if (requestId !== previewRequestIdRef.current) return;
 
       if (!res.ok) {
         setPreview(null);
@@ -212,10 +217,11 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
         }
       }
     } catch {
+      if (requestId !== previewRequestIdRef.current) return;
       setPreview(null);
       setPreviewError('Unable to preview URL');
     } finally {
-      setIsPreviewLoading(false);
+      if (requestId === previewRequestIdRef.current) setIsPreviewLoading(false);
     }
   }, []);
 
@@ -237,6 +243,8 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     e.preventDefault();
     const droppedText = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
     if (droppedText) {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      setIngestionStatus(null);
       setUrl(droppedText.trim());
       fetchPreview(droppedText.trim());
     }
@@ -426,7 +434,13 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const handleCancelJob = async () => {
     if (!activeResourceId) return;
     try {
-      await fetch(`/api/resources/${activeResourceId}/cancel`, { method: 'POST' });
+      const res = await fetch(`/api/resources/${activeResourceId}/cancel`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.cancelled === false) {
+        // Job already finished or the cancel was rejected; keep polling for the real state
+        console.error('Cancel request not applied:', data.message || data.error || res.status);
+        return;
+      }
       setPollingActive(false);
       setIsSubmitting(false);
       submittingRef.current = false;
@@ -774,7 +788,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                       const id = preview?.existingResourceId || ingestionStatus?.id;
                       if (id) {
                         onClose();
-                        router.push(`/resources/${id}`);
+                        router.push(`/resources?id=${encodeURIComponent(id)}`);
                       }
                     }}
                     style={{
@@ -1334,7 +1348,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 type="button"
                 onClick={() => {
                   onClose();
-                  router.push(`/resources/${ingestionStatus.id}`);
+                  router.push(`/resources?id=${encodeURIComponent(ingestionStatus.id)}`);
                 }}
                 style={{
                   padding: '9px 18px',

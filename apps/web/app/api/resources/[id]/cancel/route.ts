@@ -36,14 +36,26 @@ export async function POST(
       }, { status: 200 });
     }
 
-    // 2. Safely mark resource as CANCELLED
-    await query(`
+    // 2. Safely mark resource as CANCELLED (re-check status atomically: the worker may have
+    // finished between the SELECT above and this UPDATE)
+    const cancelRes = await query(`
       UPDATE resources
       SET status = 'CANCELLED',
           error_message = 'Ingestion cancelled by user.',
           updated_at = NOW()
-      WHERE id = $1
+      WHERE id = $1 AND status NOT IN ('READY', 'CANCELLED', 'BLOCKED')
+      RETURNING id
     `, [id]);
+
+    if (cancelRes.rows.length === 0) {
+      const latest = await query(`SELECT status FROM resources WHERE id = $1`, [id]);
+      const latestStatus = latest.rows[0]?.status;
+      return NextResponse.json({
+        message: `Resource is already in terminal state "${latestStatus}".`,
+        status: latestStatus,
+        cancelled: false
+      }, { status: 200 });
+    }
 
     // 3. Mark any active ingestion jobs as CANCELLED/FAILED so workers safely stop/ignore
     await query(`

@@ -5,11 +5,11 @@ from pathlib import Path
 from apps.worker.db.repository import DatabaseRepository
 from apps.worker.analyzer.ast_parser import TreeSitterAnalyzer
 from apps.worker.analyzer.evidence import EvidenceVerificationGate
-from apps.worker.providers.embeddings import MockEmbeddingProvider
+from apps.worker.providers.embeddings import get_embedding_provider
 
 def seed_fixtures():
     db = DatabaseRepository()
-    embedder = MockEmbeddingProvider()
+    embedder = get_embedding_provider()
 
     fixtures = [
         {

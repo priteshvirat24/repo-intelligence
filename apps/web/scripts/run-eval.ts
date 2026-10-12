@@ -1,7 +1,7 @@
 import { OpenProblemDecomposer } from '../lib/ai/open_query';
 import { MultiLevelHybridRetrievalEngine } from '../lib/ai/multi_retrieval';
 import { OpenRepositoryCompositionEngine } from '../lib/ai/composition';
-import { MockLLMProvider, MockEmbeddingProvider } from '../lib/ai/providers';
+import { MockLLMProvider, MockEmbeddingProvider } from './eval-fakes';
 import { CandidateScore, KnowledgeObject } from '@repo/shared';
 
 interface BenchmarkQuery {

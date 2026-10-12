@@ -2,10 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OpenProblemDecomposer } from '@/lib/ai/open_query';
 import { MultiLevelHybridRetrievalEngine } from '@/lib/ai/multi_retrieval';
 import { getLLMProvider, getEmbeddingProvider } from '@/lib/ai/providers';
+import { checkRateLimit } from '@/lib/security/rate_limit';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  // Debug endpoint: each call spends an LLM decomposition + embedding, so it is off in production
+  // unless explicitly enabled, and rate-limited when on
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG_ROUTES !== 'true') {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  const rateLimit = checkRateLimit(request, 'debug_retrieval', { maxRequests: 10, windowMs: 60 * 1000 });
+  if (!rateLimit.allowed && rateLimit.response) {
+    return rateLimit.response;
+  }
+
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q');
 

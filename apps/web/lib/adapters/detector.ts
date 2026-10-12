@@ -18,7 +18,8 @@ export class ResourceTypeDetector {
     if (!trimmed) return '';
 
     // Handle quick owner/repo shorthand for GitHub (e.g. "facebook/react" or "citrolabs/ego-lite")
-    if (/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed)) {
+    // GitHub owners cannot contain dots, so "docs.python.org/3" is a host/path, not owner/repo
+    if (/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed)) {
       trimmed = `https://github.com/${trimmed}`;
     } else if (trimmed.startsWith('github.com/')) {
       trimmed = `https://${trimmed}`;
@@ -64,7 +65,7 @@ export class ResourceTypeDetector {
         // Normalize repository URLs to lowercase owner/repo
         const parts = parsed.pathname.split('/').filter(Boolean);
         if (parts.length === 2) {
-          parsed.pathname = `/${parts[0]}/${parts[1]}`;
+          parsed.pathname = `/${parts[0].toLowerCase()}/${parts[1].toLowerCase()}`;
         }
       }
 
@@ -203,8 +204,11 @@ export class ResourceTypeDetector {
         };
       }
 
-      const [owner, rawRepo, subPath] = pathSegments;
-      const repo = rawRepo.endsWith('.git') ? rawRepo.slice(0, -4) : rawRepo;
+      // GitHub owner/repo are case-insensitive: lowercase so /tree/... and /blob/... links dedupe
+      // against the plain repository URL instead of triggering a full re-index
+      const [rawOwner, rawRepo, subPath] = pathSegments;
+      const owner = rawOwner.toLowerCase();
+      const repo = (rawRepo.endsWith('.git') ? rawRepo.slice(0, -4) : rawRepo).toLowerCase();
 
       if (subPath) {
         const sub = subPath.toLowerCase();

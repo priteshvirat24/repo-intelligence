@@ -56,9 +56,9 @@ export class LinkedInResourceAdapter implements ResourceAdapter {
     return {
       success: true,
       status: 'READY',
-      title: scraped.title || 'Public LinkedIn Post',
-      description: scraped.description || 'Public technical commentary / article from LinkedIn',
-      author: scraped.author || 'LinkedIn Member',
+      title: scraped.title || desc.canonicalUrl,
+      description: scraped.description || '',
+      author: scraped.author || undefined,
       publisher: 'LinkedIn',
       content,
       segments: [

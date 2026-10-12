@@ -17,7 +17,7 @@ class Config:
     # AI - LLM
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "mistral").lower()
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "mistral-small-latest")
+    LLM_MODEL: str = os.getenv("LLM_MODEL", "")  # empty: provider-specific default in get_llm_provider()
 
     # AI - Embeddings
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "mistral").lower()

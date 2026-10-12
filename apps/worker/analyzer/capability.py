@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -29,16 +30,24 @@ class CapabilityEngine:
 
     @classmethod
     def map_slug(cls, proposed_slug: str) -> str:
-        norm = re.sub(r'[\s_]+', '-', proposed_slug.lower().strip())
+        norm = re.sub(r'[\s_]+', '-', str(proposed_slug).lower().strip())
         if norm in CANONICAL_SLUGS:
             return norm
-        # Vocabulary aid: Check if matches canonical keyword
-        for canonical in CANONICAL_SLUGS:
-            if canonical in norm or (len(norm) > 4 and norm in canonical):
+        # Vocabulary aid: the proposal contains a whole canonical slug ("advanced-web-crawling" ->
+        # "web-crawling"). Longest first and in sorted order so the result never depends on set
+        # iteration order (PYTHONHASHSEED). A generic word like "memory" must NOT be widened into a
+        # specific canonical capability ("session-memory").
+        padded = f"-{norm}-"
+        for canonical in sorted(CANONICAL_SLUGS, key=lambda c: (-len(c), c)):
+            if f"-{canonical}-" in padded:
                 return canonical
         # Open-World: Preserve novel capability slug rather than rejecting
-        clean = re.sub(r'[^a-z0-9-]', '', norm).strip('-')
-        return clean if clean else "domain-capability"
+        clean = re.sub(r'[^a-z0-9-]', '', norm)
+        clean = re.sub(r'-{2,}', '-', clean).strip('-')
+        if clean:
+            return clean[:100]
+        # Non-ASCII names: stable per-name slug instead of collapsing every one into a single slug
+        return "cap-" + hashlib.sha1(norm.encode("utf-8")).hexdigest()[:10]
 
     @classmethod
     def extract_and_verify(

@@ -1,6 +1,4 @@
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { ResourceAdapter, ResourceDescriptor, IngestResult, ContentSegment } from './types';
 import { ResourceTypeDetector } from './detector';
 
@@ -23,27 +21,11 @@ export class PDFResourceAdapter implements ResourceAdapter {
     try {
       let buffer: Buffer | null = null;
 
-      // 1. Check local cache or disk first (handles slow throttled academic repositories or pre-downloaded assets)
-      try {
-        const urlPath = new URL(desc.canonicalUrl).pathname;
-        const filename = path.basename(urlPath);
-        const candidatePaths = [
-          path.join('/tmp', filename),
-          desc.canonicalUrl.includes('5243715.pdf') ? '/tmp/unet.pdf' : null
-        ].filter(Boolean) as string[];
-
-        for (const cand of candidatePaths) {
-          if (fs.existsSync(cand) && fs.statSync(cand).size > 1000) {
-            buffer = fs.readFileSync(cand);
-            break;
-          }
-        }
-      } catch {}
-
-      // 2. Network acquisition if not cached
-      if (!buffer) {
+      // Network acquisition (always from the requested URL; never from local disk)
+      {
         const downloadUrl = desc.metadata?.pdfUrl || desc.canonicalUrl;
-        const { validateResourceUrlSecurity } = await import('../security/ssrf');
+        const { validateResourceUrlSecurity, fetchWithValidatedRedirects, readBodyWithLimit, BlockedRedirectError } =
+          await import('../security/ssrf');
         const ssrfCheck = await validateResourceUrlSecurity(downloadUrl);
         if (!ssrfCheck.valid) {
           return {
@@ -58,12 +40,29 @@ export class PDFResourceAdapter implements ResourceAdapter {
           };
         }
 
-        const response = await fetch(downloadUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-          },
-          signal: AbortSignal.timeout(60000)
-        });
+        let response: Response;
+        try {
+          response = await fetchWithValidatedRedirects(downloadUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            signal: AbortSignal.timeout(60000)
+          });
+        } catch (fetchErr: any) {
+          if (fetchErr instanceof BlockedRedirectError) {
+            return {
+              success: false,
+              status: 'BLOCKED',
+              title: desc.previewTitle || 'Protected PDF Resource',
+              content: '',
+              segments: [],
+              metadata: { domain: desc.domain },
+              contentHash: '',
+              errorMessage: `RESOURCE_ACCESS_BLOCKED: ${fetchErr.message}`
+            };
+          }
+          throw fetchErr;
+        }
 
         if (!response.ok) {
           return {
@@ -92,8 +91,19 @@ export class PDFResourceAdapter implements ResourceAdapter {
           };
         }
 
-        const arrayBuffer = await response.arrayBuffer();
-        buffer = Buffer.from(arrayBuffer);
+        buffer = await readBodyWithLimit(response, this.maxSizeBytes);
+        if (!buffer) {
+          return {
+            success: false,
+            status: 'FAILED',
+            title: `PDF Document (${desc.domain})`,
+            content: '',
+            segments: [],
+            metadata: { domain: desc.domain },
+            contentHash: '',
+            errorMessage: 'PDF size exceeds max limit of 20MB'
+          };
+        }
       }
 
       let text = '';
@@ -139,10 +149,12 @@ export class PDFResourceAdapter implements ResourceAdapter {
         };
       }
 
+      // pdf-parse 2.x getInfo() nests the document dictionary under `info`
+      const docInfo = pdfInfo?.info || pdfInfo || {};
       const title =
-        pdfInfo.Title?.trim() ||
+        (typeof docInfo.Title === 'string' && docInfo.Title.trim()) ||
         this.extractTitleFromUrl(desc.canonicalUrl);
-      const author = pdfInfo.Author?.trim() || desc.domain;
+      const author = (typeof docInfo.Author === 'string' && docInfo.Author.trim()) || desc.domain;
 
       const contentHash = crypto.createHash('sha256').update(text).digest('hex');
 

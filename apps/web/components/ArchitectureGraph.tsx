@@ -13,6 +13,8 @@ export const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({ data }) =>
     return null;
   }
 
+  const nodeLabels = new Map(data.nodes.map((n) => [n.id, n.label]));
+
   return (
     <div style={{
       margin: '20px 0',
@@ -37,87 +39,87 @@ export const ArchitectureGraph: React.FC<ArchitectureGraphProps> = ({ data }) =>
         gap: 16,
         padding: '12px 0'
       }}>
-        {data.nodes.map((node, index) => {
-          const edge = data.edges.find(e => e.from === node.id);
+        {data.nodes.map((node) => (
+          <div key={node.id} style={{
+            background: 'rgba(30, 41, 59, 0.8)',
+            border: '1px solid rgba(99, 102, 241, 0.3)',
+            borderRadius: 12,
+            padding: '14px 18px',
+            minWidth: 200,
+            maxWidth: 260,
+            boxShadow: '0 4px 14px rgba(0, 0, 0, 0.3)',
+            position: 'relative',
+            transition: 'all 0.2s ease'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <Cpu size={15} color="var(--accent-cyan)" />
+              <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                {node.label}
+              </span>
+            </div>
 
-          return (
-            <React.Fragment key={node.id}>
-              {/* Component Node */}
-              <div style={{
-                background: 'rgba(30, 41, 59, 0.8)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                borderRadius: 12,
-                padding: '14px 18px',
-                minWidth: 200,
-                maxWidth: 260,
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.3)',
-                position: 'relative',
-                transition: 'all 0.2s ease'
+            <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
+              {node.role}
+            </div>
+
+            {node.domain && (
+              <span style={{
+                fontSize: '0.675rem',
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: 'rgba(6, 182, 212, 0.12)',
+                color: '#67e8f9',
+                border: '1px solid rgba(6, 182, 212, 0.25)',
+                fontFamily: 'var(--font-mono)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <Cpu size={15} color="var(--accent-cyan)" />
-                  <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {node.label}
-                  </span>
-                </div>
+                {node.domain}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
 
-                <div style={{ fontSize: '0.775rem', color: 'var(--text-secondary)', marginBottom: 8 }}>
-                  {node.role}
-                </div>
-
-                {node.domain && (
-                  <span style={{
-                    fontSize: '0.675rem',
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: 'rgba(6, 182, 212, 0.12)',
-                    color: '#67e8f9',
-                    border: '1px solid rgba(6, 182, 212, 0.25)',
-                    fontFamily: 'var(--font-mono)'
-                  }}>
-                    {node.domain}
+      {/* Edges: each drawn between its real endpoints (never inferred from node order) */}
+      {(data.edges || []).length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          {data.edges.map((edge, index) => {
+            const from = nodeLabels.get(edge.from) || edge.from;
+            const to = nodeLabels.get(edge.to) || edge.to;
+            return (
+              <div key={`${edge.from}-${edge.to}-${index}`} style={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 6,
+                fontSize: '0.775rem',
+                color: 'var(--text-secondary)'
+              }}>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{from}</span>
+                <span style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  fontSize: '0.725rem',
+                  color: 'var(--accent-cyan)',
+                  background: 'rgba(6, 182, 212, 0.08)',
+                  padding: '3px 8px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(6, 182, 212, 0.2)'
+                }}>
+                  {edge.label || edge.relationship}
+                  <ArrowRight size={13} />
+                </span>
+                <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{to}</span>
+                {edge.boundary && (
+                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    [{edge.boundary}]
                   </span>
                 )}
               </div>
-
-              {/* Edge / Boundary Connector */}
-              {edge && (
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '0 4px'
-                }}>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    fontSize: '0.725rem',
-                    color: 'var(--accent-cyan)',
-                    background: 'rgba(6, 182, 212, 0.08)',
-                    padding: '3px 8px',
-                    borderRadius: 6,
-                    border: '1px solid rgba(6, 182, 212, 0.2)'
-                  }}>
-                    <span>{edge.label || edge.relationship}</span>
-                    <ArrowRight size={13} />
-                  </div>
-                  {edge.boundary && (
-                    <span style={{
-                      fontSize: '0.65rem',
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-mono)'
-                    }}>
-                      [{edge.boundary}]
-                    </span>
-                  )}
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

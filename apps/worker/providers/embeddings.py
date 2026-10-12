@@ -1,5 +1,6 @@
 import os
 import math
+import time
 import hashlib
 from typing import List, Dict, Any, Optional
 import httpx
@@ -64,21 +65,21 @@ class MistralEmbeddingProvider(BaseEmbeddingProvider):
                         time.sleep(1)
 
                 if not batch_success:
-                    # Fallback to zero vector or skip if total failure
-                    for _ in batch:
-                        embeddings.append([0.0] * self.get_dimensions())
+                    # Zero vectors make cosine distance NaN and silently poison retrieval; fail instead
+                    raise RuntimeError("EMBEDDING_RATE_LIMITED: Mistral embeddings still rate-limited after 5 attempts")
 
         return embeddings
 
 class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
     """OpenAI Embeddings (text-embedding-3-small produces 1536-dimensional vectors)."""
 
-    def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
+    def __init__(self, api_key: str, model: str = "text-embedding-3-small", dimensions: int = 1536):
         self.api_key = api_key
         self.model = model
+        self.dimensions = dimensions
 
     def get_dimensions(self) -> int:
-        return 1536
+        return self.dimensions
 
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         if not texts:
@@ -97,7 +98,9 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
                 batch = texts[i:i+batch_size]
                 payload = {
                     "model": self.model,
-                    "input": batch
+                    "input": batch,
+                    # text-embedding-3 models can shorten vectors to match the pgvector column
+                    "dimensions": self.dimensions
                 }
                 resp = client.post("https://api.openai.com/v1/embeddings", headers=headers, json=payload)
                 resp.raise_for_status()
@@ -107,36 +110,17 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
 
         return embeddings
 
-class MockEmbeddingProvider(BaseEmbeddingProvider):
-    """Deterministic pseudo-embeddings for testing and offline development."""
-
-    def __init__(self, dimensions: int = 1024):
-        self.dims = dimensions
-
-    def get_dimensions(self) -> int:
-        return self.dims
-
-    def embed_texts(self, texts: List[str]) -> List[List[float]]:
-        results = []
-        dim = self.get_dimensions()
-
-        for text in texts:
-            h = hashlib.md5(text.encode("utf-8")).hexdigest()
-            seed = int(h[:8], 16)
-            vec = []
-            for i in range(dim):
-                vec.append(math.sin((seed + i) * 0.1))
-            norm = math.sqrt(sum(v * v for v in vec)) or 1.0
-            results.append([v / norm for v in vec])
-
-        return results
-
 def get_embedding_provider() -> BaseEmbeddingProvider:
-    provider = config.EMBEDDING_PROVIDER
-    api_key = config.EMBEDDING_API_KEY
+    """Returns the configured real embedding provider. There is deliberately no mock fallback."""
+    provider = config.EMBEDDING_PROVIDER.strip()
+    api_key = config.EMBEDDING_API_KEY.strip()
 
-    if provider == "mistral" and api_key and api_key != "mock-key":
+    if not api_key:
+        raise RuntimeError("EMBEDDING_API_KEY is not set; refusing to index without a real embedding provider.")
+    if provider == "mistral":
         return MistralEmbeddingProvider(api_key=api_key, model=config.EMBEDDING_MODEL)
-    elif provider == "openai" and api_key and api_key != "mock-key":
-        return OpenAIEmbeddingProvider(api_key=api_key, model=config.EMBEDDING_MODEL)
-    return MockEmbeddingProvider(dimensions=config.EMBEDDING_DIMENSIONS)
+    elif provider == "openai":
+        # The default EMBEDDING_MODEL is Mistral's; don't send it to OpenAI
+        model = config.EMBEDDING_MODEL if config.EMBEDDING_MODEL != "mistral-embed" else "text-embedding-3-small"
+        return OpenAIEmbeddingProvider(api_key=api_key, model=model, dimensions=config.EMBEDDING_DIMENSIONS)
+    raise RuntimeError(f"Unsupported EMBEDDING_PROVIDER={provider!r}; expected 'mistral' or 'openai'.")

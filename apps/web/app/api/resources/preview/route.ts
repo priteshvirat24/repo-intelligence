@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   }
 
   // 1. SSRF Security Check
-  const ssrfCheck = await validateResourceUrlSecurity(rawUrl);
+  const ssrfCheck = await validateResourceUrlSecurity(ResourceTypeDetector.normalizeUrl(rawUrl) || rawUrl);
   if (!ssrfCheck.valid) {
     return NextResponse.json({
       valid: false,

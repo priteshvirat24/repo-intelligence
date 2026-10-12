@@ -43,9 +43,15 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(metaEvent));
 
         // Stream text deltas
-        for await (const chunk of result.stream) {
-          const textEvent = `event: message\ndata: ${JSON.stringify({ text: chunk })}\n\n`;
-          controller.enqueue(encoder.encode(textEvent));
+        try {
+          for await (const chunk of result.stream) {
+            const textEvent = `event: message\ndata: ${JSON.stringify({ text: chunk })}\n\n`;
+            controller.enqueue(encoder.encode(textEvent));
+          }
+        } catch (streamError: any) {
+          console.error('Chat stream error:', streamError);
+          const errorEvent = `event: error\ndata: ${JSON.stringify({ error: streamError?.message || 'Stream interrupted' })}\n\n`;
+          controller.enqueue(encoder.encode(errorEvent));
         }
 
         // Close stream

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { AddResourceModal } from '@/components/AddResourceModal';
 import {
@@ -27,8 +27,10 @@ import {
 } from 'lucide-react';
 import { UniversalResource, ResourceType } from '@repo/shared';
 
-export default function ResourcesPage() {
+function ResourcesPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedResourceId = searchParams.get('id');
   const [resources, setResources] = useState<UniversalResource[]>([]);
   const [stats, setStats] = useState<any>({
     totalResources: 0,
@@ -68,6 +70,11 @@ export default function ResourcesPage() {
   useEffect(() => {
     fetchResources();
   }, [activeFilter]);
+
+  // Deep link: /resources?id=<resourceId> opens that resource's detail panel
+  useEffect(() => {
+    if (requestedResourceId) handleOpenDetail(requestedResourceId);
+  }, [requestedResourceId]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -465,7 +472,7 @@ export default function ResourcesPage() {
                       WebkitBoxOrient: 'vertical',
                       overflow: 'hidden'
                     }}>
-                      {res.valueProposition || res.description || 'Universal resource indexed in Open Eye.'}
+                      {res.valueProposition || res.description || ''}
                     </p>
 
                     {/* Problem Solved */}
@@ -700,29 +707,33 @@ export default function ResourcesPage() {
               </a>
             </div>
 
-            {/* Problems Solved */}
+            {/* Problems Solved (only what analysis actually extracted) */}
+            {selectedResource.problemsSolved?.length > 0 && (
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 8px' }}>
                 Problems Solved
               </h4>
               <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {(selectedResource.problemsSolved || ['General technical problem solving']).map((p: string, i: number) => (
+                {selectedResource.problemsSolved.map((p: string, i: number) => (
                   <li key={i}>{p}</li>
                 ))}
               </ul>
             </div>
+            )}
 
-            {/* Practical Uses */}
+            {/* Practical Uses (only what analysis actually extracted) */}
+            {selectedResource.practicalUses?.length > 0 && (
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 8px' }}>
                 How You Can Use This Resource
               </h4>
               <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--accent-cyan)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {(selectedResource.practicalUses || ['Use as architectural guidance or software dependency']).map((u: string, i: number) => (
+                {selectedResource.practicalUses.map((u: string, i: number) => (
                   <li key={i}>{u}</li>
                 ))}
               </ul>
             </div>
+            )}
 
             {/* Capabilities */}
             {selectedResource.capabilities?.length > 0 && (
@@ -790,5 +801,13 @@ export default function ResourcesPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function ResourcesPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ResourcesPageContent />
+    </React.Suspense>
   );
 }

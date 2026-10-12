@@ -25,7 +25,8 @@ export function validateGitHubUrl(rawUrl: string): URLValidationResult {
   }
 
   // Strict regex for https://github.com/{owner}/{repo}
-  const githubRegex = /^https:\/\/(?:www\.)?github\.com\/([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)(?:\/)?$/i;
+  // Query strings / fragments (e.g. GitHub's default "?tab=readme-ov-file" or "#readme") are not part of the repo
+  const githubRegex = /^https:\/\/(?:www\.)?github\.com\/([a-zA-Z0-9_\-\.]+)\/([a-zA-Z0-9_\-\.]+)\/?(?:[?#].*)?$/i;
   const match = normalized.match(githubRegex);
 
   if (!match) {
@@ -56,7 +57,8 @@ export function validateGitHubUrl(rawUrl: string): URLValidationResult {
     repo = repo.slice(0, -4);
   }
 
-  const canonicalUrl = `https://github.com/${owner}/${repo}`;
+  // GitHub owner/repo names are case-insensitive: one canonical form avoids duplicate resources
+  const canonicalUrl = `https://github.com/${owner.toLowerCase()}/${repo.toLowerCase()}`;
 
   return {
     valid: true,

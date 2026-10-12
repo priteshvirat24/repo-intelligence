@@ -76,7 +76,9 @@ export class TavilyProvider implements WebSearchProvider {
           include_domains: options.includeDomains,
           exclude_domains: options.excludeDomains,
           include_answer: options.includeAnswer ?? true
-        })
+        }),
+        // A hung search would otherwise block the whole chat request before streaming starts
+        signal: AbortSignal.timeout(20000)
       });
 
       const durationMs = Date.now() - startTime;

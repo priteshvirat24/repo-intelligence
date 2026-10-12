@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 
+// Reads live database state: must never be prerendered/cached at build time
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     // 1. Fetch Repository summaries

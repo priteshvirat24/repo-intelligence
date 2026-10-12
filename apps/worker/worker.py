@@ -21,7 +21,17 @@ from .analyzer.synthesis import RepositorySynthesizer
 from .analyzer.evidence import EvidenceVerificationGate
 from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
-from .db.repository import DatabaseRepository
+from .db.repository import DatabaseRepository, JobLostError
+
+CODE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs")
+
+
+def _named_items(value: Any) -> List[Dict[str, Any]]:
+    """LLM list fields: keep only objects that actually have a name (never invent one)."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict) and isinstance(item.get("name"), str) and item["name"].strip()]
+
 
 class IngestionWorker:
     """Production-grade asynchronous repository ingestion worker."""
@@ -33,6 +43,13 @@ class IngestionWorker:
         self.db = DatabaseRepository()
         self.llm = get_llm_provider()
         self.embedding_provider = get_embedding_provider()
+        if self.embedding_provider.get_dimensions() != config.EMBEDDING_DIMENSIONS:
+            # Every chunk insert would fail against the vector(EMBEDDING_DIMENSIONS) column
+            raise RuntimeError(
+                f"Embedding provider {type(self.embedding_provider).__name__} produces "
+                f"{self.embedding_provider.get_dimensions()}-d vectors but EMBEDDING_DIMENSIONS="
+                f"{config.EMBEDDING_DIMENSIONS}; set them to match the database column."
+            )
         self.file_filter = FileFilter()
         self.manifest_analyzer = ManifestAnalyzer()
 
@@ -52,7 +69,7 @@ class IngestionWorker:
         if self.active_job:
             try:
                 print(f"[{self.worker_id}] Releasing locked job {self.active_job['id']} back to queue...", flush=True)
-                self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"])
+                self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"], self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
@@ -72,10 +89,12 @@ class IngestionWorker:
         try:
             # 1. Fetch Repository Details
             conn = self.db.get_connection()
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, owner, name, url, default_branch, latest_commit_hash FROM repositories WHERE id = %s", (repo_id,))
-                row = cur.fetchone()
-            conn.close()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT id, owner, name, url, default_branch, latest_commit_hash FROM repositories WHERE id = %s", (repo_id,))
+                    row = cur.fetchone()
+            finally:
+                conn.close()
 
             if not row:
                 raise ValueError(f"Repository {repo_id} not found in database.")
@@ -86,7 +105,7 @@ class IngestionWorker:
             # 2. Stage: CLONING
             print(f"[{self.worker_id}] Starting Stage: CLONING...", flush=True)
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING")
+            self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING", self.worker_id)
             scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
             stage_metrics["durations"]["cloning_ms"] = int((time.time() - s_time) * 1000)
             print(f"[{self.worker_id}] CLONING complete in {stage_metrics['durations']['cloning_ms']}ms. SHA: {commit_sha}", flush=True)
@@ -94,7 +113,7 @@ class IngestionWorker:
             # 3. Stage: FILE_FILTERING
             print(f"[{self.worker_id}] Starting Stage: FILE_FILTERING...", flush=True)
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "FILE_FILTERING", "ANALYZING")
+            self.db.update_job_step(job_id, repo_id, "FILE_FILTERING", "ANALYZING", self.worker_id)
             scan_result = self.file_filter.scan_repository(scratch_dir)
             stage_metrics["counts"]["files_discovered"] = scan_result["discovered_files"]
             stage_metrics["counts"]["files_included"] = len(scan_result["included_files"])
@@ -105,7 +124,7 @@ class IngestionWorker:
             # 4. Stage: MANIFEST_ANALYSIS
             print(f"[{self.worker_id}] Starting Stage: MANIFEST_ANALYSIS...", flush=True)
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "MANIFEST_ANALYSIS", "ANALYZING")
+            self.db.update_job_step(job_id, repo_id, "MANIFEST_ANALYSIS", "ANALYZING", self.worker_id)
             dependencies = self.manifest_analyzer.analyze_all(scratch_dir)
             stage_metrics["counts"]["dependencies_found"] = len(dependencies)
             stage_metrics["durations"]["manifest_ms"] = int((time.time() - s_time) * 1000)
@@ -114,10 +133,11 @@ class IngestionWorker:
             # 5. Stage: AST_ANALYSIS & DOC_PARSING
             print(f"[{self.worker_id}] Starting Stage: AST_ANALYSIS...", flush=True)
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "AST_ANALYSIS", "ANALYZING")
+            self.db.update_job_step(job_id, repo_id, "AST_ANALYSIS", "ANALYZING", self.worker_id)
             documents: List[Dict[str, Any]] = []
             all_chunks: List[SemanticChunk] = []
             readme_text = ""
+            readme_depth: Optional[int] = None
             symbol_outlines: List[str] = []
             ast_files_count = 0
             symbols_count = 0
@@ -128,16 +148,23 @@ class IngestionWorker:
                     content = full_path.read_text(errors="ignore")
                 except Exception:
                     continue
+                if "\x00" in content:
+                    # Binary or UTF-16 content: PostgreSQL text columns cannot store NUL bytes
+                    continue
 
                 content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                 ext = full_path.suffix.lower()
 
-                if "readme" in rel_path.lower():
-                    readme_text = content
+                if Path(rel_path).stem.lower() == "readme":
+                    # The shallowest README describes the repository; nested ones describe examples/subpackages
+                    depth = len(Path(rel_path).parts)
+                    if readme_depth is None or depth < readme_depth:
+                        readme_text = content
+                        readme_depth = depth
                     doc_type = "readme"
                 elif ext in (".md", ".rst", ".txt"):
                     doc_type = "doc"
-                elif ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"):
+                elif ext in CODE_EXTENSIONS:
                     doc_type = "code"
                 else:
                     doc_type = "config"
@@ -153,7 +180,12 @@ class IngestionWorker:
                 # AST extraction on code files
                 if doc_type == "code":
                     ast_files_count += 1
-                    symbols = TreeSitterAnalyzer.analyze_file(rel_path, content)
+                    try:
+                        symbols = TreeSitterAnalyzer.analyze_file(rel_path, content)
+                    except (Exception, RecursionError) as ex:
+                        # One pathological file (e.g. deeply nested expression) must not fail the repository
+                        print(f"[{self.worker_id}] Warning: AST analysis failed for {rel_path}: {ex}", file=sys.stderr)
+                        symbols = []
                     symbols_count += len(symbols)
                     if symbols:
                         outline = TreeSitterAnalyzer.generate_symbol_outline(rel_path, symbols)
@@ -175,7 +207,7 @@ class IngestionWorker:
 
             # 6. Stage: HIERARCHICAL OPEN-WORLD UNDERSTANDING & SYNTHESIS
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "CAPABILITY_EXTRACTION", "ANALYZING")
+            self.db.update_job_step(job_id, repo_id, "CAPABILITY_EXTRACTION", "ANALYZING", self.worker_id)
             
             manifest_summary = ", ".join(d["package_name"] for d in dependencies[:25])
             full_repo_name = f"{repo_owner}/{repo_name}"
@@ -193,10 +225,10 @@ class IngestionWorker:
             # PASS 2: Module / Subsystem Analysis
             print(f"[{self.worker_id}] Running Pass 2: Module Understanding for {full_repo_name}...")
             module_analyses = []
-            subsystems = cartography.get("majorSubsystems", [])
+            subsystems = [sub for sub in (cartography.get("majorSubsystems") or []) if isinstance(sub, dict)]
             if not subsystems:
                 # Infer top subsystems from code directories
-                code_dirs = sorted(list(set(str(Path(f[0]).parent) for f in scan_result["included_files"] if f[1] == "code" and str(Path(f[0]).parent) != ".")))
+                code_dirs = sorted(list(set(str(Path(f[0]).parent) for f in scan_result["included_files"] if Path(f[0]).suffix.lower() in CODE_EXTENSIONS and str(Path(f[0]).parent) != ".")))
                 subsystems = [{"name": Path(d).name or d, "path": d} for d in code_dirs[:4]]
 
             for sub in subsystems[:4]:
@@ -233,36 +265,29 @@ class IngestionWorker:
             rejected_ev_count = 0
 
             for cap in proposed_caps:
-                cap_name = cap.get("name", "Unknown Capability")
+                if not isinstance(cap, dict) or not cap.get("name"):
+                    continue
+                cap_name = str(cap["name"])
                 slug = CapabilityEngine.map_slug(cap.get("slug", cap_name))
-                category = cap.get("category", "domain-specific")
+                category = cap.get("category") or "uncategorized"
                 notes = cap.get("description", "")
-                confidence = min(1.0, max(0.1, float(cap.get("confidence", 0.9))))
+                try:
+                    confidence = min(1.0, max(0.1, float(cap.get("confidence"))))
+                except (TypeError, ValueError):
+                    confidence = 0.5
 
                 valid_evidence_items = []
-                for ev in cap.get("evidence", []):
+                for ev in cap.get("evidence") or []:
+                    if not isinstance(ev, dict):
+                        rejected_ev_count += 1
+                        continue
                     check = EvidenceVerificationGate.verify_evidence(scratch_dir, ev)
                     if check.get("verified"):
                         valid_evidence_items.append(check)
                     else:
                         rejected_ev_count += 1
 
-                # If no direct evidence verified, fallback check if high-value or main code file is present
-                if not valid_evidence_items and scan_result["included_files"]:
-                    for file_tuple in scan_result["included_files"][:5]:
-                        fp = file_tuple[0]
-                        if "readme" in fp.lower() or "main" in fp.lower() or "lib" in fp.lower() or "index" in fp.lower():
-                            valid_evidence_items.append({
-                                "verified": True,
-                                "file_path": fp,
-                                "start_line": 1,
-                                "end_line": 20,
-                                "symbol_name": None,
-                                "quote_snippet": f"Repository implementation for {cap_name}",
-                                "evidence_type": "doc"
-                            })
-                            break
-
+                # No verified evidence -> the capability is not persisted (never fabricate evidence)
                 if valid_evidence_items:
                     verified_caps_count += 1
                     verified_capabilities.append({
@@ -287,7 +312,7 @@ class IngestionWorker:
                 "object_type": "repository_profile",
                 "name": full_repo_name,
                 "description": f"{synthesis.get('purpose', '')} Problem space: {synthesis.get('problemSpace', '')}",
-                "category": synthesis.get("domains", ["general"])[0] if synthesis.get("domains") else "general",
+                "category": synthesis["domains"][0] if synthesis.get("domains") else "uncategorized",
                 "importance": "critical",
                 "confidence": 1.0,
                 "metadata_json": {
@@ -302,7 +327,7 @@ class IngestionWorker:
                     "object_type": "capability",
                     "name": vc["name"],
                     "description": vc.get("notes", vc["name"]),
-                    "category": vc.get("category", "domain-specific"),
+                    "category": vc.get("category") or "uncategorized",
                     "importance": "high",
                     "confidence": vc.get("confidence", 0.95),
                     "evidence": vc.get("evidence", []),
@@ -310,10 +335,10 @@ class IngestionWorker:
                 })
 
             # 3. Features
-            for feat in synthesis.get("features", []):
+            for feat in _named_items(synthesis.get("features")):
                 knowledge_objects.append({
                     "object_type": "feature",
-                    "name": feat.get("name", "Feature"),
+                    "name": feat["name"],
                     "description": feat.get("description", ""),
                     "category": "feature",
                     "importance": "high",
@@ -321,10 +346,10 @@ class IngestionWorker:
                 })
 
             # 4. Domain Concepts
-            for conc in synthesis.get("concepts", []):
+            for conc in _named_items(synthesis.get("concepts")):
                 knowledge_objects.append({
                     "object_type": "concept",
-                    "name": conc.get("name", "Concept"),
+                    "name": conc["name"],
                     "description": conc.get("description", ""),
                     "category": "domain-concept",
                     "importance": "medium",
@@ -332,10 +357,10 @@ class IngestionWorker:
                 })
 
             # 5. Techniques
-            for tech in synthesis.get("techniques", []):
+            for tech in _named_items(synthesis.get("techniques")):
                 knowledge_objects.append({
                     "object_type": "technique",
-                    "name": tech.get("name", "Technique"),
+                    "name": tech["name"],
                     "description": tech.get("description", ""),
                     "category": "technique",
                     "importance": "medium",
@@ -343,10 +368,10 @@ class IngestionWorker:
                 })
 
             # 6. Use Cases
-            for uc in synthesis.get("useCases", []):
+            for uc in _named_items(synthesis.get("useCases")):
                 knowledge_objects.append({
                     "object_type": "use_case",
-                    "name": uc.get("name", "Use Case"),
+                    "name": uc["name"],
                     "description": uc.get("description", ""),
                     "category": "use-case",
                     "importance": "high",
@@ -354,10 +379,10 @@ class IngestionWorker:
                 })
 
             # 7. Subsystems / Components
-            for comp in synthesis.get("components", []):
+            for comp in _named_items(synthesis.get("components")):
                 knowledge_objects.append({
                     "object_type": "component",
-                    "name": comp.get("name", "Component"),
+                    "name": comp["name"],
                     "description": comp.get("description", ""),
                     "category": "subsystem",
                     "importance": "medium",
@@ -365,10 +390,10 @@ class IngestionWorker:
                 })
 
             # 8. Interfaces (Classes, APIs, CLI entry points)
-            for iface in synthesis.get("interfaces", []):
+            for iface in _named_items(synthesis.get("interfaces")):
                 knowledge_objects.append({
                     "object_type": "interface",
-                    "name": iface.get("name", "Interface"),
+                    "name": iface["name"],
                     "description": iface.get("description", ""),
                     "category": iface.get("type", "class"),
                     "importance": "high",
@@ -376,10 +401,10 @@ class IngestionWorker:
                 })
 
             # 9. Semantic Inputs
-            for inp in synthesis.get("inputs", []):
+            for inp in _named_items(synthesis.get("inputs")):
                 knowledge_objects.append({
                     "object_type": "input",
-                    "name": inp.get("name", "Input"),
+                    "name": inp["name"],
                     "description": inp.get("format", ""),
                     "category": "data-input",
                     "importance": "medium",
@@ -387,10 +412,10 @@ class IngestionWorker:
                 })
 
             # 10. Semantic Outputs
-            for out in synthesis.get("outputs", []):
+            for out in _named_items(synthesis.get("outputs")):
                 knowledge_objects.append({
                     "object_type": "output",
-                    "name": out.get("name", "Output"),
+                    "name": out["name"],
                     "description": out.get("format", ""),
                     "category": "data-output",
                     "importance": "medium",
@@ -398,11 +423,11 @@ class IngestionWorker:
                 })
 
             # 11. Limitations
-            all_limitations = synthesis.get("limitations", [])
+            all_limitations = [l for l in (synthesis.get("limitations") or []) if isinstance(l, dict) and l.get("description")]
             for lim in all_limitations:
                 knowledge_objects.append({
                     "object_type": "limitation",
-                    "name": lim.get("category", "limitation"),
+                    "name": lim.get("category") or "limitation",
                     "description": lim.get("description", ""),
                     "category": lim.get("category", "scalability"),
                     "importance": "low",
@@ -411,7 +436,7 @@ class IngestionWorker:
 
             # 7. Stage: INDEXING (Multi-Level Embedding Generation)
             s_time = time.time()
-            self.db.update_job_step(job_id, repo_id, "INDEXING", "INDEXING")
+            self.db.update_job_step(job_id, repo_id, "INDEXING", "INDEXING", self.worker_id)
 
             # A. Embed Knowledge Objects
             ko_texts = [f"{ko['name']}: {ko['description']}" for ko in knowledge_objects]
@@ -444,7 +469,7 @@ class IngestionWorker:
             s_time = time.time()
             stage_metrics["durations"]["total_duration_ms"] = int((time.time() - total_start) * 1000)
 
-            domain_tags = synthesis.get("domains", ["general-engineering"])
+            domain_tags = [d for d in (synthesis.get("domains") or []) if isinstance(d, str)]
             knowledge_relationships = synthesis.get("relationships", [])
 
             # Calculate analysis completeness
@@ -479,15 +504,19 @@ class IngestionWorker:
                 open_knowledge_json=synthesis,
                 knowledge_objects=knowledge_objects,
                 knowledge_relationships=knowledge_relationships,
-                analysis_completeness=analysis_completeness
+                analysis_completeness=analysis_completeness,
+                worker_id=self.worker_id
             )
 
             print(f"[{self.worker_id}] Successfully indexed {full_repo_name} in {stage_metrics['durations']['total_duration_ms']}ms. Caps: {len(verified_capabilities)}, KOs: {len(knowledge_objects)}, Chunks: {len(chunk_dicts)}, Completeness: {completeness_level}", flush=True)
 
+        except JobLostError as e:
+            # Cancelled by the user, superseded by a newer ingestion, or reclaimed after a stall
+            print(f"[{self.worker_id}] Abandoning job {job_id}: {e}", file=sys.stderr)
         except Exception as e:
             err_msg = str(e)
             print(f"[{self.worker_id}] Ingestion failed for job {job_id}: {err_msg}", file=sys.stderr)
-            self.db.mark_job_failed(job_id, repo_id, err_msg)
+            self.db.mark_job_failed(job_id, repo_id, err_msg, self.worker_id)
         finally:
             if scratch_dir:
                 GitCloner.cleanup(scratch_dir)

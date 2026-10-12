@@ -12,22 +12,43 @@ class BaseLLMProvider:
 
     def extract_structured(self, prompt: str, system: Optional[str] = None) -> Dict[str, Any]:
         raw = self.complete(prompt, system)
-        # Extract json block if present
-        json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw)
-        if json_match:
-            raw = json_match.group(1)
+        result = parse_json_object(raw)
+        if result is None:
+            # Never substitute an empty/default analysis: the job must fail visibly instead
+            raise ValueError(f"LLM_INVALID_JSON: could not parse a JSON object from model output ({raw[:200]!r})")
+        return result
+
+
+def parse_json_object(raw: str) -> Optional[Dict[str, Any]]:
+    """
+    Extracts a JSON object from model output. Tries the raw text first: a valid response may
+    itself contain ``` fences inside string values (e.g. quoted README install blocks), which a
+    fence-first approach would cut apart.
+    """
+    text = raw.strip()
+    candidates = [text]
+    fence = re.search(r'^```(?:json)?\s*([\s\S]*?)\s*```\s*$', text)
+    if fence:
+        candidates.append(fence.group(1))
+    for candidate in candidates:
         try:
-            return json.loads(raw.strip())
+            value = json.loads(candidate)
+            if isinstance(value, dict):
+                return value
         except json.JSONDecodeError:
-            # Try to extract the first { ... } substring
-            start = raw.find('{')
-            end = raw.rfind('}')
-            if start != -1 and end != -1:
-                try:
-                    return json.loads(raw[start:end+1])
-                except Exception:
-                    pass
-            return {"capabilities": [], "limitations": []}
+            pass
+    # Fall back to the first decodable object embedded in surrounding prose
+    decoder = json.JSONDecoder()
+    start = text.find('{')
+    while start != -1:
+        try:
+            value, _ = decoder.raw_decode(text, start)
+            if isinstance(value, dict):
+                return value
+        except json.JSONDecodeError:
+            pass
+        start = text.find('{', start + 1)
+    return None
 
 class MistralLLMProvider(BaseLLMProvider):
     """Mistral AI provider implementation."""
@@ -77,9 +98,8 @@ class MistralLLMProvider(BaseLLMProvider):
                     continue
                 break
 
-        # Fallback to heuristic structured response if provider rate-limited or timed out
-        print("[MistralLLMProvider] Error or timeout on chat completions; falling back to heuristic capability extraction.")
-        return MockLLMProvider().complete(prompt, system)
+        # Fail the job rather than persisting canned mock output as if it were real analysis
+        raise RuntimeError("LLM_UNAVAILABLE: Mistral chat completions failed after 3 attempts")
 
 class OpenAILLMProvider(BaseLLMProvider):
     """OpenAI provider implementation."""
@@ -111,38 +131,15 @@ class OpenAILLMProvider(BaseLLMProvider):
             data = resp.json()
             return data["choices"][0]["message"]["content"]
 
-class MockLLMProvider(BaseLLMProvider):
-    """Deterministic mock provider for automated testing and offline development."""
-
-    def complete(self, prompt: str, system: Optional[str] = None) -> str:
-        # Heuristic fallback capability generation for testing
-        return json.dumps({
-            "capabilities": [
-                {
-                    "slug": "web-crawling",
-                    "name": "Web Crawling",
-                    "category": "Data Ingestion",
-                    "confidence": 0.95,
-                    "notes": "Automated crawling module",
-                    "evidence": [
-                        {
-                            "file_path": "README.md",
-                            "quote": "web crawler",
-                            "symbol_name": None,
-                            "evidence_type": "doc"
-                        }
-                    ]
-                }
-            ],
-            "limitations": []
-        })
-
 def get_llm_provider() -> BaseLLMProvider:
-    provider = config.LLM_PROVIDER
-    api_key = config.LLM_API_KEY
+    """Returns the configured real LLM provider. There is deliberately no mock fallback."""
+    provider = config.LLM_PROVIDER.strip()
+    api_key = config.LLM_API_KEY.strip()
 
-    if provider == "mistral" and api_key and api_key != "mock-key":
-        return MistralLLMProvider(api_key=api_key, model=config.LLM_MODEL)
-    elif provider == "openai" and api_key and api_key != "mock-key":
-        return OpenAILLMProvider(api_key=api_key, model=config.LLM_MODEL)
-    return MockLLMProvider()
+    if not api_key:
+        raise RuntimeError("LLM_API_KEY is not set; refusing to analyze repositories without a real LLM provider.")
+    if provider == "mistral":
+        return MistralLLMProvider(api_key=api_key, model=config.LLM_MODEL or "mistral-small-latest")
+    if provider == "openai":
+        return OpenAILLMProvider(api_key=api_key, model=config.LLM_MODEL or "gpt-4o-mini")
+    raise RuntimeError(f"Unsupported LLM_PROVIDER={provider!r}; expected 'mistral' or 'openai'.")

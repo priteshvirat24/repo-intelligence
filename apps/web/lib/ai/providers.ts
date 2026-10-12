@@ -1,4 +1,3 @@
-import crypto from 'crypto';
 
 export interface LLMProvider {
   complete(prompt: string, system?: string): Promise<string>;
@@ -9,40 +8,6 @@ export interface EmbeddingProvider {
   getDimensions(): number;
   embedQuery(text: string): Promise<number[]>;
   embedDocuments(texts: string[]): Promise<number[][]>;
-}
-
-export class MockEmbeddingProvider implements EmbeddingProvider {
-  private dimensions: number;
-
-  constructor(dimensions?: number) {
-    this.dimensions = dimensions || parseInt(process.env.EMBEDDING_DIMENSIONS || '1024', 10);
-  }
-
-  getDimensions(): number {
-    return this.dimensions;
-  }
-
-  async embedQuery(text: string): Promise<number[]> {
-    return this.generateDeterministicVector(text);
-  }
-
-  async embedDocuments(texts: string[]): Promise<number[][]> {
-    return texts.map(t => this.generateDeterministicVector(t));
-  }
-
-  private generateDeterministicVector(text: string): number[] {
-    const dim = this.getDimensions();
-    const hash = crypto.createHash('sha256').update(text).digest('hex');
-    const seed = parseInt(hash.slice(0, 8), 16);
-    const vec: number[] = [];
-
-    for (let i = 0; i < dim; i++) {
-      vec.push(Math.sin((seed + i) * 0.1));
-    }
-
-    const norm = Math.sqrt(vec.reduce((sum, v) => sum + v * v, 0)) || 1.0;
-    return vec.map(v => v / norm);
-  }
 }
 
 async function fetchWithBackoff(
@@ -142,105 +107,64 @@ export class MistralEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
-export class MockLLMProvider implements LLMProvider {
-  async complete(prompt: string, system?: string): Promise<string> {
-    const isJsonRequest = (system && (system.includes('Return JSON matching') || system.includes('JSON schema') || system.includes('valid JSON'))) || prompt.includes('Return JSON');
+export class OpenAIEmbeddingProvider implements EmbeddingProvider {
+  constructor(
+    private apiKey: string,
+    private model: string = 'text-embedding-3-small',
+    private dimensions: number = 1024
+  ) {}
 
-    if (isJsonRequest) {
-      const queryMatch = prompt.match(/User Problem:\s*"([^"]+)"/i);
-      const userText = queryMatch ? queryMatch[1] : prompt.split('\n')[0].replace(/User Problem:\s*"?/i, '').replace(/"$/, '').trim();
+  getDimensions(): number {
+    return this.dimensions;
+  }
 
-      const rawTokens = userText
-        .replace(/[^a-zA-Z0-9\s-]/g, ' ')
-        .split(/\s+/)
-        .map(t => t.trim().toLowerCase())
-        .filter(t => t.length > 2 && !['and', 'for', 'with', 'the', 'system', 'tool'].includes(t));
+  async embedQuery(text: string): Promise<number[]> {
+    const res = await this.embedDocuments([text]);
+    if (!res[0]) {
+      throw new Error('[OpenAIEmbeddingProvider] Received empty embedding for query');
+    }
+    return res[0];
+  }
 
-      const domainName = rawTokens.length > 0 ? `${rawTokens[0]}-systems` : 'general-engineering';
+  async embedDocuments(texts: string[]): Promise<number[][]> {
+    if (texts.length === 0) return [];
 
-      const rawClauses = userText
-        .split(/(?:,|\band\b|\bwith\b|\balso\b|\bneed\b|\brequire\b|\bfor\b)/i)
-        .map(c => c.trim().replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, ''))
-        .filter(c => c.length > 3);
+    const batchSize = 64;
+    const allEmbeddings: number[][] = [];
 
-      const requirements = rawClauses.map((clause, idx) => {
-        const title = clause.charAt(0).toUpperCase() + clause.slice(1);
-        return {
-          name: title,
-          description: `Technical capability for ${clause}`,
-          type: idx === 0 ? 'functional' : 'technical',
-          criticality: idx === 0 ? 'MUST' : 'SHOULD',
-          confidence: 'inferred'
-        };
-      });
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize);
+      const response = await fetchWithBackoff(
+        'https://api.openai.com/v1/embeddings',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          // `dimensions` must match the worker and the vector(EMBEDDING_DIMENSIONS) column
+          body: JSON.stringify({ model: this.model, input: batch, dimensions: this.dimensions })
+        },
+        3,
+        'OpenAIEmbeddingProvider'
+      );
 
-      if (requirements.length === 0) {
-        requirements.push({
-          name: userText.charAt(0).toUpperCase() + userText.slice(1),
-          description: `Capability to address: ${userText}`,
-          type: 'functional',
-          criticality: 'MUST',
-          confidence: 'inferred'
-        });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`[OpenAIEmbeddingProvider] API error HTTP ${response.status}: ${errText}`);
       }
 
-      return JSON.stringify({
-        problemSummary: userText,
-        domains: [domainName],
-        intents: ['discovery', 'composition'],
-        requirements,
-        ambiguities: [],
-        constraints: [],
-        desiredOutputs: [],
-        queryExpansions: rawTokens.slice(0, 5)
-      });
+      const data = await response.json();
+      if (!data.data || !Array.isArray(data.data)) {
+        throw new Error('[OpenAIEmbeddingProvider] Malformed response from OpenAI embeddings API');
+      }
+
+      for (const item of data.data) {
+        allEmbeddings.push(item.embedding);
+      }
     }
 
-    return this.synthesizeGroundedResponse(prompt, system);
-  }
-
-  private synthesizeGroundedResponse(prompt: string, system?: string): string {
-    const repoMatches = (system || '').match(/\[(GitHub|repo):([^#\]]+)/g) || [];
-    const uniqueRepos = Array.from(new Set(repoMatches.map(m => m.replace(/\[(GitHub|repo):/, ''))));
-
-    const evidenceMatches = (system || '').match(/\[[^\]]+\] Quote: "([^"]+)"/g) || [];
-
-    if (uniqueRepos.length === 0) {
-      return `### Problem Analysis
-We analyzed the technical requirements against the indexed knowledge base.
-
-### Verification Status
-No indexed resources in the current workspace directly substantiate this capability.
-
-### Suggested Action
-Verify whether this capability requires ingesting relevant repositories, documentation, or technical papers, or enabling Live Web discovery.`;
-    }
-
-    const repoList = uniqueRepos.map(r => `- **${r}** (Indexed resource)`).join('\n');
-    const citationsList = evidenceMatches.slice(0, 4).map(e => `- ${e}`).join('\n');
-
-    return `### Problem Analysis
-The proposed technical solution coordinates indexed capabilities across the available resources.
-
-### Referenced Components
-${repoList}
-
-### Architecture & Interface Boundaries
-- Native library linkage where programming environments align.
-- Service and data boundaries where distinct runtimes interface.
-
-### Evidence Grounding
-${citationsList || 'Grounded in indexed source documentation and AST.'}
-`;
-  }
-
-  async *stream(prompt: string, system?: string): AsyncIterable<string> {
-    const response = await this.complete(prompt, system);
-    const words = response.split(' ');
-    for (const word of words) {
-      yield word + ' ';
-      await new Promise(r => setTimeout(r, 10));
-    }
+    return allEmbeddings;
   }
 }
 
@@ -287,6 +211,7 @@ export class MistralLLMProvider implements LLMProvider {
     if (system) messages.push({ role: 'system', content: system });
     messages.push({ role: 'user', content: prompt });
 
+    let emittedAny = false;
     try {
       const res = await fetchWithBackoff(
         'https://api.mistral.ai/v1/chat/completions',
@@ -336,12 +261,17 @@ export class MistralLLMProvider implements LLMProvider {
             try {
               const parsed = JSON.parse(dataStr);
               const delta = parsed.choices[0]?.delta?.content;
-              if (delta) yield delta;
+              if (delta) {
+                emittedAny = true;
+                yield delta;
+              }
             } catch {}
           }
         }
       }
     } catch (err: any) {
+      // Once text has reached the client, replaying a full completion would duplicate the answer
+      if (emittedAny) throw err;
       console.warn('[MistralLLMProvider.stream] Stream error, using complete:', err.message);
       const completeText = await this.complete(prompt, system);
       const words = completeText.split(' ');
@@ -431,25 +361,43 @@ export class OpenAILLMProvider implements LLMProvider {
   }
 }
 
-export function getLLMProvider(): LLMProvider {
-  const provider = (process.env.LLM_PROVIDER || 'mock').toLowerCase();
-  const apiKey = process.env.LLM_API_KEY || '';
+export class ProviderConfigError extends Error {}
 
-  if (provider === 'mistral' && apiKey && apiKey !== 'mock-key') {
+/** Returns the configured real LLM provider. There is deliberately no mock fallback. */
+export function getLLMProvider(): LLMProvider {
+  const provider = (process.env.LLM_PROVIDER || 'mistral').trim().toLowerCase();
+  const apiKey = (process.env.LLM_API_KEY || '').trim();
+
+  if (!apiKey) {
+    throw new ProviderConfigError('LLM_API_KEY is not set; Open Eye will not generate answers or analysis without a real LLM provider.');
+  }
+  if (provider === 'mistral') {
     return new MistralLLMProvider(apiKey, process.env.LLM_MODEL || 'ministral-8b-latest');
   }
-  if (provider === 'openai' && apiKey && apiKey !== 'mock-key') {
+  if (provider === 'openai') {
     return new OpenAILLMProvider(apiKey, process.env.LLM_MODEL || 'gpt-4o-mini');
   }
-  return new MockLLMProvider();
+  throw new ProviderConfigError(`Unsupported LLM_PROVIDER "${provider}"; expected "mistral" or "openai".`);
 }
 
+/** Returns the configured real embedding provider. There is deliberately no mock fallback. */
 export function getEmbeddingProvider(): EmbeddingProvider {
-  const provider = (process.env.EMBEDDING_PROVIDER || 'mock').toLowerCase();
-  const apiKey = process.env.EMBEDDING_API_KEY || '';
+  // Same default as the worker (apps/worker/config.py): both sides must embed into the same vector space
+  const provider = (process.env.EMBEDDING_PROVIDER || 'mistral').trim().toLowerCase();
+  const apiKey = (process.env.EMBEDDING_API_KEY || '').trim();
 
-  if (provider === 'mistral' && apiKey && apiKey !== 'mock-key') {
+  if (!apiKey) {
+    throw new ProviderConfigError('EMBEDDING_API_KEY is not set; Open Eye will not index or search without a real embedding provider.');
+  }
+  if (provider === 'mistral') {
     return new MistralEmbeddingProvider(apiKey, process.env.EMBEDDING_MODEL || 'mistral-embed');
   }
-  return new MockEmbeddingProvider();
+  if (provider === 'openai') {
+    // Must mirror the worker's provider choice: query vectors are compared against vectors it stored
+    const model = process.env.EMBEDDING_MODEL && process.env.EMBEDDING_MODEL !== 'mistral-embed'
+      ? process.env.EMBEDDING_MODEL
+      : 'text-embedding-3-small';
+    return new OpenAIEmbeddingProvider(apiKey, model, parseInt(process.env.EMBEDDING_DIMENSIONS || '1024', 10));
+  }
+  throw new ProviderConfigError(`Unsupported EMBEDDING_PROVIDER "${provider}"; expected "mistral" or "openai".`);
 }

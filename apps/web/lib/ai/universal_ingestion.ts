@@ -1,6 +1,7 @@
 import { query } from '@repo/database';
 import { UniversalResource, ResourceType, ResourceRole, ResourceStatus } from '@repo/shared';
 import { AdapterRegistry } from '../adapters/registry';
+import { ResourceTypeDetector } from '../adapters/detector';
 import { IngestResult, ContentSegment } from '../adapters/types';
 import { getLLMProvider, getEmbeddingProvider } from './providers';
 import {
@@ -30,8 +31,9 @@ export class UniversalIngestionService {
     alreadyProcessing?: boolean;
     indexedAt?: string;
   }> {
-    // 1. Server-side SSRF validation
-    const ssrfCheck = await validateResourceUrlSecurity(rawUrl);
+    // 1. Server-side SSRF validation (on the normalized URL: scheme-less input such as
+    // "youtube.com/watch?v=..." or "owner/repo" is otherwise rejected as malformed)
+    const ssrfCheck = await validateResourceUrlSecurity(ResourceTypeDetector.normalizeUrl(rawUrl) || rawUrl);
     if (!ssrfCheck.valid) {
       return {
         resourceId: '',
@@ -137,6 +139,13 @@ export class UniversalIngestionService {
 
     const resourceId = insertRes.rows[0].id;
 
+    // Supersede any in-flight job for this resource; its processor stops at the next cancellation check
+    await query(`
+      UPDATE ingestion_jobs
+      SET status = 'FAILED', step = 'SUPERSEDED', error_message = 'Superseded by new ingestion job', updated_at = NOW()
+      WHERE resource_id = $1 AND status IN ('QUEUED', 'RUNNING')
+    `, [resourceId]);
+
     // Create an ingestion_job for tracking progress
     const jobRes = await query(`
       INSERT INTO ingestion_jobs (resource_id, status, step)
@@ -190,18 +199,20 @@ export class UniversalIngestionService {
           UPDATE resources
           SET status = $1, error_message = $2, title = $3, metadata_json = $4, updated_at = NOW()
           WHERE id = $5
+            AND EXISTS (SELECT 1 FROM ingestion_jobs WHERE id = $6 AND status = 'RUNNING')
         `, [
           ingestResult.status,
           ingestResult.errorMessage || 'Resource ingestion failed',
           ingestResult.title || descriptor.canonicalUrl,
           JSON.stringify(ingestResult.metadata || {}),
-          resourceId
+          resourceId,
+          jobId
         ]);
 
         await query(`
           UPDATE ingestion_jobs
           SET status = 'FAILED', error_message = $1, updated_at = NOW()
-          WHERE id = $2
+          WHERE id = $2 AND status = 'RUNNING'
         `, [ingestResult.errorMessage || 'Ingestion failed', jobId]);
 
         return;
@@ -213,6 +224,7 @@ export class UniversalIngestionService {
         SET status = 'ANALYZING', title = $1, description = $2, author = $3, publisher = $4,
             content_hash = $5, metadata_json = $6, updated_at = NOW()
         WHERE id = $7
+          AND EXISTS (SELECT 1 FROM ingestion_jobs WHERE id = $8 AND status = 'RUNNING')
       `, [
         ingestResult.title,
         ingestResult.description || '',
@@ -220,13 +232,14 @@ export class UniversalIngestionService {
         ingestResult.publisher || descriptor.domain,
         ingestResult.contentHash,
         JSON.stringify(ingestResult.metadata || {}),
-        resourceId
+        resourceId,
+        jobId
       ]);
 
       await query(`
         UPDATE ingestion_jobs
         SET step = 'ANALYZING', updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'RUNNING'
       `, [jobId]);
 
       if (await isJobCancelled()) return;
@@ -241,8 +254,17 @@ export class UniversalIngestionService {
       if (await isJobCancelled()) return;
 
       // Stage 3: Indexing Chunks, Vectors, and Knowledge Objects
-      await query(`UPDATE resources SET status = 'INDEXING', updated_at = NOW() WHERE id = $1`, [resourceId]);
-      await query(`UPDATE ingestion_jobs SET step = 'INDEXING', updated_at = NOW() WHERE id = $1`, [jobId]);
+      await query(`
+        UPDATE resources SET status = 'INDEXING', updated_at = NOW()
+        WHERE id = $1 AND EXISTS (SELECT 1 FROM ingestion_jobs WHERE id = $2 AND status = 'RUNNING')
+      `, [resourceId, jobId]);
+      await query(`UPDATE ingestion_jobs SET step = 'INDEXING', updated_at = NOW() WHERE id = $1 AND status = 'RUNNING'`, [jobId]);
+
+      // Reindexing reuses the resource id: drop previously indexed data so it is replaced, not duplicated
+      // (chunks cascade from documents; knowledge-object evidence cascades from knowledge_objects)
+      await query(`DELETE FROM evidence WHERE resource_id = $1`, [resourceId]);
+      await query(`DELETE FROM knowledge_objects WHERE resource_id = $1`, [resourceId]);
+      await query(`DELETE FROM documents WHERE resource_id = $1`, [resourceId]);
 
       await this.indexResourceSegments(resourceId, descriptor.resourceType, ingestResult.segments);
 
@@ -271,6 +293,8 @@ export class UniversalIngestionService {
             indexed_at = NOW(),
             updated_at = NOW()
         WHERE id = $9
+          AND status <> 'CANCELLED'
+          AND EXISTS (SELECT 1 FROM ingestion_jobs WHERE id = $10 AND status = 'RUNNING')
       `, [
         analysis.resourceRole || descriptor.estimatedRole,
         analysis.problemsSolved || [],
@@ -280,13 +304,14 @@ export class UniversalIngestionService {
         analysis.domainTags || [descriptor.domain],
         JSON.stringify(analysis),
         JSON.stringify(enrichedMetadata),
-        resourceId
+        resourceId,
+        jobId
       ]);
 
       await query(`
         UPDATE ingestion_jobs
         SET status = 'COMPLETED', step = 'DONE', updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status = 'RUNNING'
       `, [jobId]);
 
       // Record version
@@ -303,12 +328,13 @@ export class UniversalIngestionService {
         UPDATE resources
         SET status = 'FAILED', error_message = $1, updated_at = NOW()
         WHERE id = $2
-      `, [err.message || 'Universal ingestion error', resourceId]);
+          AND EXISTS (SELECT 1 FROM ingestion_jobs WHERE id = $3 AND status = 'RUNNING')
+      `, [err.message || 'Universal ingestion error', resourceId, jobId]);
 
       await query(`
         UPDATE ingestion_jobs
         SET status = 'FAILED', error_message = $1, updated_at = NOW()
-        WHERE id = $2
+        WHERE id = $2 AND status = 'RUNNING'
       `, [err.message || 'Universal ingestion error', jobId]);
     }
   }
@@ -398,77 +424,72 @@ Extract semantic intelligence from this resource and return valid JSON with thes
   ]
 }`;
 
+    // LLM/network errors propagate: the resource is marked FAILED with the real reason
+    const rawRes = await llm.complete(userPrompt, systemPrompt);
+    const jsonMatch = rawRes.match(/\{[\s\S]*\}/);
+    let rawJson: any;
     try {
-      const rawRes = await llm.complete(userPrompt, systemPrompt);
-      const jsonMatch = rawRes.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const rawJson = JSON.parse(jsonMatch[0]);
-        const parseResult = ResourceAnalysisSchema.safeParse(rawJson);
-
-        if (parseResult.success) {
-          const validated = parseResult.data;
-          // Apply anti-bloat semantic importance filter to eliminate trivial capabilities
-          const meaningfulCaps = filterMeaningfulCapabilities(validated.capabilities, 10);
-
-          return {
-            problemsSolved: validated.problemsSolved,
-            practicalUses: validated.practicalUses,
-            valueProposition: validated.valueProposition,
-            usefulFor: validated.usefulFor,
-            domainTags: validated.domainTags,
-            resourceRole: validated.resourceRole as ResourceRole,
-            capabilities: meaningfulCaps,
-            concepts: validated.concepts.slice(0, 8),
-            techniques: (validated.techniques || []).slice(0, 6),
-            limitations: validated.limitations.slice(0, 6),
-            inputs: (validated.inputs || []).slice(0, 6),
-            outputs: (validated.outputs || []).slice(0, 6)
-          };
-        } else {
-          console.warn('[UniversalIngestionService] Schema validation warning, attempting partial recovery:', parseResult.error.format());
-          // Partial recovery from rawJson
-          const rawCaps = (Array.isArray(rawJson.capabilities) ? rawJson.capabilities : []).map((c: any) => ({
-            name: String(c?.name || 'Technical Capability'),
-            description: String(c?.description || ''),
-            importance: String(c?.importance || 'high')
-          }));
-          const meaningfulCaps = filterMeaningfulCapabilities(rawCaps, 10);
-          return {
-            problemsSolved: Array.isArray(rawJson.problemsSolved) && rawJson.problemsSolved.length > 0 ? rawJson.problemsSolved : [`Analysis of ${title}`],
-            practicalUses: Array.isArray(rawJson.practicalUses) && rawJson.practicalUses.length > 0 ? rawJson.practicalUses : [`Engineering reference for ${resourceType}`],
-            valueProposition: rawJson.valueProposition || description || `Technical resource ${title}`,
-            usefulFor: Array.isArray(rawJson.usefulFor) ? rawJson.usefulFor : [resourceType],
-            domainTags: Array.isArray(rawJson.domainTags) && rawJson.domainTags.length > 0 ? rawJson.domainTags : [resourceType],
-            resourceRole: rawJson.resourceRole || 'reference',
-            capabilities: meaningfulCaps,
-            concepts: Array.isArray(rawJson.concepts) ? rawJson.concepts.slice(0, 8) : [],
-            techniques: Array.isArray(rawJson.techniques) ? rawJson.techniques.slice(0, 6) : [],
-            limitations: Array.isArray(rawJson.limitations) ? rawJson.limitations.slice(0, 6) : [],
-            inputs: Array.isArray(rawJson.inputs) ? rawJson.inputs.slice(0, 6) : [],
-            outputs: Array.isArray(rawJson.outputs) ? rawJson.outputs.slice(0, 6) : []
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('[UniversalIngestionService] LLM analysis fallback due to parse error:', err);
+      rawJson = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      rawJson = null;
+    }
+    if (!rawJson || typeof rawJson !== 'object' || Array.isArray(rawJson)) {
+      // Never substitute a placeholder analysis for one the model did not produce
+      throw new Error('LLM_INVALID_JSON: resource analysis did not return a valid JSON object');
     }
 
-    // Resilient fallback extraction
+    const parseResult = ResourceAnalysisSchema.safeParse(rawJson);
+    if (parseResult.success) {
+      const validated = parseResult.data;
+      // Apply anti-bloat semantic importance filter to eliminate trivial capabilities
+      const meaningfulCaps = filterMeaningfulCapabilities(validated.capabilities, 10);
+
+      return {
+        problemsSolved: validated.problemsSolved,
+        practicalUses: validated.practicalUses,
+        valueProposition: validated.valueProposition,
+        usefulFor: validated.usefulFor,
+        domainTags: validated.domainTags,
+        resourceRole: validated.resourceRole as ResourceRole,
+        capabilities: meaningfulCaps,
+        concepts: validated.concepts.slice(0, 8),
+        techniques: (validated.techniques || []).slice(0, 6),
+        limitations: validated.limitations.slice(0, 6),
+        inputs: (validated.inputs || []).slice(0, 6),
+        outputs: (validated.outputs || []).slice(0, 6)
+      };
+    }
+
+    // Partial recovery: keep only well-formed items the model actually produced. Missing fields
+    // stay empty; nothing is invented to fill them.
+    console.warn('[UniversalIngestionService] Schema validation warning, keeping only well-formed fields:', parseResult.error.format());
+    const strings = (value: unknown): string[] =>
+      Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+    const named = (value: unknown, detailKey: 'description' | 'format', limit: number) =>
+      (Array.isArray(value) ? value : [])
+        .filter((v: any) => v && typeof v.name === 'string' && v.name.trim() && typeof v[detailKey] === 'string' && v[detailKey].trim())
+        .slice(0, limit)
+        .map((v: any) => ({
+          name: v.name.trim().slice(0, 255),
+          [detailKey]: v[detailKey].trim(),
+          ...(typeof v.importance === 'string' ? { importance: v.importance } : { importance: 'medium' })
+        }));
+    const rawCaps = named(rawJson.capabilities, 'description', 50) as Array<{ name: string; description: string; importance: string }>;
+    const validRoles = ['software_component', 'library', 'framework', 'documentation', 'tutorial', 'reference', 'research', 'dataset', 'article', 'video', 'guide', 'specification'];
+
     return {
-      problemsSolved: [`Processing and referencing knowledge from ${title}`],
-      practicalUses: [`Reference source for ${resourceType.replace('_', ' ')} intelligence`],
-      valueProposition: description || `Resource ${title} indexed in Open Eye`,
-      usefulFor: [resourceType.replace('_', ' '), 'reference'],
-      domainTags: [resourceType],
-      resourceRole: 'reference',
-      capabilities: [
-        { name: `${title} Overview`, description: description || 'Indexed resource overview', importance: 'medium' }
-      ],
-      concepts: [],
-      techniques: [],
-      limitations: [],
-      inputs: [],
-      outputs: []
+      problemsSolved: strings(rawJson.problemsSolved),
+      practicalUses: strings(rawJson.practicalUses),
+      valueProposition: typeof rawJson.valueProposition === 'string' ? rawJson.valueProposition : (description || ''),
+      usefulFor: strings(rawJson.usefulFor),
+      domainTags: strings(rawJson.domainTags),
+      resourceRole: (validRoles.includes(rawJson.resourceRole) ? rawJson.resourceRole : 'reference') as ResourceRole,
+      capabilities: filterMeaningfulCapabilities(rawCaps, 10),
+      concepts: named(rawJson.concepts, 'description', 8) as any,
+      techniques: named(rawJson.techniques, 'description', 6) as any,
+      limitations: named(rawJson.limitations, 'description', 6) as any,
+      inputs: named(rawJson.inputs, 'format', 6) as any,
+      outputs: named(rawJson.outputs, 'format', 6) as any
     };
   }
 
@@ -504,12 +525,11 @@ Extract semantic intelligence from this resource and return valid JSON with thes
 
     // 2. Embed segments in batches
     const textsToEmbed = segments.map(s => (s.title ? `${s.title}\n${s.content}` : s.content).slice(0, 2000));
-    let embeddings: number[][] = [];
-    try {
-      embeddings = await embeddingProvider.embedDocuments(textsToEmbed);
-    } catch (embErr) {
-      console.warn('[UniversalIngestionService] Embedding failed, using fallback:', embErr);
-      embeddings = textsToEmbed.map(() => new Array(embeddingProvider.getDimensions()).fill(0));
+    // Embedding errors propagate (resource -> FAILED). Zero vectors would be stored as if they were
+    // real embeddings and make cosine similarity NaN.
+    const embeddings = await embeddingProvider.embedDocuments(textsToEmbed);
+    if (embeddings.length !== textsToEmbed.length) {
+      throw new Error(`EMBEDDING_COUNT_MISMATCH: expected ${textsToEmbed.length} vectors, got ${embeddings.length}`);
     }
 
     for (let i = 0; i < segments.length; i++) {
@@ -642,31 +662,8 @@ Extract semantic intelligence from this resource and return valid JSON with thes
           matchingSeg.locatorType,
           JSON.stringify(matchingSeg.locator)
         ]);
-      } else if (segments.length > 0) {
-        // Honest disclosure: not verified by direct text match in source
-        await query(`
-          INSERT INTO evidence (
-            resource_id,
-            knowledge_object_id,
-            file_path,
-            quote_snippet,
-            evidence_type,
-            evidence_strength,
-            locator_type,
-            locator_json,
-            is_verified,
-            created_at
-          ) VALUES ($1, $2, $3, $4, $5, 'INFERRED', $6, $7, FALSE, NOW())
-        `, [
-          resourceId,
-          koId,
-          segments[0].title || 'Resource Overview',
-          segments[0].content.slice(0, 250).trim(),
-          resourceType === 'youtube_video' ? 'youtube_transcript' : resourceType === 'pdf' ? 'pdf_page' : 'web_section',
-          segments[0].locatorType,
-          JSON.stringify(segments[0].locator)
-        ]);
       }
+      // No supporting text found: store no evidence rather than an unrelated excerpt
     }
 
     // 2. Concepts

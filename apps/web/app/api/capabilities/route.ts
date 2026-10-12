@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 
+// Reads live database state: must never be prerendered/cached at build time
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: NextRequest) {
   try {
     const res = await query(`
       SELECT 
-        ko.name,
-        COALESCE(ko.category, 'domain-specific') as category,
-        ko.description,
+        MIN(ko.name) as name,
+        MIN(ko.category) as category,
+        MIN(ko.description) as description,
         COUNT(DISTINCT ko.repository_id)::int as "repoCount",
         json_agg(
           DISTINCT jsonb_build_object(
@@ -19,8 +22,10 @@ export async function GET(req: NextRequest) {
       FROM knowledge_objects ko
       JOIN repositories r ON ko.repository_id = r.id
       WHERE ko.object_type = 'capability' AND r.status = 'READY'
-      GROUP BY ko.name, ko.category, ko.description
-      ORDER BY "repoCount" DESC, ko.name ASC
+      -- Group by capability name only: descriptions/categories are generated per repository, so
+      -- grouping on them split one capability into many cards that each counted 1 repository
+      GROUP BY lower(ko.name)
+      ORDER BY "repoCount" DESC, MIN(ko.name) ASC
       LIMIT 100;
     `);
 

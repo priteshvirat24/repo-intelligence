@@ -2,42 +2,50 @@ import re
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional
 from ..github.clone import GitCloner
+from .chunker import SecretSanitizer
 
 class EvidenceVerificationGate:
     """Validates LLM-proposed evidence against repository files and calculates exact line numbers."""
 
+    MIN_QUOTE_CHARS = 8  # non-whitespace characters; shorter quotes match almost anything
+
     @staticmethod
-    def locate_text_in_file(content: str, quote: str) -> Optional[Tuple[int, int]]:
+    def _normalize_with_lines(content: str) -> Tuple[str, list]:
+        """Lowercases and collapses whitespace, keeping the source line number of every output char."""
+        out_chars = []
+        line_of = []
+        line = 1
+        prev_space = True
+        for ch in content:
+            if ch.isspace():
+                if not prev_space:
+                    out_chars.append(" ")
+                    line_of.append(line)
+                    prev_space = True
+                if ch == "\n":
+                    line += 1
+            else:
+                out_chars.append(ch.lower())
+                line_of.append(line)
+                prev_space = False
+        return "".join(out_chars), line_of
+
+    @classmethod
+    def locate_text_in_file(cls, content: str, quote: str) -> Optional[Tuple[int, int]]:
         """
-        Locates the exact start and end line numbers of a quote in the file content.
-        Uses normalized whitespace comparison to tolerate indentation or formatting discrepancies.
+        Locates the start and end line numbers of a quote in the file content.
+        The ENTIRE quote must occur in the file; only whitespace and letter case may differ
+        (indentation, wrapping). Partial or paraphrased quotes are rejected.
         """
-        lines = content.splitlines()
-        quote_clean = " ".join(quote.strip().split())
-        if not quote_clean:
+        quote_clean = " ".join(quote.split()).lower()
+        if len(quote_clean.replace(" ", "")) < cls.MIN_QUOTE_CHARS:
             return None
 
-        # 1. Exact string search
-        if quote in content:
-            start_pos = content.find(quote)
-            start_line = content[:start_pos].count("\n") + 1
-            end_line = start_line + quote.count("\n")
-            return start_line, end_line
-
-        # 2. Line-by-line sliding window search
-        quote_words = quote_clean.split()
-        first_few_words = " ".join(quote_words[:min(4, len(quote_words))])
-
-        for idx, line in enumerate(lines, start=1):
-            if first_few_words.lower() in line.lower():
-                # Potential match, check window
-                window = " ".join(lines[idx - 1 : idx + 20])
-                window_clean = " ".join(window.split())
-                if quote_clean.lower() in window_clean.lower() or first_few_words.lower() in window_clean.lower():
-                    end_line = min(idx + quote.count("\n"), len(lines))
-                    return idx, max(idx, end_line)
-
-        return None
+        normalized, line_of = cls._normalize_with_lines(content)
+        pos = normalized.find(quote_clean)
+        if pos == -1:
+            return None
+        return line_of[pos], line_of[pos + len(quote_clean) - 1]
 
     @classmethod
     def verify_evidence(cls, repo_dir: Path, evidence: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,7 +55,11 @@ class EvidenceVerificationGate:
         - Confirms quote or symbol actually occurs in file
         - Programmatically calculates real start_line and end_line from source
         """
-        file_path_str = evidence.get("file_path", "")
+        file_path_str = evidence.get("file_path") or ""
+        if not isinstance(file_path_str, str):
+            return {"verified": False, "reason": "invalid_file_path"}
+        # Models often write repo-relative paths as "/src/x.py" or "./src/x.py"
+        file_path_str = re.sub(r"^(\./)+", "", file_path_str.strip()).lstrip("/")
         if not file_path_str:
             return {"verified": False, "reason": "missing_file_path"}
 
@@ -64,14 +76,21 @@ class EvidenceVerificationGate:
         except Exception as e:
             return {"verified": False, "reason": f"file_read_error: {str(e)}"}
 
-        quote = evidence.get("quote_snippet", "") or evidence.get("quote", "")
+        quote = evidence.get("quote_snippet") or evidence.get("quote") or ""
+        quote = quote if isinstance(quote, str) else ""
         symbol = evidence.get("symbol_name")
+        symbol = symbol.strip() if isinstance(symbol, str) and symbol.strip() else None
 
         calculated_lines = None
         if quote:
             calculated_lines = cls.locate_text_in_file(content, quote)
 
-        # If quote not found, check if symbol exists in content
+        if quote and not calculated_lines:
+            # The model quoted text that is not in the file: the claim is fabricated, and a common
+            # symbol name elsewhere in the file must not rescue it
+            return {"verified": False, "reason": "quote_or_symbol_not_found_in_file"}
+
+        # Symbol-only claim: locate the symbol in the file
         if not calculated_lines and symbol:
             symbol_pattern = re.compile(rf'\b{re.escape(symbol)}\b')
             match = symbol_pattern.search(content)
@@ -87,6 +106,8 @@ class EvidenceVerificationGate:
             }
 
         start_line, end_line = calculated_lines
+        # Persist the actual source text of the matched lines, never the model's rendition of it
+        quote = SecretSanitizer.sanitize("\n".join(content.splitlines()[start_line - 1:end_line]).strip())
         ev_type = evidence.get("evidence_type", "doc")
         strength = cls.classify_evidence_strength(file_path_str, symbol, ev_type, quote)
 
@@ -115,7 +136,11 @@ class EvidenceVerificationGate:
         ext = Path(file_path).suffix.lower()
         is_code = ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".cpp", ".c", ".h")
 
-        if any(marker in fp_lower for marker in ("test", "example", "fixture", "demo", "sample")):
+        segments = re.split(r"[/\\]", fp_lower)
+        stem = Path(fp_lower).stem
+        example_dirs = {"test", "tests", "__tests__", "spec", "example", "examples", "fixture", "fixtures", "demo", "demos", "sample", "samples"}
+        if (any(seg in example_dirs for seg in segments[:-1])
+                or stem.startswith("test_") or stem.endswith(("_test", ".test", ".spec", "_spec"))):
             return "EXAMPLE"
 
         if is_code:

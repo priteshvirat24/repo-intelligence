@@ -82,6 +82,7 @@ class FileFilter:
         included_files: List[Tuple[str, str, int]] = []  # (rel_path, category, size_bytes)
         excluded_files_count = 0
         total_text_bytes = 0
+        is_truncated = False
 
         exclude_dirs = set(self.DEFAULT_EXCLUDED_DIRS)
         if not self.include_tests:
@@ -95,6 +96,11 @@ class FileFilter:
                 discovered_files += 1
                 full_path = Path(root) / file
                 rel_path = str(full_path.relative_to(repo_dir))
+
+                if full_path.is_symlink():
+                    # Never follow links out of the clone (e.g. README.md -> /proc/self/environ)
+                    excluded_files_count += 1
+                    continue
                 ext = full_path.suffix.lower()
 
                 classification = self.classify_file(rel_path, file, ext)
@@ -112,12 +118,12 @@ class FileFilter:
                     excluded_files_count += 1
                     continue
 
-                if total_text_bytes + file_size > self.max_total_text_bytes:
-                    # Enforce max total text safety limit
-                    break
-
-                if len(included_files) >= self.max_files:
-                    break
+                # Budget limits: skip (and keep counting) rather than break, which only left the
+                # current directory and under-reported discovered files
+                if total_text_bytes + file_size > self.max_total_text_bytes or len(included_files) >= self.max_files:
+                    is_truncated = True
+                    excluded_files_count += 1
+                    continue
 
                 total_text_bytes += file_size
                 included_files.append((rel_path, classification, file_size))
@@ -126,5 +132,6 @@ class FileFilter:
             "discovered_files": discovered_files,
             "included_files": included_files,
             "excluded_files_count": excluded_files_count,
-            "total_text_bytes": total_text_bytes
+            "total_text_bytes": total_text_bytes,
+            "is_truncated": is_truncated
         }

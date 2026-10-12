@@ -33,7 +33,8 @@ export function normalizeResourceError(
     lower.includes('private ip') ||
     lower.includes('metadata') ||
     lower.includes('localhost') ||
-    lower.includes('internal')
+    // "internal domain/IP" from the SSRF guard, but not "HTTP 500 Internal Server Error"
+    (lower.includes('internal') && !lower.includes('internal server error'))
   ) {
     return {
       status: 'BLOCKED',

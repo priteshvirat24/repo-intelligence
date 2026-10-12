@@ -90,12 +90,10 @@ Return JSON matching:
 """
         result = llm.extract_structured(user_prompt, system=system_prompt)
         
-        # Ensure default domain fallback if empty
-        if not result.get("domains"):
-            result["domains"] = ["general-computing"]
-        if not result.get("purpose"):
-            result["purpose"] = f"Repository {repo_name}"
-        if not result.get("problemSpace"):
-            result["problemSpace"] = "Technical software and engineering tools."
+        # Missing fields stay empty: never invent a purpose, problem space, or domain
+        if not isinstance(result.get("domains"), list):
+            result["domains"] = []
+        result.setdefault("purpose", "")
+        result.setdefault("problemSpace", "")
 
         return result

@@ -172,10 +172,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
-    const res = await query('DELETE FROM repositories WHERE id = $1 RETURNING id', [id]);
-    if (res.rowCount === 0) {
+    const repoRes = await query('SELECT resource_id, url FROM repositories WHERE id = $1', [id]);
+    if (repoRes.rows.length === 0) {
       return NextResponse.json({ error: 'Repository not found' }, { status: 404 });
     }
+    const { resource_id: resourceId, url } = repoRes.rows[0];
+
+    // Delete the owning resource as well: the FK cascades resource -> repository only, so deleting just
+    // the repository left an empty READY resource in the library that blocked re-adding the URL.
+    await query(
+      'DELETE FROM resources WHERE id = $1 OR source_url = $2 OR canonical_url = $2',
+      [resourceId, url]
+    );
+    await query('DELETE FROM repositories WHERE id = $1', [id]);
     return new NextResponse(null, { status: 204 });
   } catch (error: any) {
     console.error('Error deleting repository:', error);

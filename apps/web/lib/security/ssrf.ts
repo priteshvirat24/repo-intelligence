@@ -162,3 +162,53 @@ export async function validateResourceUrlSecurity(rawUrl: string): Promise<SSRFV
     normalizedUrl: parsed.toString()
   };
 }
+
+export class BlockedRedirectError extends Error {}
+
+/**
+ * fetch() that follows redirects manually, re-running the SSRF check on every hop.
+ * The default redirect: 'follow' would let a public URL bounce to an internal address.
+ */
+export async function fetchWithValidatedRedirects(
+  url: string,
+  init: RequestInit = {},
+  maxRedirects = 4
+): Promise<Response> {
+  let currentUrl = url;
+  for (let hop = 0; ; hop++) {
+    const res = await fetch(currentUrl, { ...init, redirect: 'manual' });
+    const location = res.headers.get('location');
+    if (res.status < 300 || res.status >= 400 || !location) return res;
+    if (hop >= maxRedirects) {
+      throw new BlockedRedirectError(`Too many redirects (>${maxRedirects})`);
+    }
+    const next = new URL(location, currentUrl).toString();
+    const check = await validateResourceUrlSecurity(next);
+    if (!check.valid) {
+      throw new BlockedRedirectError(`Redirect destination is prohibited (${check.error})`);
+    }
+    currentUrl = next;
+  }
+}
+
+/**
+ * Reads a response body while enforcing a byte limit, so a missing or lying Content-Length
+ * cannot make the server buffer an unbounded download.
+ */
+export async function readBodyWithLimit(res: Response, maxBytes: number): Promise<Buffer | null> {
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}

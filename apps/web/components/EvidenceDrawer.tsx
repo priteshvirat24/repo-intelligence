@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { X, CheckCircle2, FileCode, Copy, Check, ShieldCheck, Youtube, FileText, Globe, GitBranch, ExternalLink } from 'lucide-react';
+import { X, CheckCircle2, FileCode, Copy, Check, ShieldCheck, Youtube, FileText, Globe, GitBranch, ExternalLink, AlertTriangle } from 'lucide-react';
 import { ResourceLocatorType, ResourceType } from '@repo/shared';
 
 export interface EvidenceItem {
@@ -89,7 +89,7 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ isOpen, evidence
                 {evidence.resourceTitle || evidence.repo || 'Source Evidence'}
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                {evidence.formattedCitation || evidence.filePath || 'Verified Source Excerpt'}
+                {evidence.formattedCitation || evidence.filePath || 'Source Excerpt'}
               </div>
             </div>
           </div>
@@ -103,12 +103,12 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ isOpen, evidence
               fontWeight: 600,
               padding: '3px 8px',
               borderRadius: 6,
-              background: 'rgba(16, 185, 129, 0.15)',
-              color: '#10b981',
-              border: '1px solid rgba(16, 185, 129, 0.3)'
+              background: evidence.verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+              color: evidence.verified ? '#10b981' : '#f59e0b',
+              border: evidence.verified ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
             }}>
-              <CheckCircle2 size={13} />
-              <span>Verified Fact</span>
+              {evidence.verified ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+              <span>{evidence.verified ? 'Verified Fact' : 'Inferred (not verified)'}</span>
             </span>
 
             <button

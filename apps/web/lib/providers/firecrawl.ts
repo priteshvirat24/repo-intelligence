@@ -47,6 +47,19 @@ export class FirecrawlProvider implements WebExtractionProvider {
           const pageData = data.data || {};
           await this.logUsage('scrape', durationMs, true);
 
+          // Firecrawl returns 200 even when the target page itself errored (404, 500, ...)
+          const pageStatus = pageData.metadata?.statusCode || 200;
+          if (pageStatus >= 400) {
+            return {
+              url,
+              title: pageData.metadata?.title || this.extractTitleFromUrl(url),
+              markdown: '',
+              statusCode: pageStatus,
+              success: false,
+              errorMessage: `HTTP ${pageStatus} from target page`
+            };
+          }
+
           return {
             url,
             canonicalUrl: pageData.metadata?.canonical || pageData.metadata?.sourceURL || url,
@@ -56,7 +69,7 @@ export class FirecrawlProvider implements WebExtractionProvider {
             author: pageData.metadata?.author,
             publishedTime: pageData.metadata?.publishedTime,
             links: pageData.links || [],
-            statusCode: pageData.metadata?.statusCode || 200,
+            statusCode: pageStatus,
             success: true
           };
         } else {
@@ -75,8 +88,9 @@ export class FirecrawlProvider implements WebExtractionProvider {
 
   async crawl(url: string, options: CrawlOptions = {}): Promise<ScrapedPage[]> {
     const limit = options.limit || 5;
-    // Scrape root page first
-    const rootPage = await this.scrape(url);
+    // Scrape root page first (requesting links: markdown-only Firecrawl responses carry none, so
+    // subpages would never be discovered when FIRECRAWL_API_KEY is set)
+    const rootPage = await this.scrape(url, { formats: ['markdown', 'links'] });
     if (!rootPage.success) return [rootPage];
 
     const results: ScrapedPage[] = [rootPage];

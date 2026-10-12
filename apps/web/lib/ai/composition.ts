@@ -70,7 +70,10 @@ export class OpenRepositoryCompositionEngine {
       const repoConcepts = (candidate.matchedConcepts || []).map(c => c.toLowerCase());
 
       for (const req of requirements.requirements) {
-        const reqWords = req.name.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const allWords = req.name.toLowerCase().split(/\s+/).filter(Boolean);
+        const longWords = allWords.filter(w => w.length > 3);
+        // Short names ("UI", "SQL DB", "Go API") have no word over 3 chars: match on the full name instead
+        const reqWords = longWords.length > 0 ? longWords : [req.name.toLowerCase().trim()].filter(Boolean);
 
         const capMatch = repoCapabilities.some(c =>
           reqWords.some(w => c.includes(w)) || (req.canonicalSlug && c.includes(req.canonicalSlug))

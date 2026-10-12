@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 from apps.worker.analyzer.evidence import EvidenceVerificationGate
 from apps.worker.analyzer.cartography import RepositoryCartographer
-from apps.worker.providers.llm import MockLLMProvider
+from tests.worker.fakes import FakeLLMProvider as MockLLMProvider
 
 def test_malicious_prompt_injection_isolation():
     """Verifies that malicious injection instructions are safely enclosed and not obeyed."""

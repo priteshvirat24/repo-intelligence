@@ -5,7 +5,7 @@ from apps.worker.analyzer.module_analyzer import ModuleAnalyzer
 from apps.worker.analyzer.synthesis import RepositorySynthesizer
 from apps.worker.analyzer.evidence import EvidenceVerificationGate
 from apps.worker.analyzer.capability import CapabilityEngine
-from apps.worker.providers.llm import MockLLMProvider
+from tests.worker.fakes import FakeLLMProvider as MockLLMProvider
 
 def test_satellite_open_world_analysis():
     repo_dir = Path("tests/fixtures/satellite_orbital_repo")

@@ -177,18 +177,27 @@ export class ChatOrchestrator {
             e.locator_json,
             e.is_verified,
             e.evidence_strength
-          FROM evidence e
+          FROM (
+            SELECT e.*, ROW_NUMBER() OVER (
+              PARTITION BY e.resource_id
+              ORDER BY
+                CASE e.is_verified WHEN true THEN 0 ELSE 1 END,
+                CASE e.evidence_strength
+                  WHEN 'DIRECT_IMPLEMENTATION' THEN 1
+                  WHEN 'DIRECT_INTERFACE' THEN 2
+                  WHEN 'DOCUMENTATION' THEN 3
+                  WHEN 'EXAMPLE' THEN 4
+                  ELSE 5
+                END
+            ) AS rank_in_resource
+            FROM evidence e
+            WHERE e.resource_id = ANY($1::uuid[])
+          ) e
           JOIN resources res ON e.resource_id = res.id
-          WHERE res.id = ANY($1::uuid[])
-          ORDER BY 
-            CASE e.is_verified WHEN true THEN 0 ELSE 1 END,
-            CASE e.evidence_strength
-              WHEN 'DIRECT_IMPLEMENTATION' THEN 1
-              WHEN 'DIRECT_INTERFACE' THEN 2
-              WHEN 'DOCUMENTATION' THEN 3
-              WHEN 'EXAMPLE' THEN 4
-              ELSE 5
-            END
+          -- Best few items per candidate, in candidate ranking order, so one lower-ranked resource
+          -- with many evidence rows cannot take every citation slot
+          WHERE e.rank_in_resource <= 3
+          ORDER BY array_position($1::uuid[], e.resource_id), e.rank_in_resource
           LIMIT 12;
         `, [resourceIds]);
         evidenceRows = res.rows;
@@ -207,7 +216,7 @@ export class ChatOrchestrator {
       if (resType === 'github_repository') {
         formattedCitation = `[GitHub:${row.resource_title}#${row.file_path}${row.start_line ? `:L${row.start_line}-L${row.end_line}` : ''}]`;
       } else if (resType === 'youtube_video') {
-        const timeStr = locJson.timestampLabel || (locJson.startSeconds ? `${Math.floor(locJson.startSeconds / 60)}:${Math.floor(locJson.startSeconds % 60)}` : '0:00');
+        const timeStr = locJson.timestampLabel || (locJson.startSeconds ? `${Math.floor(locJson.startSeconds / 60)}:${String(Math.floor(locJson.startSeconds % 60)).padStart(2, '0')}` : '0:00');
         formattedCitation = `[YouTube:${row.resource_title}@${timeStr}]`;
       } else if (resType === 'pdf' || resType === 'research_paper') {
         formattedCitation = `[PDF:${row.resource_title}#page=${locJson.pageNumber || 1}]`;

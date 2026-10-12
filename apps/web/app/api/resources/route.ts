@@ -113,7 +113,8 @@ export async function POST(req: NextRequest) {
 
     // SSRF & Security pre-check
     const { validateResourceUrlSecurity } = await import('@/lib/security/ssrf');
-    const ssrfCheck = await validateResourceUrlSecurity(rawUrl.trim());
+    const { ResourceTypeDetector } = await import('@/lib/adapters/detector');
+    const ssrfCheck = await validateResourceUrlSecurity(ResourceTypeDetector.normalizeUrl(rawUrl) || rawUrl.trim());
     if (!ssrfCheck.valid) {
       return NextResponse.json({
         error: ssrfCheck.error || 'Prohibited destination URL',
@@ -123,6 +124,15 @@ export async function POST(req: NextRequest) {
 
     // Trigger universal ingestion with forceReindex option
     const result = await UniversalIngestionService.ingestResource(rawUrl.trim(), { forceReindex });
+
+    // Rejected before any resource was created (unsupported, blocked, or failed validation)
+    if (!result.resourceId && (result.status === 'FAILED' || result.status === 'BLOCKED')) {
+      return NextResponse.json({
+        error: result.errorMessage || 'The resource could not be validated or queued.',
+        status: result.status,
+        resourceType: result.resourceType
+      }, { status: result.status === 'BLOCKED' ? 403 : 400 });
+    }
 
     return NextResponse.json({
       resourceId: result.resourceId,
@@ -134,7 +144,7 @@ export async function POST(req: NextRequest) {
       alreadyProcessing: result.alreadyProcessing,
       indexedAt: result.indexedAt,
       errorMessage: result.errorMessage
-    }, { status: result.status === 'PENDING' ? 202 : 200 });
+    }, { status: ['PENDING', 'FETCHING'].includes(result.status) ? 202 : 200 });
 
   } catch (error: any) {
     console.error('Error adding resource:', error);

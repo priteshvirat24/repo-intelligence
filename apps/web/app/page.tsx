@@ -205,6 +205,14 @@ function StudioChatContent() {
                     : msg
                 )
               );
+            } else if (event === 'error') {
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMsgId
+                    ? { ...msg, content: `${msg.content}${msg.content ? '\n\n' : ''}Error: ${data.error}` }
+                    : msg
+                )
+              );
             }
           }
         }

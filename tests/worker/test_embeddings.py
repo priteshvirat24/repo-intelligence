@@ -1,5 +1,5 @@
 import pytest
-from apps.worker.providers.embeddings import MockEmbeddingProvider
+from tests.worker.fakes import FakeEmbeddingProvider as MockEmbeddingProvider
 from apps.worker.analyzer.chunker import SecretSanitizer
 
 def test_mock_embedding_dimensions():

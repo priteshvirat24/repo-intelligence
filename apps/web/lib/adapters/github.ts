@@ -39,16 +39,21 @@ export class GitHubResourceAdapter implements ResourceAdapter {
     try {
       meta = await ghClient.fetchMetadata(owner, repo);
     } catch (err: any) {
-      meta = {
-        owner,
-        name: repo,
-        description: null,
-        defaultBranch: 'main',
-        stars: 0,
-        license: null,
-        primaryLanguage: null,
-        sizeKb: 0,
-        commitSha: null
+      // No placeholder metadata (stars 0, branch "main", size 0): without real metadata we cannot
+      // describe the repository or enforce the size limit, so nothing is queued.
+      const message: string = err?.message || '';
+      const definitive = /^(REPOSITORY_NOT_FOUND|PRIVATE_REPOSITORY|REPOSITORY_TOO_LARGE|ACCESS_FORBIDDEN)/.test(message);
+      return {
+        success: false,
+        status: 'FAILED',
+        title: `${owner}/${repo}`,
+        content: '',
+        segments: [],
+        metadata: {},
+        contentHash: '',
+        errorMessage: definitive
+          ? message
+          : `GITHUB_UNAVAILABLE: Could not fetch repository metadata from GitHub (${message || 'network error'}). Please retry shortly.`
       };
     }
 
@@ -102,8 +107,40 @@ export class GitHubResourceAdapter implements ResourceAdapter {
 
     const resourceId = resourceRes.rows[0].id;
 
-    // Insert or update repositories table
-    const repoRes = await query(`
+    // Insert or update repositories table. GitHub owner/repo are case-insensitive and both (owner, name)
+    // and url are UNIQUE, so find an existing row case-insensitively first; an ON CONFLICT on just one of
+    // them fails with a unique violation on the other when the casing differs between submissions.
+    const existingRepo = await query(`
+      SELECT id FROM repositories
+      WHERE lower(url) = lower($1) OR (lower(owner) = lower($2) AND lower(name) = lower($3))
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [canonicalUrl, meta.owner, meta.name]);
+
+    const repoRes = existingRepo.rows.length > 0 ? await query(`
+      UPDATE repositories SET
+        resource_id = $1,
+        description = COALESCE($2, description),
+        default_branch = $3,
+        stars = $4,
+        license = COALESCE($5, license),
+        primary_language = COALESCE($6, primary_language),
+        latest_commit_hash = COALESCE($7, latest_commit_hash),
+        status = 'PENDING',
+        error_message = NULL,
+        updated_at = NOW()
+      WHERE id = $8
+      RETURNING id;
+    `, [
+      resourceId,
+      meta.description,
+      meta.defaultBranch,
+      meta.stars,
+      meta.license,
+      meta.primaryLanguage,
+      meta.commitSha,
+      existingRepo.rows[0].id
+    ]) : await query(`
       INSERT INTO repositories (
         resource_id, owner, name, url, description, default_branch,
         stars, license, primary_language, latest_commit_hash, status, error_message, updated_at
