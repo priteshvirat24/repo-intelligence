@@ -35,7 +35,8 @@ export async function GET(req: NextRequest) {
         r.indexed_at as "indexedAt",
         r.created_at as "createdAt",
         r.updated_at as "updatedAt",
-        COUNT(DISTINCT ko.id)::int as "capabilitiesCount"
+        COUNT(DISTINCT ko.id)::int as "capabilitiesCount",
+        (SELECT rp.id FROM repositories rp WHERE rp.resource_id = r.id ORDER BY rp.updated_at DESC LIMIT 1) as "repositoryId"
       FROM resources r
       LEFT JOIN knowledge_objects ko ON r.id = ko.resource_id AND ko.object_type = 'capability'
     `;

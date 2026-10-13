@@ -43,7 +43,7 @@ export class GitHubResourceAdapter implements ResourceAdapter {
       // No placeholder metadata (stars 0, branch "main", size 0): without real metadata we cannot
       // describe the repository or enforce the size limit, so nothing is queued.
       const message: string = err?.message || '';
-      const definitive = /^(REPOSITORY_NOT_FOUND|PRIVATE_REPOSITORY|REPOSITORY_TOO_LARGE|ACCESS_FORBIDDEN)/.test(message);
+      const definitive = /^(REPOSITORY_NOT_FOUND|PRIVATE_REPOSITORY|REPOSITORY_TOO_LARGE|REPOSITORY_EMPTY|ACCESS_FORBIDDEN)/.test(message);
       return {
         success: false,
         status: 'FAILED',

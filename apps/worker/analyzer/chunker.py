@@ -105,7 +105,9 @@ class SemanticChunker:
                 chunk_index=chunk_idx,
                 start_line=current[0][0],
                 end_line=current[-1][0],
-                metadata={"filePath": file_path, "docType": doc_type}
+                # Line range is persisted so answers can cite file:line for retrieved excerpts
+                metadata={"filePath": file_path, "docType": doc_type,
+                          "startLine": current[0][0], "endLine": current[-1][0]}
             ))
             chunk_idx += 1
 

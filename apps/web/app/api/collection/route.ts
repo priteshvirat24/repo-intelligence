@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
         r.stars, r.domain_tags as "domainTags", r.status,
         (SELECT COUNT(*)::int FROM knowledge_objects ko WHERE ko.repository_id = r.id AND ko.object_type = 'capability') as "capabilitiesCount"
       FROM repositories r
-      WHERE r.status = 'READY'
+      WHERE EXISTS (SELECT 1 FROM documents d WHERE d.repository_id = r.id)
       ORDER BY r.stars DESC;
     `);
 

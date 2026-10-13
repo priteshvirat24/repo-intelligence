@@ -21,7 +21,8 @@ export async function GET(req: NextRequest) {
         ) as repositories
       FROM knowledge_objects ko
       JOIN repositories r ON ko.repository_id = r.id
-      WHERE ko.object_type = 'capability' AND r.status = 'READY'
+      WHERE ko.object_type = 'capability'
+        AND EXISTS (SELECT 1 FROM documents d WHERE d.repository_id = r.id)  -- has a completed index
       -- Group by capability name only: descriptions/categories are generated per repository, so
       -- grouping on them split one capability into many cards that each counted 1 repository
       GROUP BY lower(ko.name)

@@ -11,6 +11,8 @@ function toScore(value: unknown, fallback: number): number {
 }
 
 export interface RetrievedChunk {
+  startLine?: number;
+  endLine?: number;
   chunkId: string;
   repositoryId: string;
   resourceId: string;
@@ -150,7 +152,7 @@ export class MultiLevelHybridRetrievalEngine {
           FROM knowledge_objects ko
           JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
-          WHERE res.status = 'READY'
+          WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
               (ko.embedding IS NOT NULL AND 1.0 - (ko.embedding <=> $1::vector) > 0.40)
               OR ko.tsv_content @@ plainto_tsquery('english', $2)
@@ -189,7 +191,7 @@ export class MultiLevelHybridRetrievalEngine {
           FROM knowledge_objects ko
           JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
-          WHERE res.status = 'READY'
+          WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
               ko.tsv_content @@ plainto_tsquery('english', $1)
               OR ko.name ILIKE ANY($2::text[])
@@ -221,13 +223,14 @@ export class MultiLevelHybridRetrievalEngine {
             COALESCE(r.name, res.title) as repo_name,
             d.file_path,
             c.content,
+            c.metadata_json as chunk_meta,
             1.0 - (c.embedding <=> $1::vector) as vector_sim,
             ts_rank_cd(c.tsv_content, plainto_tsquery('english', $2)) as text_rank
           FROM chunks c
           JOIN resources res ON (c.resource_id = res.id OR c.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
           JOIN documents d ON c.document_id = d.id
-          WHERE res.status = 'READY'
+          WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
               (c.embedding IS NOT NULL AND 1.0 - (c.embedding <=> $1::vector) > 0.40)
               OR c.tsv_content @@ plainto_tsquery('english', $2)
@@ -248,13 +251,14 @@ export class MultiLevelHybridRetrievalEngine {
             COALESCE(r.name, res.title) as repo_name,
             d.file_path,
             c.content,
+            c.metadata_json as chunk_meta,
             NULL::float as vector_sim,  -- keyword-only match: no vector similarity was computed
             ts_rank_cd(c.tsv_content, plainto_tsquery('english', $1)) as text_rank
           FROM chunks c
           JOIN resources res ON (c.resource_id = res.id OR c.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
           JOIN documents d ON c.document_id = d.id
-          WHERE res.status = 'READY'
+          WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
           ORDER BY text_rank DESC
           LIMIT 20;
         `, [ftsSearchText]);
@@ -282,6 +286,8 @@ export class MultiLevelHybridRetrievalEngine {
           repoName: row.repo_name,
           sourceUrl: row.source_url,
           content: row.content,
+          startLine: Number(row.chunk_meta?.startLine) || undefined,
+          endLine: Number(row.chunk_meta?.endLine) || undefined,
           filePath: row.file_path,
           score: Math.max(toScore(row.vector_sim, 0), toScore(row.text_rank, 0))
         });

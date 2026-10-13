@@ -1,7 +1,13 @@
 
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface LLMProvider {
-  complete(prompt: string, system?: string): Promise<string>;
-  stream(prompt: string, system?: string): AsyncIterable<string>;
+  complete(prompt: string, system?: string, history?: ChatTurn[]): Promise<string>;
+  /** `history` is sent as real prior conversation turns, before the current prompt */
+  stream(prompt: string, system?: string, history?: ChatTurn[]): AsyncIterable<string>;
 }
 
 export interface EmbeddingProvider {
@@ -171,9 +177,10 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 export class MistralLLMProvider implements LLMProvider {
   constructor(private apiKey: string, private model: string = 'ministral-8b-latest') {}
 
-  async complete(prompt: string, system?: string): Promise<string> {
+  async complete(prompt: string, system?: string, history: ChatTurn[] = []): Promise<string> {
     const messages: any[] = [];
     if (system) messages.push({ role: 'system', content: system });
+    for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
     const isJson = (system && (system.includes('JSON') || system.includes('json'))) || prompt.includes('Return JSON');
@@ -206,9 +213,10 @@ export class MistralLLMProvider implements LLMProvider {
     return data.choices[0].message.content;
   }
 
-  async *stream(prompt: string, system?: string): AsyncIterable<string> {
+  async *stream(prompt: string, system?: string, history: ChatTurn[] = []): AsyncIterable<string> {
     const messages: any[] = [];
     if (system) messages.push({ role: 'system', content: system });
+    for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
     let emittedAny = false;
@@ -234,7 +242,7 @@ export class MistralLLMProvider implements LLMProvider {
 
       if (!res.ok || !res.body) {
         console.warn(`[MistralLLMProvider.stream] Streaming HTTP ${res.status}; falling back to non-streaming complete.`);
-        const completeText = await this.complete(prompt, system);
+        const completeText = await this.complete(prompt, system, history);
         const words = completeText.split(' ');
         for (const word of words) {
           yield word + ' ';
@@ -273,7 +281,7 @@ export class MistralLLMProvider implements LLMProvider {
       // Once text has reached the client, replaying a full completion would duplicate the answer
       if (emittedAny) throw err;
       console.warn('[MistralLLMProvider.stream] Stream error, using complete:', err.message);
-      const completeText = await this.complete(prompt, system);
+      const completeText = await this.complete(prompt, system, history);
       const words = completeText.split(' ');
       for (const word of words) {
         yield word + ' ';
@@ -285,9 +293,10 @@ export class MistralLLMProvider implements LLMProvider {
 export class OpenAILLMProvider implements LLMProvider {
   constructor(private apiKey: string, private model: string = 'gpt-4o-mini') {}
 
-  async complete(prompt: string, system?: string): Promise<string> {
+  async complete(prompt: string, system?: string, history: ChatTurn[] = []): Promise<string> {
     const messages: any[] = [];
     if (system) messages.push({ role: 'system', content: system });
+    for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -311,9 +320,10 @@ export class OpenAILLMProvider implements LLMProvider {
     return data.choices[0].message.content;
   }
 
-  async *stream(prompt: string, system?: string): AsyncIterable<string> {
+  async *stream(prompt: string, system?: string, history: ChatTurn[] = []): AsyncIterable<string> {
     const messages: any[] = [];
     if (system) messages.push({ role: 'system', content: system });
+    for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -364,7 +374,12 @@ export class OpenAILLMProvider implements LLMProvider {
 export class ProviderConfigError extends Error {}
 
 /** Returns the configured real LLM provider. There is deliberately no mock fallback. */
-export function getLLMProvider(): LLMProvider {
+/**
+ * `purpose: 'answer'` selects the model that writes chat answers. Answers need instruction-following
+ * (citing [n] sources, not inventing files), which small models do poorly, so they default to a larger
+ * model when CHAT_LLM_MODEL is set, while quick structured tasks (question decomposition) keep LLM_MODEL.
+ */
+export function getLLMProvider(purpose: 'default' | 'answer' = 'default'): LLMProvider {
   const provider = (process.env.LLM_PROVIDER || 'mistral').trim().toLowerCase();
   const apiKey = (process.env.LLM_API_KEY || '').trim();
 
@@ -372,10 +387,19 @@ export function getLLMProvider(): LLMProvider {
     throw new ProviderConfigError('LLM_API_KEY is not set; Open Eye will not generate answers or analysis without a real LLM provider.');
   }
   if (provider === 'mistral') {
-    return new MistralLLMProvider(apiKey, process.env.LLM_MODEL || 'ministral-8b-latest');
+    // Larger models write better-cited answers, but Mistral's free tier only serves the ministral
+    // models (mistral-small/medium are rate-capped, large is not included), so answers default to
+    // LLM_MODEL; set CHAT_LLM_MODEL (e.g. mistral-small-latest) on a paid tier.
+    const model = purpose === 'answer'
+      ? process.env.CHAT_LLM_MODEL || process.env.LLM_MODEL || 'ministral-8b-latest'
+      : process.env.LLM_MODEL || 'ministral-8b-latest';
+    return new MistralLLMProvider(apiKey, model);
   }
   if (provider === 'openai') {
-    return new OpenAILLMProvider(apiKey, process.env.LLM_MODEL || 'gpt-4o-mini');
+    const model = purpose === 'answer'
+      ? process.env.CHAT_LLM_MODEL || process.env.LLM_MODEL || 'gpt-4o-mini'
+      : process.env.LLM_MODEL || 'gpt-4o-mini';
+    return new OpenAILLMProvider(apiKey, model);
   }
   throw new ProviderConfigError(`Unsupported LLM_PROVIDER "${provider}"; expected "mistral" or "openai".`);
 }

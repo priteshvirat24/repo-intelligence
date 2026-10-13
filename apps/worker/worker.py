@@ -1,7 +1,10 @@
 import os
+import re
 import sys
 import time
 import signal
+import socket
+import threading
 import hashlib
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -46,6 +49,8 @@ def is_transient_error(error: Exception) -> bool:
     message = str(error)
     if message.startswith("REPOSITORY_TOO_LARGE") or "Repository not found" in message or "not found in database" in message:
         return False
+    if re.search(r"returned error: (401|403|404|410|451)\b", message):
+        return False  # deleted, private, or DMCA/disabled: retrying cannot help
     return any(marker in message for marker in _TRANSIENT_MARKERS)
 
 
@@ -55,31 +60,48 @@ CODE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", "
 
 def select_chunks(chunks: List[SemanticChunk], budget: int) -> List[SemanticChunk]:
     """
-    Picks up to `budget` chunks spread across files instead of the first N in walk order (which
-    left later directories unsearchable): READMEs/docs first, then round-robin over the rest.
+    Picks up to `budget` chunks spread across the repository instead of the first N in walk order.
+    Docs (README first) may take at most a third of the budget; the rest is filled round-robin across
+    code files, sampled evenly over the sorted file list when there are more files than slots.
     """
     if len(chunks) <= budget:
         return list(chunks)
     by_file: Dict[str, List[SemanticChunk]] = {}
     for chunk in chunks:
         by_file.setdefault(chunk.file_path, []).append(chunk)
-    priority = {"readme": 0, "doc": 1, "code": 2}
-    files = sorted(by_file, key=lambda f: (priority.get(by_file[f][0].doc_type, 3), f))
-    selected: List[SemanticChunk] = []
-    depth = 0
-    while len(selected) < budget:
-        added = False
-        for file_path in files:
-            file_chunks = by_file[file_path]
-            if depth < len(file_chunks):
-                selected.append(file_chunks[depth])
-                added = True
-                if len(selected) >= budget:
-                    break
-        if not added:
-            break
-        depth += 1
-    return selected
+
+    def round_robin(files: List[str], limit: int) -> List[SemanticChunk]:
+        if limit <= 0 or not files:
+            return []
+        if len(files) > limit:
+            step = len(files) / limit  # evenly spaced sample across the whole list
+            files = [files[int(k * step)] for k in range(limit)]
+        picked: List[SemanticChunk] = []
+        depth = 0
+        while len(picked) < limit:
+            added = False
+            for file_path in files:
+                if depth < len(by_file[file_path]):
+                    picked.append(by_file[file_path][depth])
+                    added = True
+                    if len(picked) >= limit:
+                        break
+            if not added:
+                break
+            depth += 1
+        return picked
+
+    def is_doc(file_path: str) -> bool:
+        return by_file[file_path][0].doc_type in ("readme", "doc")
+
+    doc_files = sorted((f for f in by_file if is_doc(f)), key=lambda f: (by_file[f][0].doc_type != "readme", f))
+    other_files = sorted(f for f in by_file if not is_doc(f))
+    docs = round_robin(doc_files, budget // 3 if other_files else budget)
+    rest = round_robin(other_files, budget - len(docs))
+    if len(docs) + len(rest) < budget and len(docs) < sum(len(by_file[f]) for f in doc_files):
+        # Few code chunks: give the unused share back to docs
+        docs = round_robin(doc_files, budget - len(rest))
+    return docs + rest
 
 
 def _named_items(value: Any) -> List[Dict[str, Any]]:
@@ -130,10 +152,27 @@ class IngestionWorker:
                 print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
+    def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
+        """Refreshes the job lock every minute while a job runs, so long LLM passes are not mistaken
+        for a dead worker (and the job is not reclaimed and run twice)."""
+        stop = threading.Event()
+
+        def beat():
+            while not stop.wait(60):
+                try:
+                    if not self.db.refresh_lock(job_id, self.worker_id):
+                        return  # cancelled or superseded; the main flow notices at its next ownership check
+                except Exception as beat_error:
+                    print(f"[{self.worker_id}] Lock heartbeat failed for {job_id}: {beat_error}", file=sys.stderr)
+
+        threading.Thread(target=beat, name=f"lock-heartbeat-{job_id}", daemon=True).start()
+        return stop
+
     def process_job(self, job: Dict[str, Any]):
         job_id = job["id"]
         repo_id = job["repository_id"]
         self.active_job = job
+        heartbeat = self._start_lock_heartbeat(job_id)
 
         stage_metrics: Dict[str, Any] = {
             "durations": {},
@@ -345,7 +384,7 @@ class IngestionWorker:
                 if not isinstance(cap, dict) or not cap.get("name"):
                     continue
                 cap_name = str(cap["name"])
-                slug = CapabilityEngine.map_slug(cap.get("slug", cap_name))
+                slug = CapabilityEngine.map_slug(cap.get("slug") or cap_name)
                 category = cap.get("category") or "uncategorized"
                 notes = cap.get("description", "")
                 try:
@@ -521,6 +560,8 @@ class IngestionWorker:
             # A. Embed Knowledge Objects
             ko_texts = [f"{ko['name']}: {ko['description']}" for ko in knowledge_objects]
             ko_embeddings = self.embedding_provider.embed_texts(ko_texts) if ko_texts else []
+            if len(ko_embeddings) != len(ko_texts):
+                raise RuntimeError(f"EMBEDDING_COUNT_MISMATCH: {len(ko_embeddings)} vectors for {len(ko_texts)} knowledge objects")
             for idx, ko in enumerate(knowledge_objects):
                 ko["embedding"] = ko_embeddings[idx] if idx < len(ko_embeddings) else None
 
@@ -539,6 +580,8 @@ class IngestionWorker:
 
             chunk_texts = [c["content"] for c in chunk_dicts]
             chunk_embeddings = self.embedding_provider.embed_texts(chunk_texts) if chunk_texts else []
+            if len(chunk_embeddings) != len(chunk_texts):
+                raise RuntimeError(f"EMBEDDING_COUNT_MISMATCH: {len(chunk_embeddings)} vectors for {len(chunk_texts)} chunks")
 
             stage_metrics["counts"]["chunks_created"] = len(chunk_dicts)
             stage_metrics["counts"]["knowledge_objects_created"] = len(knowledge_objects)
@@ -602,6 +645,10 @@ class IngestionWorker:
         except JobLostError as e:
             # Cancelled by the user, superseded by a newer ingestion, or reclaimed after a stall
             print(f"[{self.worker_id}] Abandoning job {job_id}: {e}", file=sys.stderr)
+            try:
+                self.db.abandon_lost_job(job_id, self.worker_id, f"Abandoned: {e}")
+            except Exception as close_error:
+                print(f"[{self.worker_id}] Could not close abandoned job {job_id}: {close_error}", file=sys.stderr)
         except Exception as e:
             err_msg = str(e)
             attempts = int(job.get("attempts") or 1)
@@ -617,6 +664,7 @@ class IngestionWorker:
                 print(f"[{self.worker_id}] Ingestion failed for job {job_id}: {err_msg}", file=sys.stderr)
                 self.db.mark_job_failed(job_id, repo_id, err_msg, self.worker_id)
         finally:
+            heartbeat.set()
             if scratch_dir:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
@@ -653,7 +701,8 @@ class IngestionWorker:
                 time.sleep(3)
 
 if __name__ == "__main__":
-    worker = IngestionWorker()
+    # Unique per replica: job ownership checks compare locked_by, so replicas must not share an id
+    worker = IngestionWorker(worker_id=os.getenv("WORKER_ID") or os.getenv("RAILWAY_REPLICA_ID") or f"worker-{socket.gethostname()}")
     if "--batch" in sys.argv:
         worker.run_batch()
     else:

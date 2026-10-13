@@ -40,9 +40,11 @@ export class GitHubClient {
       throw new Error(`REPOSITORY_NOT_FOUND: Repository ${owner}/${repo} does not exist or is private.`);
     }
 
-    if (res.status === 403) {
+    if (res.status === 403 || res.status === 429) {
       const rateLimitRemaining = res.headers.get('x-ratelimit-remaining');
-      if (rateLimitRemaining === '0') {
+      const body = await res.clone().text().catch(() => '');
+      // Primary limit (remaining 0) and secondary/abuse limits (403/429 mentioning "rate limit") are temporary
+      if (rateLimitRemaining === '0' || res.status === 429 || /rate limit/i.test(body)) {
         throw new Error('GITHUB_RATE_LIMITED: GitHub API rate limit reached. Set GITHUB_TOKEN in .env for higher limits.');
       }
       throw new Error(`ACCESS_FORBIDDEN: Cannot access repository ${owner}/${repo}.`);
@@ -101,10 +103,14 @@ export class GitHubClient {
   /** Total size of all files at the tip of `branch`, from a single recursive tree listing. */
   private async fetchSnapshotSizeBytes(owner: string, repo: string, branch: string): Promise<number> {
     const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch.split('/').map(encodeURIComponent).join('/')}?recursive=1`,
       { headers: this.getHeaders() }
     );
-    if (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0') {
+    if (res.status === 409) {
+      // GitHub answers 409 "Git Repository is empty" for repositories without commits
+      throw new Error('REPOSITORY_EMPTY: This repository has no files to index yet.');
+    }
+    if ((res.status === 403 || res.status === 429) && (res.headers.get('x-ratelimit-remaining') === '0' || res.status === 429)) {
       throw new Error('GITHUB_RATE_LIMITED: GitHub API rate limit reached. Set GITHUB_TOKEN in .env for higher limits.');
     }
     if (!res.ok) {

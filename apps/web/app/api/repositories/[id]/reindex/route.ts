@@ -39,7 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       currentSha = meta.commitSha;
     } catch (err: any) {
       const message: string = err?.message || '';
-      const definitive = message.match(/^(REPOSITORY_NOT_FOUND|PRIVATE_REPOSITORY|REPOSITORY_TOO_LARGE|ACCESS_FORBIDDEN)/);
+      const definitive = message.match(/^(REPOSITORY_NOT_FOUND|PRIVATE_REPOSITORY|REPOSITORY_TOO_LARGE|REPOSITORY_EMPTY|ACCESS_FORBIDDEN)/);
       if (definitive) {
         const status = definitive[1] === 'REPOSITORY_TOO_LARGE' ? 413 : definitive[1] === 'REPOSITORY_NOT_FOUND' ? 404 : 403;
         return NextResponse.json({ error: message, code: definitive[1] }, { status });

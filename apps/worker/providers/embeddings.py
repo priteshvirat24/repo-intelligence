@@ -51,8 +51,10 @@ class MistralEmbeddingProvider(BaseEmbeddingProvider):
                             continue
                         resp.raise_for_status()
                         data = resp.json()
-                        for item in data.get("data", []):
-                            embeddings.append(item["embedding"])
+                        items = sorted(data.get("data", []), key=lambda item: item.get("index", 0))
+                        if len(items) != len(batch):
+                            raise RuntimeError(f"EMBEDDING_COUNT_MISMATCH: expected {len(batch)} vectors, got {len(items)}")
+                        embeddings.extend(item["embedding"] for item in items)
                         batch_success = True
                         break
                     except httpx.HTTPStatusError as e:

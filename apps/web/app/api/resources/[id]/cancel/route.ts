@@ -40,8 +40,8 @@ export async function POST(
     // finished between the SELECT above and this UPDATE)
     const cancelRes = await query(`
       UPDATE resources
-      SET status = 'CANCELLED',
-          error_message = 'Ingestion cancelled by user.',
+      SET status = CASE WHEN indexed_at IS NOT NULL THEN 'READY' ELSE 'CANCELLED' END,
+          error_message = CASE WHEN indexed_at IS NOT NULL THEN 'Re-index cancelled; showing the previous index.' ELSE 'Ingestion cancelled by user.' END,
           updated_at = NOW()
       WHERE id = $1 AND status NOT IN ('READY', 'CANCELLED', 'BLOCKED')
       RETURNING id
@@ -70,7 +70,7 @@ export async function POST(
     // 4. If linked to repositories table, update that as well
     await query(`
       UPDATE repositories
-      SET status = 'FAILED',
+      SET status = CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.repository_id = repositories.id) THEN 'READY' ELSE 'FAILED' END,
           error_message = 'Ingestion cancelled by user.',
           updated_at = NOW()
       WHERE resource_id = $1 AND status IN ('PENDING', 'CLONING', 'ANALYZING', 'INDEXING')

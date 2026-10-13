@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ error: 'Repository not found' }, { status: 404 });
+    }
 
     // 1. Fetch Repository Record
     const repoRes = await query(`
@@ -37,6 +42,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
               'endLine', e.end_line,
               'symbolName', e.symbol_name,
               'quoteSnippet', e.quote_snippet,
+              'quote', e.quote_snippet,
               'evidenceType', e.evidence_type,
               'verified', e.is_verified
             )
@@ -80,6 +86,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         c.category,
         rc.confidence,
         rc.implementation_notes as "implementationNotes",
+        rc.implementation_notes as description,
         COALESCE(
           json_agg(
             json_build_object(
@@ -89,6 +96,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
               'endLine', e.end_line,
               'symbolName', e.symbol_name,
               'quoteSnippet', e.quote_snippet,
+              'quote', e.quote_snippet,
               'evidenceType', e.evidence_type,
               'verified', e.is_verified
             )
@@ -142,6 +150,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       domainTags: repo.domainTags || [],
       openKnowledge: repo.openKnowledge || {},
       errorMessage: repo.errorMessage,
+      analysisCompleteness: repo.analysisCompleteness || null,
       capabilities: capsRes.rows,
       features,
       concepts,
@@ -172,6 +181,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const { id } = params;
+    if (!UUID_RE.test(id)) {
+      return NextResponse.json({ error: 'Repository not found' }, { status: 404 });
+    }
     const repoRes = await query('SELECT resource_id, url FROM repositories WHERE id = $1', [id]);
     if (repoRes.rows.length === 0) {
       return NextResponse.json({ error: 'Repository not found' }, { status: 404 });

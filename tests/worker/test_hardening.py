@@ -69,8 +69,27 @@ def test_filename_is_never_treated_as_symbol(repo):
 
 def test_hyphenated_name_does_not_match_generic_words(repo):
     assert Gate._symbol_candidates("font-hijacker") == []
-    assert Gate._symbol_candidates("NetworkRequest, NetworkObserver") == ["NetworkRequest", "NetworkObserver"]
-    assert Gate._symbol_candidates("FontMasker::apply") == ["apply"]
+    assert Gate._symbol_candidates("NetworkRequest, NetworkObserver") == [("NetworkRequest", None), ("NetworkObserver", None)]
+    assert Gate._symbol_candidates("FontMasker::apply") == [("apply", "FontMasker")]
+
+
+def test_qualified_symbol_must_match_its_class(tmp_path: Path):
+    (tmp_path / "svc.py").write_text("class UserService:\n    def delete(self):\n        pass\n")
+    (tmp_path / "util.py").write_text("def delete():\n    pass\n")
+    Gate._definition_index_cache = {}
+    ok = Gate.verify_evidence(tmp_path, {"file_path": "x.py", "quote": "deletes users", "symbol_name": "UserService.delete"})
+    assert ok["verified"] and ok["file_path"] == "svc.py" and ok["start_line"] == 2
+    wrong = Gate.verify_evidence(tmp_path, {"file_path": "x.py", "quote": "deletes orders", "symbol_name": "OrderService.delete"})
+    assert wrong["verified"] is False
+    # Bare name defined in two files: ambiguous, not guessed
+    ambiguous = Gate.verify_evidence(tmp_path, {"file_path": "x.py", "quote": "deletes", "symbol_name": "delete"})
+    assert ambiguous["verified"] is False
+
+
+def test_patch_definitions_stop_at_line_end(tmp_path: Path):
+    (tmp_path / "f.patch").write_text("+void Alpha() {\n+}\n+\n+void Beta() {\n+  run();\n+}\n")
+    names = [q for q, _ in Gate._file_definitions("f.patch", (tmp_path / "f.patch").read_text())]
+    assert names == ["Alpha", "Beta"]
 
 
 def test_cpp_java_and_patch_definitions_resolve(repo):

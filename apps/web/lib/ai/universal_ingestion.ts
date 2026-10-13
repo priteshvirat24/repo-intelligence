@@ -84,7 +84,11 @@ export class UniversalIngestionService {
         };
       }
 
-      if (['FETCHING', 'ANALYZING', 'INDEXING', 'PENDING', 'CLONING'].includes(existing.status)) {
+      // In progress, unless it stopped making progress (e.g. the web process restarted mid-run and the
+      // in-process job died): then fall through and start a fresh ingestion instead of blocking forever
+      const STALE_MS = 20 * 60 * 1000;
+      const stale = Date.now() - new Date(existing.updatedAt).getTime() > STALE_MS;
+      if (['FETCHING', 'ANALYZING', 'INDEXING', 'PENDING', 'CLONING'].includes(existing.status) && !stale) {
         return {
           resourceId: existing.id,
           resourceType: descriptor.resourceType,
@@ -111,8 +115,16 @@ export class UniversalIngestionService {
       };
     }
 
-    // 5. Initial Resource & Job Record creation for Universal Resources
-    const insertRes = await query(`
+    // 5. Initial Resource & Job Record creation for Universal Resources. Reuse the existing row when
+    // the same canonical URL was submitted before in another form (tracking params, trailing slash),
+    // instead of creating a duplicate resource.
+    const existingId: string | undefined = existingRes.rows[0]?.id;
+    const insertRes = existingId ? await query(`
+      UPDATE resources
+      SET canonical_url = $2, status = 'FETCHING', error_message = NULL, updated_at = NOW()
+      WHERE id = $1
+      RETURNING id;
+    `, [existingId, descriptor.canonicalUrl]) : await query(`
       INSERT INTO resources (
         resource_type,
         resource_role,

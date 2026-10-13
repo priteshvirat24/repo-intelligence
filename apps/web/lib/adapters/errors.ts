@@ -216,9 +216,30 @@ function mapCodedError(message: string): NormalizedResourceError | null {
         action: 'Wait a few minutes and retry. Setting GITHUB_TOKEN raises the limit.',
         isRetryable: true
       };
+    case 'REPOSITORY_EMPTY':
+      return {
+        status: 'FAILED', code: 'CONTENT_EMPTY', title: 'Repository Is Empty',
+        reason: detail || 'The repository has no commits yet.',
+        action: 'Add it again once it has code.',
+        isRetryable: false
+      };
+    case 'CLONE_FAILED':
+      if (/repository not found|not found|does not exist|access denied|returned error: (403|404|451)/i.test(detail)) {
+        return {
+          status: 'FAILED', code: 'RESOURCE_NOT_FOUND', title: 'Repository Not Available',
+          reason: 'GitHub refused the clone: the repository was deleted, made private, or disabled.',
+          action: 'Check that the repository still exists and is public.',
+          isRetryable: false
+        };
+      }
+      return {
+        status: 'FAILED', code: 'NETWORK_ERROR', title: 'Could Not Reach GitHub',
+        reason: detail || 'Cloning the repository failed.',
+        action: 'Retry in a few minutes.',
+        isRetryable: true
+      };
     case 'GITHUB_UNAVAILABLE':
     case 'GITHUB_API_ERROR':
-    case 'CLONE_FAILED':
       return {
         status: 'FAILED', code: 'NETWORK_ERROR', title: 'Could Not Reach GitHub',
         reason: detail || 'Fetching the repository from GitHub failed.',

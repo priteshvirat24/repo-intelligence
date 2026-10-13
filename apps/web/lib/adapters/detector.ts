@@ -170,8 +170,21 @@ export class ResourceTypeDetector {
     const pathname = parsed.pathname.toLowerCase();
     const pathSegments = parsed.pathname.split('/').filter(Boolean);
 
-    // 1. GitHub / GitLab
-    if (domain === 'github.com' || domain === 'gitlab.com') {
+    if (domain === 'gitlab.com') {
+      return {
+        resourceType: 'github_repository',
+        sourceUrl: rawUrl,
+        canonicalUrl,
+        domain,
+        estimatedRole: 'software_component',
+        isValid: false,
+        isSupported: false,
+        unsupportedReason: 'GitLab repositories are not supported yet. Open Eye currently indexes public GitHub repositories.'
+      };
+    }
+
+    // 1. GitHub
+    if (domain === 'github.com') {
       if (pathSegments.length === 0) {
         return {
           resourceType: 'github_repository',

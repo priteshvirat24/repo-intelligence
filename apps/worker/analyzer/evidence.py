@@ -1,13 +1,13 @@
 import re
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional
 from ..github.clone import GitCloner
 from .chunker import SecretSanitizer
 
 class EvidenceVerificationGate:
     """Validates LLM-proposed evidence against repository files and calculates exact line numbers."""
 
-    MIN_QUOTE_CHARS = 8  # non-whitespace characters; shorter quotes match almost anything
+    MIN_QUOTE_CHARS = 16  # non-whitespace characters; shorter quotes ("return None") prove nothing
 
     @staticmethod
     def _normalize_with_lines(content: str) -> Tuple[str, list]:
@@ -56,9 +56,10 @@ class EvidenceVerificationGate:
     _ANY_DEFINITION = re.compile(_DEFINITION_PREFIX + r"([A-Za-z_$][\w$]*)", re.MULTILINE)
     _INDEX_CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs",
                         ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".java", ".patch", ".diff"}
-    _INDEX_SKIP_DIRS = {".git", "node_modules", "dist", "build", "vendor", "__pycache__", ".next", "venv", ".venv", "target"}
+    _INDEX_SKIP_DIRS = {".git", ".github", "node_modules", "dist", "build", "vendor", "third_party", "__pycache__",
+                        ".next", "venv", ".venv", "target", "site-packages", "bin", "obj", "coverage", ".idea", ".vscode"}
     _INDEX_MAX_FILE_BYTES = 1_000_000
-    _definition_index_cache: Dict[str, Dict[str, Tuple[str, int]]] = {}
+    _definition_index_cache: Dict[str, Dict[str, List[Tuple[str, int, str, bool]]]] = {}
 
     _FILE_EXTENSIONS = {
         "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "rs", "json", "md", "rst", "txt", "patch", "diff",
@@ -66,37 +67,49 @@ class EvidenceVerificationGate:
     }
 
     @classmethod
-    def _symbol_candidates(cls, symbol: str) -> list:
+    def _symbol_candidates(cls, symbol: str) -> List[Tuple[str, Optional[str]]]:
         """
-        Identifier names to look up from a model-provided symbol_name. Handles lists ("A, B"),
-        backticks and "Class.method" (-> "method"); file names ("policies.json", "patch.py") are not
-        symbols and yield nothing, so they can never match an unrelated definition like `def json()`.
+        (name, qualifier) pairs to look up from a model-provided symbol_name. Handles lists ("A, B"),
+        backticks, "Class.method" and "Class::method" (-> ("method", "Class")). File names
+        ("policies.json", "patch.py") and non-identifiers ("font-hijacker") yield nothing, so they can
+        never match an unrelated definition like `def json()` or `def font()`.
         """
-        names = []
+        candidates: List[Tuple[str, Optional[str]]] = []
         for token in re.split(r"[\s,;`'\"()\[\]{}]+", symbol.replace("::", ".")):
-            # Only whole identifiers: "font-hijacker" must not become the generic words "font"/"hijacker"
             if not re.fullmatch(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*", token):
                 continue
             parts = token.split(".")
             if len(parts) > 1 and parts[-1].lower() in cls._FILE_EXTENSIONS:
                 continue
             name = parts[-1]
-            if len(name) >= cls.MIN_SYMBOL_CHARS and name not in names:
-                names.append(name)
-        return names
+            qualifier = parts[-2] if len(parts) > 1 else None
+            if len(name) >= cls.MIN_SYMBOL_CHARS and (name, qualifier) not in candidates:
+                candidates.append((name, qualifier))
+        return candidates
+
+    @staticmethod
+    def _qualifier_matches(qualified: str, name: str, qualifier: Optional[str]) -> bool:
+        """`qualified` is a definition's full name ("UserService.delete"); a qualified request must match it."""
+        parts = qualified.split(".")
+        if parts[-1] != name:
+            return False
+        return qualifier is None or (len(parts) > 1 and parts[-2] == qualifier)
 
     @classmethod
     def locate_symbol_definition(cls, content: str, symbol: str, rel_path: Optional[str] = None) -> Optional[Tuple[int, int]]:
-        """Line of the symbol's definition (def/class/function/func/fn/struct/...), if any."""
+        """Line of the symbol's definition (def/class/function/func/fn/struct/...) in this file, if any."""
         candidates = cls._symbol_candidates(symbol)
         if rel_path:
-            defined = {}
-            for name, line in cls._file_definitions(rel_path, content):
-                defined.setdefault(name, line)
-            for name in candidates:
-                if name in defined:
-                    return defined[name], defined[name]
-        for name in candidates:
+            definitions = list(cls._file_definitions(rel_path, content))
+            for name, qualifier in candidates:
+                for qualified, line in definitions:
+                    if cls._qualifier_matches(qualified, name, qualifier):
+                        return line, line
+            if definitions:
+                return None  # the parser saw this file; a regex guess must not override it
+        for name, qualifier in candidates:
+            if qualifier:
+                continue  # an unparsed file cannot confirm the qualifier
             definition = re.compile(cls._DEFINITION_PREFIX + re.escape(name) + r"\b", re.MULTILINE)
             match = definition.search(content)
             if match:
@@ -104,12 +117,12 @@ class EvidenceVerificationGate:
                 return line_no, line_no
         return None
 
-    # Definitions added by a patch: "+class Foo {", "+void Foo::Bar(...) {", "+  int helper(int x)"
-    # (a line ending in ";" is a declaration or call, not a definition)
+    # Definitions added by a patch: "+class Foo {", "+void Foo::Bar(...) {", "+  int helper(int x)".
+    # Each alternative stops at the end of its line ([^;\n]); a line ending in ";" is a declaration or call.
     _PATCH_DEFINITION = re.compile(
         r"^\+(?!\+\+)[ \t]*(?:"
-        r"(?:class|struct|enum|interface|union)[ \t]+(?:[A-Z_]+[ \t]+)?([A-Za-z_]\w*)[^;]*$"
-        r"|(?:[A-Za-z_~][\w:<>,*&~]*[ \t]+)+[*&]?((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)[ \t]*\([^;]*$"
+        r"(?:class|struct|enum|interface|union)[ \t]+(?:[A-Z_]+[ \t]+)?([A-Za-z_]\w*)[^;\n]*$"
+        r"|(?:[A-Za-z_~][\w:<>,*&~]*[ \t]+)+[*&]?((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)[ \t]*\([^;\n]*$"
         r"|(?:export[ \t]+)?(?:async[ \t]+)?(?:def|function|func|fn)[ \t]+([A-Za-z_$][\w$]*)"
         r")",
         re.MULTILINE,
@@ -118,16 +131,17 @@ class EvidenceVerificationGate:
 
     @classmethod
     def _file_definitions(cls, rel_path: str, content: str):
-        """(name, line) pairs for every definition in a file, from the language parser where available."""
+        """(qualified name, line) for every definition in a file, from the language parser where available."""
         from .ast_parser import TreeSitterAnalyzer
         ext = Path(rel_path).suffix.lower()
         if ext in (".patch", ".diff"):
             for match in cls._PATCH_DEFINITION.finditer(content):
-                name = next(g for g in match.groups() if g)
-                name = name.split("::")[-1].lstrip("~")
+                raw = next(g for g in match.groups() if g)
+                qualified = raw.replace("::", ".").replace("~", "")
+                name = qualified.split(".")[-1]
                 # ALL_CAPS names are macro invocations (NS_SUCCEEDED(rv)), not definitions
-                if name not in cls._NOT_FUNCTION_NAMES and not re.fullmatch(r"[A-Z0-9_]+", name):
-                    yield name, content[:match.start()].count("\n") + 1
+                if name and name not in cls._NOT_FUNCTION_NAMES and not re.fullmatch(r"[A-Z0-9_]+", name):
+                    yield qualified, content[:match.start()].count("\n") + 1
             return
         try:
             symbols = TreeSitterAnalyzer.analyze_file(rel_path, content)
@@ -135,20 +149,19 @@ class EvidenceVerificationGate:
             symbols = []
         if symbols:
             for symbol in symbols:
-                yield symbol.name.split(".")[-1], symbol.line_start
+                yield symbol.name, symbol.line_start
             return
         for match in cls._ANY_DEFINITION.finditer(content):
             yield match.group(1), content[:match.start()].count("\n") + 1
 
     @classmethod
-    def _definition_index(cls, repo_dir: Path) -> Dict[str, Tuple[str, int]]:
-        """symbol name -> (repo-relative path, line) of its definition, preferring non-test files."""
+    def _definition_index(cls, repo_dir: Path) -> Dict[str, List[Tuple[str, int, str, bool]]]:
+        """name -> [(repo-relative path, line, qualified name, is_test)] for every definition in the clone."""
         key = str(repo_dir.resolve())
         cached = cls._definition_index_cache.get(key)
         if cached is not None:
             return cached
-        index: Dict[str, Tuple[str, int]] = {}
-        from_test: set = set()
+        index: Dict[str, List[Tuple[str, int, str, bool]]] = {}
         for path in sorted(repo_dir.rglob("*")):
             rel = path.relative_to(repo_dir)
             if any(part in cls._INDEX_SKIP_DIRS for part in rel.parts) or path.suffix.lower() not in cls._INDEX_CODE_EXTS:
@@ -158,28 +171,31 @@ class EvidenceVerificationGate:
             rel_str = rel.as_posix()
             is_test = cls.classify_evidence_strength(rel_str, None, "code", "") == "EXAMPLE"
             content = path.read_text(errors="ignore")
-            for name, line in cls._file_definitions(rel_str, content):
-                if len(name) < cls.MIN_SYMBOL_CHARS:
-                    continue
-                if name in index and not (name in from_test and not is_test):
-                    continue
-                index[name] = (rel_str, line)
-                if is_test:
-                    from_test.add(name)
-                else:
-                    from_test.discard(name)
+            for qualified, line in cls._file_definitions(rel_str, content):
+                name = qualified.split(".")[-1]
+                if len(name) >= cls.MIN_SYMBOL_CHARS:
+                    index.setdefault(name, []).append((rel_str, line, qualified, is_test))
         # One cached index per clone; clones are deleted after each job, so keep the cache tiny
         cls._definition_index_cache = {key: index}
         return index
 
     @classmethod
     def _resolve_symbol_in_repo(cls, repo_dir: Path, symbol: Optional[str]) -> Optional[Tuple[str, int]]:
+        """
+        The single real definition the model most likely meant. Qualified names must match their
+        qualifier; a bare name defined in several (non-test) files is ambiguous and is not guessed.
+        """
         if not symbol:
             return None
         index = cls._definition_index(repo_dir)
-        for name in cls._symbol_candidates(symbol):
-            if name in index:
-                return index[name]
+        for name, qualifier in cls._symbol_candidates(symbol):
+            entries = [e for e in index.get(name, []) if cls._qualifier_matches(e[2], name, qualifier)]
+            if not entries:
+                continue
+            primary = [e for e in entries if not e[3]] or entries
+            if len({e[0] for e in primary}) > 1:
+                continue  # ambiguous: defined in more than one file
+            return primary[0][0], primary[0][1]
         return None
 
     @classmethod
@@ -240,7 +256,8 @@ class EvidenceVerificationGate:
         start_line, end_line = calculated_lines
         # Persist the actual source text of the matched lines, never the model's rendition of it
         quote = SecretSanitizer.sanitize("\n".join(content.splitlines()[start_line - 1:end_line]).strip())
-        ev_type = evidence.get("evidence_type", "doc")
+        ev_type = evidence.get("evidence_type")
+        ev_type = ev_type if ev_type in ("code_ast", "doc", "example", "manifest") else "doc"
         strength = cls.classify_evidence_strength(file_path_str, symbol, ev_type, quote)
 
         return {
@@ -266,7 +283,8 @@ class EvidenceVerificationGate:
         """
         fp_lower = file_path.lower()
         ext = Path(file_path).suffix.lower()
-        is_code = ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".cpp", ".c", ".h")
+        is_code = ext in (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".java",
+                          ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".patch", ".diff")
 
         segments = re.split(r"[/\\]", fp_lower)
         stem = Path(fp_lower).stem

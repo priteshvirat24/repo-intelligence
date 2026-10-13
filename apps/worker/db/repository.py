@@ -29,6 +29,24 @@ RESOURCE_STATUS_FOR_REPO_STATUS = {
 }
 
 
+def _confidence(value: Any, default: float) -> float:
+    """LLM confidence values arrive as 0.9, 90, "high" or null; NUMERIC(3,2) needs 0..1."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number > 1:
+        number = number / 100.0
+    return min(1.0, max(0.0, number))
+
+
+def _lock_repository(cur, repo_id: Optional[str]):
+    """Lock the repository row before the job row: the same order the web app uses when queuing,
+    so concurrent queue/persist/step updates cannot deadlock."""
+    if repo_id:
+        cur.execute("SELECT id FROM repositories WHERE id = %s FOR UPDATE", (repo_id,))
+
+
 def _text(value: Any, max_len: Optional[int] = None) -> str:
     """Coerces LLM/manifest values to a NUL-free string that fits the target column."""
     s = "" if value is None else str(value)
@@ -77,13 +95,16 @@ class DatabaseRepository:
                         RETURNING repository_id, resource_id
                     ), failed_repos AS (
                         UPDATE repositories r
-                        SET status = 'FAILED', error_message = %(msg)s, updated_at = NOW()
+                        SET status = CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.repository_id = r.id)
+                                          THEN 'READY' ELSE 'FAILED' END,
+                            error_message = %(msg)s, updated_at = NOW()
                         FROM exhausted e
                         WHERE r.id = e.repository_id
                         RETURNING r.resource_id
                     )
                     UPDATE resources
-                    SET status = 'FAILED', error_message = %(msg)s, updated_at = NOW()
+                    SET status = CASE WHEN indexed_at IS NOT NULL THEN 'READY' ELSE 'FAILED' END,
+                        error_message = %(msg)s, updated_at = NOW()
                     WHERE status <> 'CANCELLED'
                       AND id IN (
                         SELECT resource_id FROM exhausted WHERE resource_id IS NOT NULL
@@ -135,6 +156,7 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
+                _lock_repository(cur, repo_id)
                 cur.execute(
                     """
                     UPDATE ingestion_jobs SET step = %s, locked_at = NOW(), updated_at = NOW()
@@ -170,6 +192,9 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
+                # The signal can arrive while this process holds the job row lock in another transaction;
+                # give up after a few seconds instead of waiting on ourselves (the stale-lock sweep recovers it)
+                cur.execute("SET lock_timeout = '3s'")
                 # Only release a job we still hold: it may have just completed or been cancelled
                 cur.execute(
                     """
@@ -206,6 +231,7 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
+                _lock_repository(cur, repo_id)
                 cur.execute(
                     """
                     UPDATE ingestion_jobs
@@ -239,6 +265,7 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor() as cur:
+                _lock_repository(cur, repo_id)
                 cur.execute(
                     """
                     UPDATE ingestion_jobs
@@ -254,18 +281,60 @@ class DatabaseRepository:
                 cur.execute(
                     """
                     UPDATE repositories
-                    SET status = 'FAILED', error_message = %s, updated_at = NOW()
+                    SET status = CASE WHEN EXISTS (SELECT 1 FROM documents d WHERE d.repository_id = repositories.id)
+                                      THEN 'READY' ELSE 'FAILED' END,
+                        error_message = %s, updated_at = NOW()
                     WHERE id = %s
                     """,
                     (error_message, repo_id)
                 )
+                # A failed re-index must not hide the previous, still-valid index
                 cur.execute(
                     f"""
                     UPDATE resources
-                    SET status = 'FAILED', error_message = %(msg)s, updated_at = NOW()
+                    SET status = CASE WHEN indexed_at IS NOT NULL THEN 'READY' ELSE 'FAILED' END,
+                        error_message = CASE WHEN indexed_at IS NOT NULL
+                                             THEN 'Last re-index failed: ' || %(msg)s ELSE %(msg)s END,
+                        updated_at = NOW()
                     WHERE status <> 'CANCELLED' AND {RESOURCE_MATCH_SQL}
                     """,
                     {"msg": error_message, "job_id": job_id, "repo_id": repo_id}
+                )
+                conn.commit()
+        finally:
+            conn.close()
+
+    def refresh_lock(self, job_id: str, worker_id: str) -> bool:
+        """Heartbeat for long stages: keeps the job from being reclaimed as stalled. False if no longer owned."""
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE ingestion_jobs SET locked_at = NOW(), updated_at = NOW()
+                    WHERE id = %s AND status = 'RUNNING' AND locked_by = %s
+                    """,
+                    (job_id, worker_id)
+                )
+                owned = cur.rowcount > 0
+                conn.commit()
+                return owned
+        finally:
+            conn.close()
+
+    def abandon_lost_job(self, job_id: str, worker_id: str, reason: str):
+        """Closes a job this worker still holds but must not finish (e.g. its resource was cancelled)."""
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE ingestion_jobs
+                    SET status = 'FAILED', step = 'CANCELLED', error_message = %s,
+                        locked_at = NULL, locked_by = NULL, updated_at = NOW()
+                    WHERE id = %s AND status = 'RUNNING' AND locked_by = %s
+                    """,
+                    (reason[:1000], job_id, worker_id)
                 )
                 conn.commit()
         finally:
@@ -319,6 +388,8 @@ class DatabaseRepository:
         conn = self.get_connection()
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                _lock_repository(cur, repo_id)
+
                 # 0. Verify we still own the job and hold its row lock for the rest of the transaction,
                 # so a concurrent cancel/supersede cannot be overwritten with READY. (Seed scripts that
                 # persist directly pass no worker_id.)
@@ -457,7 +528,7 @@ class DatabaseRepository:
                                 ev.get("end_line"),
                                 _opt_text(ev.get("symbol_name"), 150),
                                 _text(ev.get("quote_snippet")),
-                                ev.get("evidence_type", "doc"),
+                                ev.get("evidence_type") if ev.get("evidence_type") in ("code_ast", "doc", "example", "manifest") else "doc",
                                 ev.get("evidence_strength", "DIRECT_IMPLEMENTATION"),
                                 ev.get("verified", True)
                             )
@@ -482,7 +553,7 @@ class DatabaseRepository:
                                 _text(ko["description"]),
                                 _opt_text(ko.get("category"), 100),
                                 ko.get("importance", "medium"),
-                                ko.get("confidence", 0.90),
+                                _confidence(ko.get("confidence"), 0.90),
                                 Json(ko.get("metadata_json", {})),
                                 ko_emb
                             )
@@ -505,7 +576,7 @@ class DatabaseRepository:
                                     ev.get("end_line"),
                                     _opt_text(ev.get("symbol_name"), 150),
                                     _text(ev.get("quote_snippet")),
-                                    ev.get("evidence_type", "code_ast"),
+                                    ev.get("evidence_type") if ev.get("evidence_type") in ("code_ast", "doc", "example", "manifest") else "code_ast",
                                     ev.get("evidence_strength", "DIRECT_IMPLEMENTATION"),
                                     ev.get("verified", True)
                                 )
@@ -514,6 +585,8 @@ class DatabaseRepository:
                 # 6. Insert Knowledge Relationships
                 if knowledge_relationships:
                     for rel in knowledge_relationships:
+                        if not isinstance(rel, dict):
+                            continue
                         source_id = ko_id_map.get(_text(rel.get("sourceName"), 255).lower())
                         target_id = ko_id_map.get(_text(rel.get("targetName"), 255).lower())
                         if source_id:
@@ -528,7 +601,7 @@ class DatabaseRepository:
                                     repo_id,
                                     resource_id,
                                     _text(rel.get("relationshipType") or "relates-to", 50),
-                                    rel.get("confidence", 0.85),
+                                    _confidence(rel.get("confidence"), 0.85),
                                     _text(rel.get("evidenceSnippet")),
                                     Json(rel.get("metadata", {}))
                                 )
@@ -551,7 +624,8 @@ class DatabaseRepository:
                         INSERT INTO repository_limitations (repository_id, category, description, file_path)
                         VALUES (%s, %s, %s, %s);
                         """,
-                        (repo_id, _text(lim.get("category") or "scalability", 50), _text(lim.get("description")), lim.get("file_path"))
+                        (repo_id, _text(lim.get("category") or "scalability", 50), _text(lim.get("description")),
+                         lim.get("file_path") if isinstance(lim.get("file_path"), str) else None)
                     )
 
                 # 9. Complete Job with Stage Metrics
