@@ -19,6 +19,8 @@ This document covers:
 8. [Configuration](#8-configuration)
 9. [Build, test, deploy](#9-build-test-deploy)
 
+> The retrieval pipeline (chunking, embeddings, hybrid search, prompts) is documented in detail in [RAG.md](RAG.md).
+
 > Diagrams are written in Mermaid. They render on GitHub, in VS Code (with a Mermaid extension) and most Markdown viewers.
 
 ---

@@ -87,6 +87,8 @@ A repository is only ONE type of resource. Open Eye generalizes across an expans
 ## Architecture
 
 > **Full design document with all diagrams (HLD, LLD, data model, how Open Eye reaches the web): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+>
+> **RAG, chunking strategy, embeddings, retrieval ranking and chat answer generation: [docs/RAG.md](docs/RAG.md)**
 
 Three running parts share one database. The web app and the worker never call each other: the database (including the job queue) is the only contract between them.
 
