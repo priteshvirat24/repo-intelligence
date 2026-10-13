@@ -10,6 +10,7 @@ import '@fontsource/ibm-plex-mono/latin-400.css';
 import '@fontsource/ibm-plex-mono/latin-500.css';
 import '@fontsource/ibm-plex-mono/latin-600.css';
 import '../styles/globals.css';
+import { LibraryProvider } from '@/components/LibraryProvider';
 
 // Favicon: the Open Eye mark (ink almond, vermilion pupil). SVG data URIs cannot read CSS tokens,
 // so the two brand values are inlined here only.
@@ -39,7 +40,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <LibraryProvider>{children}</LibraryProvider>
+      </body>
     </html>
   );
 }

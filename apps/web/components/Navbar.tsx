@@ -5,12 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Plus } from 'lucide-react';
 import { EyeMark } from '@/components/Primitives';
-
-interface NavbarProps {
-  onOpenAddModal: () => void;
-  resourceCount?: number;
-  repoCount?: number;
-}
+import { useLibrary } from '@/components/LibraryProvider';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Studio' },
@@ -18,13 +13,14 @@ const NAV_ITEMS = [
   { href: '/capabilities', label: 'Capabilities' }
 ];
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenAddModal, resourceCount, repoCount }) => {
+export const Navbar: React.FC = () => {
   const pathname = usePathname() || '/';
-  // Only show a count when the page actually loaded one; never show a placeholder zero.
-  const displayCount = resourceCount ?? (repoCount ? repoCount : undefined);
+  const { openAddRepository, readyRepoCount, backgroundJobs } = useLibrary();
 
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+    href === '/'
+      ? pathname === '/'
+      : pathname === href || pathname.startsWith(`${href}/`) || (href === '/resources' && pathname.startsWith('/repositories/'));
 
   return (
     <header className="nav">
@@ -48,12 +44,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAddModal, resourceCount, r
         </nav>
 
         <div className="nav-actions">
-          {displayCount !== undefined && (
+          {backgroundJobs.length > 0 && (
+            <Link href="/resources" className="nav-indexing" title="Indexing continues in the background">
+              <span className="dot dot-pulse" aria-hidden="true" />
+              <span>Indexing <span className="num">{backgroundJobs.length}</span></span>
+            </Link>
+          )}
+          {readyRepoCount !== null && (
             <span className="nav-meta">
-              {displayCount} indexed
+              {readyRepoCount} {readyRepoCount === 1 ? 'repository' : 'repositories'} ready
             </span>
           )}
-          <button type="button" onClick={onOpenAddModal} className="btn btn-primary btn-sm">
+          <button type="button" onClick={openAddRepository} className="btn btn-primary btn-sm">
             <Plus size={15} strokeWidth={2.5} aria-hidden="true" />
             <span>Add repository</span>
           </button>
