@@ -57,8 +57,33 @@ export class GitHubResourceAdapter implements ResourceAdapter {
       };
     }
 
-    // Insert or update resources table
-    const resourceRes = await query(`
+    // Insert or update resources table. Rows created before URLs were lowercased may store GitHub's
+    // mixed-case URL, so match existing GitHub resources case-insensitively instead of creating a duplicate.
+    const existingResource = await query(`
+      SELECT id FROM resources
+      WHERE resource_type = 'github_repository'
+        AND (lower(source_url) = lower($1) OR lower(canonical_url) = lower($1))
+      ORDER BY updated_at DESC
+      LIMIT 1
+    `, [canonicalUrl]);
+
+    const resourceRes = existingResource.rows.length > 0 ? await query(`
+      UPDATE resources SET
+        title = $1,
+        description = COALESCE($2, description),
+        content_hash = COALESCE($3, content_hash),
+        metadata_json = $4,
+        status = 'PENDING',
+        updated_at = NOW()
+      WHERE id = $5
+      RETURNING id;
+    `, [
+      `${meta.owner}/${meta.name}`,
+      meta.description,
+      meta.commitSha,
+      JSON.stringify(meta),
+      existingResource.rows[0].id
+    ]) : await query(`
       INSERT INTO resources (
         resource_type,
         resource_role,
@@ -98,9 +123,9 @@ export class GitHubResourceAdapter implements ResourceAdapter {
       RETURNING id;
     `, [
       canonicalUrl,
-      `${owner}/${repo}`,
+      `${meta.owner}/${meta.name}`,
       meta.description,
-      owner,
+      meta.owner,
       meta.commitSha,
       JSON.stringify(meta)
     ]);
@@ -191,7 +216,7 @@ export class GitHubResourceAdapter implements ResourceAdapter {
     return {
       success: true,
       status: 'PENDING',
-      title: `${owner}/${repo}`,
+      title: `${meta.owner}/${meta.name}`,
       description: meta.description || '',
       author: owner,
       publisher: 'GitHub',

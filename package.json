@@ -10,7 +10,8 @@
     "test": "turbo run test",
     "eval": "pnpm --filter @repo/web eval",
     "db:migrate": "pnpm --filter @repo/database migrate",
-    "db:seed": "pnpm --filter @repo/database seed"
+    "db:seed": "pnpm --filter @repo/database seed",
+    "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "devDependencies": {
     "turbo": "^2.4.4",

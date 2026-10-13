@@ -62,8 +62,12 @@ export class UniversalIngestionService {
       SELECT id, title, status, error_message as "errorMessage", indexed_at as "indexedAt", updated_at as "updatedAt"
       FROM resources
       WHERE canonical_url = $1 OR source_url = $2
+         -- GitHub owner/repo are case-insensitive; older rows may store GitHub's mixed-case URL
+         OR (resource_type = 'github_repository' AND $3 = 'github_repository'
+             AND (lower(canonical_url) = lower($1) OR lower(source_url) = lower($1)))
+      ORDER BY updated_at DESC
       LIMIT 1
-    `, [descriptor.canonicalUrl, descriptor.canonicalUrl]);
+    `, [descriptor.canonicalUrl, descriptor.canonicalUrl, descriptor.resourceType]);
 
     if (existingRes.rows.length > 0 && !options?.forceReindex) {
       const existing = existingRes.rows[0];
