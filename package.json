@@ -14,6 +14,7 @@
     "deploy:railway": "bash scripts/deploy-railway.sh"
   },
   "devDependencies": {
+    "railway": "^3.15.0",
     "turbo": "^2.4.4",
     "typescript": "^5.7.3"
   },

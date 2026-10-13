@@ -32,3 +32,10 @@ clones/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Workspace packages are consumed as TypeScript source; never commit compiled output next to it
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+
+# Turborepo cache
+.turbo/
