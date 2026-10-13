@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   ArrowUp,
   ArrowRight,
@@ -374,8 +376,19 @@ function StudioChatContent() {
                         </div>
 
                         {/* Answer */}
-                        <div className={`prose${msg.content ? '' : ' is-pending'}`} aria-live="polite">
-                          {msg.content || (
+                        <div className={`prose${msg.content ? ' prose-md' : ' is-pending'}`} aria-live="polite">
+                          {msg.content ? (
+                            // Model output is Markdown. react-markdown never renders raw HTML, so the
+                            // streamed text cannot inject markup.
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a: ({ node, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" />
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
+                          ) : (
                             <>
                               <span className="dot dot-pulse" aria-hidden="true" />
                               Reading sources&hellip;

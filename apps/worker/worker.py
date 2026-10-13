@@ -360,7 +360,10 @@ class IngestionWorker:
                         continue
                     check = EvidenceVerificationGate.verify_evidence(scratch_dir, ev)
                     if check.get("verified"):
-                        valid_evidence_items.append(check)
+                        location = (check.get("file_path"), check.get("start_line"), check.get("end_line"))
+                        # Two claims can resolve to the same definition; keep each location once
+                        if all((v.get("file_path"), v.get("start_line"), v.get("end_line")) != location for v in valid_evidence_items):
+                            valid_evidence_items.append(check)
                     else:
                         rejected_ev_count += 1
 

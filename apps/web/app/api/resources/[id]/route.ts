@@ -67,11 +67,17 @@ export async function GET(
     `, [id]);
 
     // 3. Fetch evidence/citations
+    // Each verified location is stored for both the repository capability and its knowledge object,
+    // and several claims can resolve to the same definition: return each location once.
     const evRes = await query(`
-      SELECT 
+      SELECT * FROM (
+      SELECT DISTINCT ON (COALESCE(e.file_path, ''), COALESCE(e.start_line, 0), COALESCE(e.end_line, 0), e.quote_snippet)
         e.id,
         e.knowledge_object_id as "knowledgeObjectId",
         e.file_path as "filePath",
+        e.start_line as "startLine",
+        e.end_line as "endLine",
+        e.symbol_name as "symbolName",
         e.quote_snippet as "quoteSnippet",
         e.evidence_type as "evidenceType",
         e.evidence_strength as "evidenceStrength",
@@ -80,6 +86,18 @@ export async function GET(
         e.is_verified as "isVerified"
       FROM evidence e
       WHERE e.resource_id = $1
+      ORDER BY COALESCE(e.file_path, ''), COALESCE(e.start_line, 0), COALESCE(e.end_line, 0), e.quote_snippet, e.is_verified DESC
+      ) e
+      ORDER BY
+        e."isVerified" DESC,
+        CASE e."evidenceStrength"
+          WHEN 'DIRECT_IMPLEMENTATION' THEN 1
+          WHEN 'DIRECT_INTERFACE' THEN 2
+          WHEN 'DOCUMENTATION' THEN 3
+          WHEN 'EXAMPLE' THEN 4
+          ELSE 5
+        END,
+        e."filePath", e."startLine"
     `, [id]);
 
     // 4. Fetch counts

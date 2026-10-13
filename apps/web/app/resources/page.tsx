@@ -18,6 +18,13 @@ import {
 } from 'lucide-react';
 import { UniversalResource, ResourceType } from '@repo/shared';
 
+// "autonomous-agent-automation" -> "Autonomous agent automation" (slug-style tags from analysis)
+function humanizeTag(tag: string): string {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(tag)) return tag;
+  const words = tag.split('-').join(' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function ResourcesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -129,6 +136,7 @@ function ResourcesPageContent() {
     }
   };
 
+  // Only show source types the library actually contains (GitHub is always shown)
   const filterTabs = [
     { id: 'all', label: 'All', count: stats.totalResources },
     { id: 'github_repository', label: 'GitHub', count: stats.totalRepositories },
@@ -136,16 +144,16 @@ function ResourcesPageContent() {
     { id: 'youtube_video', label: 'Videos', count: stats.totalVideos },
     { id: 'pdf', label: 'PDFs & papers', count: stats.totalDocuments },
     { id: 'linkedin_post', label: 'LinkedIn', count: resources.filter(r => r.resourceType === 'linkedin_post').length }
-  ];
+  ].filter((tab) => tab.id === 'all' || tab.id === 'github_repository' || tab.count > 0 || tab.id === activeFilter);
 
   const ledger = [
     { label: 'Repositories', value: stats.totalRepositories, primary: true },
-    { label: 'All sources', value: stats.totalResources },
-    { label: 'Web & docs', value: stats.totalWebSources },
-    { label: 'Videos', value: stats.totalVideos },
-    { label: 'PDFs & papers', value: stats.totalDocuments },
-    { label: 'Domains', value: stats.totalDomains }
-  ];
+    { label: 'All sources', value: stats.totalResources, hide: stats.totalResources === stats.totalRepositories },
+    { label: 'Web & docs', value: stats.totalWebSources, hide: !stats.totalWebSources },
+    { label: 'Videos', value: stats.totalVideos, hide: !stats.totalVideos },
+    { label: 'PDFs & papers', value: stats.totalDocuments, hide: !stats.totalDocuments },
+    { label: 'Domains', value: stats.totalDomains, hide: (stats.totalDomains || 0) <= 1 }
+  ].filter((cell) => !cell.hide);
 
   return (
     <div className="app-shell">
@@ -291,7 +299,7 @@ function ResourcesPageContent() {
                     {usefulTags.length > 0 && (
                       <div className="row wrap gap-1">
                         {usefulTags.slice(0, 4).map((tag, i) => (
-                          <span key={i} className="tag">{tag}</span>
+                          <span key={i} className="tag">{humanizeTag(tag)}</span>
                         ))}
                       </div>
                     )}
@@ -447,7 +455,7 @@ function ResourcesPageContent() {
                     <div key={ev.id} className="stack gap-2">
                       <div className="row between gap-3">
                         <span className="mono xsmall truncate" style={{ color: 'var(--ink)' }}>
-                          {ev.filePath || 'Source excerpt'}
+                          {ev.filePath ? `${ev.filePath}${ev.startLine ? `:${ev.startLine}` : ''}` : 'Source excerpt'}
                         </span>
                         {ev.isVerified ? (
                           <span className="badge badge-verified">

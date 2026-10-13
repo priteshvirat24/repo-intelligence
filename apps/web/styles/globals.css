@@ -523,6 +523,13 @@ pre {
    Buttons & links
    ========================================================================== */
 
+/* Icons inside buttons keep their size instead of being squeezed by the flex label */
+.btn svg,
+.chip svg,
+.tag svg {
+  flex-shrink: 0;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -1220,6 +1227,55 @@ a.tag:hover, button.tag:hover {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* Rendered Markdown answers: structure comes from elements, not preserved whitespace */
+.prose.prose-md { white-space: normal; }
+.prose-md > :first-child { margin-top: 0; }
+.prose-md > :last-child { margin-bottom: 0; }
+.prose-md p { margin: 0 0 var(--s-4); }
+.prose-md h1, .prose-md h2, .prose-md h3, .prose-md h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ink);
+  margin: var(--s-6) 0 var(--s-3);
+}
+.prose-md h1, .prose-md h2 { font-size: var(--fs-xl); }
+.prose-md h3 { font-size: var(--fs-lg); }
+.prose-md h4 { font-size: 1rem; }
+.prose-md strong { font-weight: 600; color: var(--ink); }
+.prose-md ul, .prose-md ol { margin: 0 0 var(--s-4); padding-left: 1.4em; }
+.prose-md li { margin: var(--s-1) 0; }
+.prose-md li::marker { color: var(--ink-3); }
+.prose-md hr { border: 0; border-top: 1px solid var(--line); margin: var(--s-5) 0; }
+.prose-md a { color: var(--info); text-decoration: underline; text-underline-offset: 2px; }
+.prose-md code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--paper-sunk);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
+.prose-md pre {
+  background: var(--paper-sunk);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm, 4px);
+  padding: var(--s-3) var(--s-4);
+  overflow-x: auto;
+  margin: 0 0 var(--s-4);
+}
+.prose-md pre code { background: none; border: 0; padding: 0; font-size: var(--fs-sm); }
+.prose-md blockquote {
+  margin: 0 0 var(--s-4);
+  padding-left: var(--s-4);
+  border-left: 2px solid var(--line-strong);
+  color: var(--ink-2);
+}
+.prose-md table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-4); font-size: var(--fs-sm); display: block; overflow-x: auto; }
+.prose-md th, .prose-md td { text-align: left; padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); vertical-align: top; }
+.prose-md th { font-family: var(--font-mono); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); border-bottom: var(--bw) solid var(--ink); }
+
 .prose.is-pending {
   color: var(--ink-2);
   font-family: var(--font-mono);
@@ -1285,17 +1341,13 @@ a.tag:hover, button.tag:hover {
 
 .ledger {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   border-top: var(--bw) solid var(--ink);
   border-bottom: var(--bw) solid var(--ink);
   margin-bottom: var(--s-6);
 }
-@media (min-width: 640px) {
-  .ledger { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (min-width: 1000px) {
-  .ledger { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-}
+/* The page header already ends in an ink rule; don't stack a second one on top */
+.page-head + .ledger { border-top: 0; }
 .ledger-cell {
   padding: var(--s-3) var(--s-4) var(--s-4) 0;
   border-bottom: 1px solid var(--line);
