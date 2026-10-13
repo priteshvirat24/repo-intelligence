@@ -596,7 +596,7 @@ class IngestionWorker:
             for idx, ko in enumerate(knowledge_objects):
                 ko["embedding"] = ko_embeddings[idx] if idx < len(ko_embeddings) else None
 
-            # B. Embed Chunks (cap at 250)
+            # B. Embed Chunks (up to MAX_CHUNKS, spread across files)
             selected_chunks = select_chunks(all_chunks, config.MAX_CHUNKS)
             chunk_dicts = [
                 {

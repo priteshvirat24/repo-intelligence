@@ -34,8 +34,8 @@ class Config:
     MAX_TOTAL_TEXT_MB: int = int(os.getenv("MAX_TOTAL_TEXT_MB", "20"))
     MAX_FILES: int = int(os.getenv("MAX_FILES", "2000"))
     # Analysis depth: text excerpts embedded for search, and subsystems studied individually by the LLM
-    MAX_CHUNKS: int = int(os.getenv("MAX_CHUNKS", "250"))
-    MAX_SUBSYSTEMS: int = int(os.getenv("MAX_SUBSYSTEMS", "6"))
+    MAX_CHUNKS: int = int(os.getenv("MAX_CHUNKS", "1500"))
+    MAX_SUBSYSTEMS: int = int(os.getenv("MAX_SUBSYSTEMS", "8"))
 
     # Worker Tuning
     WORKER_POLL_INTERVAL_SECONDS: float = float(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "2"))

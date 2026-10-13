@@ -189,7 +189,7 @@ flowchart TD
     F --> G{"Synthesis empty?"}
     G -->|yes| R["Retryable error<br>(existing data untouched)"]
     G -->|no| H["Evidence gate (4.3)<br>keep only capabilities with verified evidence"]
-    H --> I["INDEXING<br>embed knowledge objects + up to 250 chunks<br>spread across files, README first"]
+    H --> I["INDEXING<br>embed knowledge objects + up to 1500 chunks<br>spread across files, README first"]
     I --> J["Persist in ONE transaction<br>re-check ownership + not cancelled<br>replace documents, chunks, capabilities, evidence,<br>knowledge objects, dependencies, limitations<br>mark job COMPLETED, resource READY"]
 ```
 
@@ -418,7 +418,7 @@ Set as Railway variables (and `.env` locally):
 | `GITHUB_TOKEN` | both | GitHub API rate limit |
 | `TAVILY_API_KEY`, `FIRECRAWL_API_KEY` | web | Live web search / scraping (optional) |
 | `MAX_REPOSITORY_SIZE_MB`, `MAX_FILE_SIZE_KB`, `MAX_TOTAL_TEXT_MB`, `MAX_FILES` | web + worker | Size budgets |
-| `MAX_CHUNKS`, `MAX_SUBSYSTEMS` | worker | Analysis depth (defaults 250, 6) |
+| `MAX_CHUNKS`, `MAX_SUBSYSTEMS` | worker | Analysis depth (defaults 1500, 8) |
 | `MAX_JOB_ATTEMPTS`, `JOB_LOCK_TIMEOUT_MINUTES`, `WORKER_POLL_INTERVAL_SECONDS` | worker | Queue behaviour |
 
 ---

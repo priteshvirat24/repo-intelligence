@@ -77,7 +77,7 @@ flowchart TD
     G --> H["LLM pass 2: module analysis<br>up to 6 subsystems"]
     H --> I["LLM pass 3: synthesis<br>capabilities, features, concepts, techniques,<br>use cases, components, interfaces, limitations"]
     I --> J["Evidence gate<br>keep capabilities only with verified evidence"]
-    E --> K["Select up to 250 chunks<br>spread across files"]
+    E --> K["Select up to 1500 chunks<br>spread across files"]
     J --> L["Knowledge objects"]
     K --> M["Embed chunks"]
     L --> N["Embed knowledge objects<br>text = name + ': ' + description"]
@@ -132,14 +132,14 @@ flowchart TD
 
 ### 4.3 Choosing which chunks to embed (per repository)
 
-A large repository can produce thousands of chunks. Up to **`MAX_CHUNKS` = 250** are embedded, chosen so that every part of the repository stays searchable (`select_chunks` in `apps/worker/worker.py`):
+A large repository can produce thousands of chunks. Up to **`MAX_CHUNKS` = 1500** are embedded, chosen so that every part of the repository stays searchable (`select_chunks` in `apps/worker/worker.py`):
 
 1. **Docs first, but capped:** README and docs may take at most **one third** of the budget (README first).
 2. **Code fills the rest round-robin:** the first chunk of every code file, then the second chunk of every file, and so on.
 3. **Even sampling:** if there are more files than slots, files are sampled evenly across the sorted file list, so directories late in the alphabet are not dropped.
 4. If code needs less than its share, docs get the remainder.
 
-When the budget cuts anything, the repository's completeness is recorded as **partial** with the reason (for example "Indexed 250 of 912 text excerpts for search").
+When the budget cuts anything, the repository's completeness is recorded as **partial** with the reason (for example "Indexed 1500 of 2400 text excerpts for search").
 
 ### 4.4 Web pages, PDFs, videos (de-emphasised)
 
@@ -375,8 +375,8 @@ Indexing calls use JSON mode with temperature 0.1. There is **no mock fallback**
 |---|---|---|---|
 | Chunk target | `chunker.py` `target_tokens` | 512 | bigger = more context per citation, fewer chunks |
 | Chunk overlap | `chunker.py` `overlap_tokens` | 64 | continuity across boundaries |
-| `MAX_CHUNKS` | worker env | 250 | excerpts embedded per repository |
-| `MAX_SUBSYSTEMS` | worker env | 6 | subsystems analysed in depth |
+| `MAX_CHUNKS` | worker env | 1500 | excerpts embedded per repository |
+| `MAX_SUBSYSTEMS` | worker env | 8 | subsystems analysed in depth |
 | `MAX_FILES`, `MAX_FILE_SIZE_KB`, `MAX_TOTAL_TEXT_MB` | worker env | 2000, 500, 20 | analysis budget |
 | `EMBEDDING_DIMENSIONS` | both | 1024 | must match the DB column and the model |
 | Similarity threshold | `multi_retrieval.ts` | 0.40 | lower = more recall, more noise |
@@ -392,7 +392,7 @@ Indexing calls use JSON mode with temperature 0.1. There is **no mock fallback**
 ## 12. Limitations and next steps
 
 - **Small answer model.** On the free tier the answer model is `ministral-8b`; it occasionally ignores citation rules. Setting `CHAT_LLM_MODEL` to a larger model on a paid tier is the single biggest quality lever.
-- **Fixed chunk budget.** Very large repositories are indexed partially (250 excerpts). Raising `MAX_CHUNKS` increases embedding cost and index size linearly.
+- **Fixed chunk budget.** Very large repositories are indexed partially (1500 excerpts). Raising `MAX_CHUNKS` increases embedding cost and index size linearly.
 - **Approximate token counting.** `len / 4` is close for English and code, less accurate for other scripts.
 - **Ranking is hand-tuned.** The weights are not learned; an evaluation set of question/expected-file pairs (see `tests/benchmark/`) is the way to tune them.
 - **The HNSW index is not used by every query shape.** Queries that order by a computed expression or join on `OR` conditions may scan; fine at the current scale, worth revisiting at thousands of repositories.
