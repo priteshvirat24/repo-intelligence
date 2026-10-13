@@ -59,25 +59,41 @@ class EvidenceVerificationGate:
     _INDEX_MAX_FILE_BYTES = 1_000_000
     _definition_index_cache: Dict[str, Dict[str, Tuple[str, int]]] = {}
 
+    _FILE_EXTENSIONS = {
+        "py", "js", "mjs", "cjs", "ts", "tsx", "jsx", "go", "rs", "json", "md", "rst", "txt", "patch", "diff",
+        "toml", "yml", "yaml", "sh", "cfg", "ini", "html", "css", "xml", "lock", "c", "h", "cc", "cpp", "hpp", "java",
+    }
+
     @classmethod
-    def _symbol_name(cls, symbol: str) -> Optional[str]:
-        name = symbol.split(".")[-1].strip()  # "Class.method" -> "method"
-        if len(name) < cls.MIN_SYMBOL_CHARS or not re.fullmatch(r"[A-Za-z_$][\w$]*", name):
-            return None
-        return name
+    def _symbol_candidates(cls, symbol: str) -> list:
+        """
+        Identifier names to look up from a model-provided symbol_name. Handles lists ("A, B"),
+        backticks and "Class.method" (-> "method"); file names ("policies.json", "patch.py") are not
+        symbols and yield nothing, so they can never match an unrelated definition like `def json()`.
+        """
+        names = []
+        for token in re.split(r"[\s,;`'\"()\[\]{}]+", symbol):
+            # Only whole identifiers: "font-hijacker" must not become the generic words "font"/"hijacker"
+            if not re.fullmatch(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*", token):
+                continue
+            parts = token.split(".")
+            if len(parts) > 1 and parts[-1].lower() in cls._FILE_EXTENSIONS:
+                continue
+            name = parts[-1]
+            if len(name) >= cls.MIN_SYMBOL_CHARS and name not in names:
+                names.append(name)
+        return names
 
     @classmethod
     def locate_symbol_definition(cls, content: str, symbol: str) -> Optional[Tuple[int, int]]:
         """Line of the symbol's definition (def/class/function/func/fn/struct/...), if any."""
-        name = cls._symbol_name(symbol)
-        if not name:
-            return None
-        definition = re.compile(cls._DEFINITION_PREFIX + re.escape(name) + r"\b", re.MULTILINE)
-        match = definition.search(content)
-        if not match:
-            return None
-        line_no = content[:match.start()].count("\n") + 1
-        return line_no, line_no
+        for name in cls._symbol_candidates(symbol):
+            definition = re.compile(cls._DEFINITION_PREFIX + re.escape(name) + r"\b", re.MULTILINE)
+            match = definition.search(content)
+            if match:
+                line_no = content[:match.start()].count("\n") + 1
+                return line_no, line_no
+        return None
 
     @classmethod
     def _definition_index(cls, repo_dir: Path) -> Dict[str, Tuple[str, int]]:
@@ -112,8 +128,13 @@ class EvidenceVerificationGate:
 
     @classmethod
     def _resolve_symbol_in_repo(cls, repo_dir: Path, symbol: Optional[str]) -> Optional[Tuple[str, int]]:
-        name = cls._symbol_name(symbol) if symbol else None
-        return cls._definition_index(repo_dir).get(name) if name else None
+        if not symbol:
+            return None
+        index = cls._definition_index(repo_dir)
+        for name in cls._symbol_candidates(symbol):
+            if name in index:
+                return index[name]
+        return None
 
     @classmethod
     def verify_evidence(cls, repo_dir: Path, evidence: Dict[str, Any]) -> Dict[str, Any]:
