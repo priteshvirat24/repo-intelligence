@@ -4,24 +4,18 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation';
 import {
   X,
-  GitBranch,
-  Youtube,
-  Globe,
-  FileText,
-  Linkedin,
   CheckCircle2,
   Loader2,
   AlertCircle,
-  Sparkles,
-  BookOpen,
   ArrowRight,
   RotateCw,
   Ban,
-  ExternalLink,
+  ArrowUpRight,
   ChevronDown,
   ChevronUp,
   Info
 } from 'lucide-react';
+import { SourceIcon } from '@/components/Primitives';
 import { ResourceType } from '@repo/shared';
 import { ResourceTypeDetector } from '../lib/adapters/detector';
 
@@ -104,25 +98,25 @@ const getStageDescription = (step?: string, status?: string, resType?: string): 
     case 'QUEUED':
     case 'PENDING':
     case 'INITIALIZING':
-      return isRepo ? 'Initializing repository pipeline...' : 'Queuing resource for ingestion...';
+      return isRepo ? 'Queued. Starting the repository job…' : 'Queued. Starting the job…';
     case 'CLONING':
     case 'FETCHING':
-      return isRepo ? 'Cloning repository & file manifest...' : 'Fetching web content & clean DOM...';
+      return isRepo ? 'Cloning the repository…' : 'Fetching the page…';
     case 'FILE_FILTERING':
     case 'MANIFEST_ANALYSIS':
-      return 'Analyzing package dependencies & structure...';
+      return 'Reading manifests and dependencies…';
     case 'AST_ANALYSIS':
     case 'ANALYZING':
-      return isRepo ? 'Extracting AST symbols, functions & syntax tree...' : 'Extracting semantic content & structured outline...';
+      return isRepo ? 'Parsing source files for symbols…' : 'Reading the content and its structure…';
     case 'CAPABILITY_EXTRACTION':
-      return 'Synthesizing domain capabilities with evidence...';
+      return 'Extracting capabilities, with evidence…';
     case 'INDEXING':
-      return 'Indexing knowledge objects & vector graph...';
+      return 'Building the search index…';
     case 'READY':
     case 'DONE':
-      return 'Ingestion complete! Preparing summary...';
+      return 'Done. Loading the summary…';
     default:
-      return 'Analyzing and extracting resource...';
+      return 'Working…';
   }
 };
 
@@ -455,23 +449,13 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   };
 
   const quickPicks = [
-    { label: 'GitHub: Agent-Reach', url: 'https://github.com/Panniantong/Agent-Reach' },
-    { label: 'YouTube: Production RAG', url: 'https://www.youtube.com/watch?v=0k_2hY5VvN0' },
-    { label: 'Documentation: FastAPI', url: 'https://fastapi.tiangolo.com/tutorial/' },
-    { label: 'Research Paper: U-Net', url: 'https://arxiv.org/abs/1505.04597' }
+    { label: 'Panniantong/Agent-Reach', url: 'https://github.com/Panniantong/Agent-Reach' },
+    { label: 'FastAPI docs', url: 'https://fastapi.tiangolo.com/tutorial/' },
+    { label: 'Production RAG (video)', url: 'https://www.youtube.com/watch?v=0k_2hY5VvN0' },
+    { label: 'U-Net (arXiv)', url: 'https://arxiv.org/abs/1505.04597' }
   ];
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'github_repository': return <GitBranch size={15} className="text-slate-700" />;
-      case 'youtube_video': return <Youtube size={15} className="text-slate-700" />;
-      case 'pdf':
-      case 'research_paper': return <FileText size={15} className="text-slate-700" />;
-      case 'documentation_site': return <BookOpen size={15} className="text-slate-700" />;
-      case 'linkedin_post': return <Linkedin size={15} className="text-slate-700" />;
-      default: return <Globe size={15} className="text-slate-700" />;
-    }
-  };
+  const getTypeIcon = (type: string) => <SourceIcon type={type} size={14} />;
 
   const getTypeLabel = (type: string) => {
     switch (type) {
@@ -547,165 +531,102 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
   if (!isOpen) return null;
 
+  const renderStep = (isDone: boolean, isActive: boolean, label: string) => (
+    <div className={`step${isDone ? ' is-done' : isActive ? ' is-active' : ''}`}>
+      {isDone ? (
+        <CheckCircle2 size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+      ) : isActive ? (
+        <span className="step-marker is-active" aria-hidden="true">
+          <span className="dot dot-pulse" />
+        </span>
+      ) : (
+        <span className="step-marker is-idle" aria-hidden="true" />
+      )}
+      <span>{label}</span>
+    </div>
+  );
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="add-resource-title"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.45)',
-        backdropFilter: 'blur(4px)',
-        WebkitBackdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 50,
-        padding: '16px',
-        overflowY: 'auto'
-      }}
+      className="overlay"
+      style={{ zIndex: 50 }}
       onClick={(e) => {
         if (e.target === e.currentTarget && !isIngesting) onClose();
       }}
     >
       <div
-        style={{
-          width: '100%',
-          maxWidth: '560px',
-          backgroundColor: '#ffffff',
-          borderRadius: '16px',
-          border: '1px solid #e2e8f0',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-          padding: '24px 28px',
-          position: 'relative',
-          color: '#0f172a',
-          fontFamily: 'inherit'
-        }}
+        className="modal"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
       >
-        <style>{`
-          @keyframes openEyeShimmer {
-            0% { transform: translateX(-150%); }
-            100% { transform: translateX(250%); }
-          }
-          @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.35; transform: scale(0.8); }
-          }
-          @keyframes pulseHalo {
-            0% { transform: scale(0.85); opacity: 0.8; }
-            50% { transform: scale(1.35); opacity: 0.15; }
-            100% { transform: scale(0.85); opacity: 0.8; }
-          }
-        `}</style>
-
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
-          <div>
-            <h2 id="add-resource-title" style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0, color: '#0f172a' }}>
-              Add Resource
+        <div className="modal-head">
+          <div className="stack gap-1">
+            <span className="eyebrow">Add to library</span>
+            <h2 id="add-resource-title" className="modal-title">
+              Add a repository
             </h2>
-            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: '4px 0 0 0' }}>
-              Paste a public URL to extract intelligence, capabilities, and structured knowledge.
+            <p className="small muted" style={{ maxWidth: '46ch' }}>
+              Paste a public GitHub URL. Open Eye reads the code and keeps the evidence.
+              Docs, videos and PDFs work too.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             disabled={isIngesting}
-            aria-label="Close modal"
-            style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              padding: '6px',
-              color: '#64748b',
-              cursor: isIngesting ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}
+            aria-label="Close"
+            className="btn btn-secondary btn-icon"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
         {/* Form Input Section */}
         {!isReady && (
-          <form onSubmit={(e) => handleSubmit(e)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form onSubmit={(e) => handleSubmit(e)} className="stack gap-4">
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label htmlFor="resource-url-input" style={{ fontSize: '0.825rem', fontWeight: 600, color: '#334155' }}>
-                  Paste a public URL
+              <div className="row between wrap gap-2" style={{ marginBottom: 'var(--s-2)' }}>
+                <label htmlFor="resource-url-input" className="label">
+                  Public URL
                 </label>
                 {(preview?.supported || (clientDetection?.isValid && clientDetection?.isSupported)) && (
-                  <span style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: '#0f172a',
-                    backgroundColor: '#f1f5f9',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #e2e8f0'
-                  }}>
+                  <span className="badge badge-outline" style={{ color: 'var(--ink)' }}>
                     {getTypeIcon(activeResourceType)}
-                    <span>✓ {getTypeLabel(activeResourceType)} detected</span>
+                    <span>{getTypeLabel(activeResourceType)}</span>
                   </span>
                 )}
               </div>
 
-              <div style={{ position: 'relative' }}>
+              <div className="field-wrap">
                 <input
                   id="resource-url-input"
                   ref={inputRef}
                   type="text"
-                  placeholder="https://github.com/..., youtube.com/watch, arxiv.org, .pdf, or web URL"
+                  className="field mono"
+                  style={{ paddingRight: 40, fontSize: 'var(--fs-sm)' }}
+                  placeholder="https://github.com/owner/repo"
                   value={url}
                   onChange={(e) => handleUrlChange(e.target.value)}
                   disabled={isIngesting}
                   aria-invalid={Boolean(previewError)}
-                  style={{
-                    width: '100%',
-                    padding: '11px 40px 11px 14px',
-                    backgroundColor: '#f8fafc',
-                    border: previewError ? '1px solid #ef4444' : '1px solid #cbd5e1',
-                    borderRadius: '10px',
-                    color: '#0f172a',
-                    fontSize: '0.9rem',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, box-shadow 0.15s'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#0f172a'}
-                  onBlur={(e) => e.target.style.borderColor = previewError ? '#ef4444' : '#cbd5e1'}
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 {isPreviewLoading && (
-                  <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
-                    <Loader2 size={16} className="animate-spin" color="#64748b" />
-                  </div>
+                  <span className="field-trail" aria-label="Checking URL">
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  </span>
                 )}
               </div>
 
               {/* Validation / Incompatibility Error */}
               {previewError && (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: 8,
-                  marginTop: 8,
-                  padding: '8px 12px',
-                  backgroundColor: '#fef2f2',
-                  border: '1px solid #fecaca',
-                  borderRadius: '8px',
-                  color: '#991b1b',
-                  fontSize: '0.8rem'
-                }}>
-                  <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+                <div className="callout callout-danger" role="alert" style={{ marginTop: 'var(--s-2)' }}>
+                  <AlertCircle size={15} aria-hidden="true" />
                   <div>{previewError}</div>
                 </div>
               )}
@@ -713,77 +634,64 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
             {/* Live Preview Card */}
             {preview && preview.supported && !isIngesting && !isFailed && !isAlreadyExists && (
-              <div style={{
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '10px',
-                padding: '12px 14px'
-              }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div className="card card-sunk" style={{ padding: 'var(--s-3) var(--s-4)' }}>
+                <div className="row gap-3" style={{ alignItems: 'flex-start' }}>
                   {preview.thumbnailUrl && (
                     <img
                       src={preview.thumbnailUrl}
-                      alt="Thumbnail"
+                      alt=""
                       style={{
                         width: 72,
                         height: 48,
                         objectFit: 'cover',
-                        borderRadius: 6,
-                        border: '1px solid #cbd5e1',
+                        borderRadius: 'var(--r-sm)',
+                        border: '1px solid var(--line-strong)',
                         flexShrink: 0
                       }}
                     />
                   )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div className="grow">
+                    <div className="truncate" style={{ fontWeight: 600 }}>
                       {preview.previewTitle}
                     </div>
                     {preview.previewDescription && (
-                      <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 2, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      <div className="xsmall muted clamp-2" style={{ marginTop: 2 }}>
                         {preview.previewDescription}
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
-                  <span style={{ fontSize: '0.725rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#475569' }}>
-                    Open Eye will:
-                  </span>
-                  <ul style={{ margin: '4px 0 0 0', paddingLeft: 16, fontSize: '0.775rem', color: '#475569' }}>
-                    {preview.willAnalyze.map((bullet, idx) => (
-                      <li key={idx} style={{ marginBottom: 2 }}>{bullet}</li>
-                    ))}
-                  </ul>
-                </div>
+                {preview.willAnalyze.length > 0 && (
+                  <div style={{ marginTop: 'var(--s-3)', paddingTop: 'var(--s-3)', borderTop: '1px solid var(--line-strong)' }}>
+                    <span className="label">What happens next</span>
+                    <ul className="small muted" style={{ marginTop: 'var(--s-1)' }}>
+                      {preview.willAnalyze.map((bullet, idx) => (
+                        <li key={idx} style={{ marginBottom: 2 }}>{bullet}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* Duplicate Detected Notice (Section 12) */}
+            {/* Duplicate Detected Notice */}
             {(preview?.alreadyExists || isAlreadyExists) && !isIngesting && (
-              <div style={{
-                backgroundColor: '#f8fafc',
-                border: '1px solid #cbd5e1',
-                borderRadius: '10px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 10
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Info size={18} color="#0284c7" />
+              <div className="callout callout-info" style={{ flexDirection: 'column', gap: 'var(--s-3)' }}>
+                <div className="row gap-2" style={{ alignItems: 'flex-start' }}>
+                  <Info size={17} aria-hidden="true" />
                   <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#0f172a' }}>
-                      Already in Open Eye
-                    </div>
-                    <div style={{ fontSize: '0.775rem', color: '#64748b' }}>
-                      This resource has already been indexed{preview?.indexedAt ? ` on ${new Date(preview.indexedAt).toLocaleDateString()}` : ''}.
+                    <div className="callout-title">Already in your library</div>
+                    <div className="muted">
+                      Indexed{preview?.indexedAt ? ` on ${new Date(preview.indexedAt).toLocaleDateString()}` : ' earlier'}.
+                      Open it, or reindex to pick up new changes.
                     </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <div className="row wrap gap-2" style={{ justifyContent: 'flex-end', width: '100%' }}>
                   <button
                     type="button"
+                    className="btn btn-secondary btn-sm"
                     onClick={() => {
                       const id = preview?.existingResourceId || ingestionStatus?.id;
                       if (id) {
@@ -791,334 +699,120 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                         router.push(`/resources?id=${encodeURIComponent(id)}`);
                       }
                     }}
-                    style={{
-                      padding: '7px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: '#ffffff',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      color: '#0f172a',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
-                    }}
                   >
-                    <span>Open Resource</span>
-                    <ExternalLink size={13} />
+                    <span>Open it</span>
+                    <ArrowUpRight size={13} aria-hidden="true" />
                   </button>
                   <button
                     type="button"
+                    className="btn btn-primary btn-sm"
                     onClick={() => handleSubmit(undefined, false, true)}
-                    style={{
-                      padding: '7px 14px',
-                      borderRadius: '8px',
-                      backgroundColor: '#0f172a',
-                      color: '#ffffff',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
-                    }}
                   >
-                    <RotateCw size={13} />
+                    <RotateCw size={13} aria-hidden="true" />
                     <span>Reindex</span>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Ingestion In-Progress Card with Motion & Percentage Done */}
+            {/* Ingestion in progress */}
             {isIngesting && (
-              <div style={{
-                backgroundColor: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '18px 20px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 16
-              }}>
-                {/* Header Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ minWidth: 0, flex: 1, marginRight: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>
-                        Analyzing Resource
+              <div className="card card-ink stack gap-4" style={{ padding: 'var(--s-4)' }} aria-live="polite">
+                <div className="row between gap-3" style={{ alignItems: 'flex-start' }}>
+                  <div className="grow">
+                    <div className="row wrap gap-2">
+                      <span style={{ fontWeight: 700, fontFamily: 'var(--font-display)', fontSize: 'var(--fs-md)' }}>
+                        Indexing
                       </span>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        padding: '2px 8px',
-                        backgroundColor: '#f1f5f9',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '6px',
-                        fontSize: '0.725rem',
-                        fontWeight: 600,
-                        color: '#334155'
-                      }}>
+                      <span className="badge badge-outline" style={{ color: 'var(--ink)' }}>
                         {getTypeIcon(activeResourceType)}
                         <span>{getTypeLabel(activeResourceType)}</span>
                       </span>
                     </div>
-                    <div style={{
-                      fontSize: '0.75rem',
-                      color: '#64748b',
-                      marginTop: 3,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
+                    <div className="mono xsmall muted truncate" style={{ marginTop: 'var(--s-1)' }}>
                       {activeCanonicalUrl}
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                    {/* Live Processing Indicator */}
-                    <div style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '3px 10px',
-                      borderRadius: '9999px',
-                      backgroundColor: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      fontSize: '0.725rem',
-                      fontWeight: 600,
-                      color: '#1d4ed8'
-                    }}>
-                      <span style={{
-                        width: 7,
-                        height: 7,
-                        borderRadius: '50%',
-                        backgroundColor: '#2563eb',
-                        animation: 'pulseDot 1.4s ease-in-out infinite'
-                      }} />
-                      <span>Processing</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleCancelJob}
-                      style={{
-                        padding: '4px 9px',
-                        borderRadius: '6px',
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '0.75rem',
-                        fontWeight: 500,
-                        color: '#64748b',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <Ban size={12} />
+                  <div className="row gap-2" style={{ flexShrink: 0 }}>
+                    <span className="badge badge-neutral">
+                      <span className="dot dot-pulse" aria-hidden="true" />
+                      <span>Working</span>
+                    </span>
+                    <button type="button" className="btn btn-ghost btn-sm danger" onClick={handleCancelJob}>
+                      <Ban size={12} aria-hidden="true" />
                       <span>Cancel</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Percentage Done & Motion Progress Bar */}
-                <div style={{
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  padding: '12px 14px'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <Loader2 size={13} className="animate-spin" color="#2563eb" />
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
-                        {getStageDescription(ingestionStatus?.jobStep, ingestionStatus?.status, activeResourceType)}
-                      </span>
-                    </div>
-                    <div style={{
-                      fontSize: '1.15rem',
-                      fontWeight: 700,
-                      fontVariantNumeric: 'tabular-nums',
-                      color: '#0f172a',
-                      letterSpacing: '-0.02em'
-                    }}>
+                {/* Progress */}
+                <div className="stack gap-2">
+                  <div className="row between gap-3" style={{ alignItems: 'baseline' }}>
+                    <span className="small" style={{ fontWeight: 500 }}>
+                      {getStageDescription(ingestionStatus?.jobStep, ingestionStatus?.status, activeResourceType)}
+                    </span>
+                    <span className="num" style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
                       {Math.round(displayProgress)}%
-                    </div>
+                    </span>
                   </div>
-
-                  {/* Animated Progress Bar Track */}
-                  <div style={{
-                    width: '100%',
-                    height: '8px',
-                    backgroundColor: '#e2e8f0',
-                    borderRadius: '9999px',
-                    overflow: 'hidden',
-                    position: 'relative'
-                  }}>
-                    <div style={{
-                      width: `${Math.max(4, Math.round(displayProgress))}%`,
-                      height: '100%',
-                      borderRadius: '9999px',
-                      background: 'linear-gradient(90deg, #0f172a 0%, #2563eb 55%, #38bdf8 100%)',
-                      position: 'relative',
-                      overflow: 'hidden',
-                      transition: 'width 200ms ease-out'
-                    }}>
-                      {/* Fluid Shimmer Wave with Motion */}
-                      <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        bottom: 0,
-                        width: '100%',
-                        background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)',
-                        animation: 'openEyeShimmer 1.8s infinite cubic-bezier(0.4, 0, 0.2, 1)'
-                      }} />
-                    </div>
+                  <div
+                    className="progress"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(displayProgress)}
+                  >
+                    <div className="progress-fill" style={{ width: `${Math.max(4, Math.round(displayProgress))}%` }} />
                   </div>
                 </div>
 
-                {/* Stage Checklist with Live Motion Icons */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.825rem' }}>
-                  {/* Step 1 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#0f172a' }}>
-                    <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
-                    <span style={{ fontWeight: 500 }}>Source detected & validated</span>
-                  </div>
-
-                  {/* Step 2 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isFetchingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
-                    ) : isFetchingActive ? (
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
-                        <span style={{
-                          position: 'absolute',
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          backgroundColor: '#2563eb',
-                          animation: 'pulseHalo 1.5s ease-out infinite'
-                        }} />
-                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
-                      </div>
-                    ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
-                    )}
-                    <span style={{
-                      color: isFetchingDone ? '#0f172a' : isFetchingActive ? '#0f172a' : '#64748b',
-                      fontWeight: isFetchingActive ? 600 : isFetchingDone ? 500 : 400
-                    }}>
-                      {activeResourceType === 'github_repository' ? 'Repository & dependencies fetched' : 'Resource content fetched'}
-                    </span>
-                  </div>
-
-                  {/* Step 3 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isAnalyzingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
-                    ) : isAnalyzingActive ? (
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
-                        <span style={{
-                          position: 'absolute',
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          backgroundColor: '#2563eb',
-                          animation: 'pulseHalo 1.5s ease-out infinite'
-                        }} />
-                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
-                      </div>
-                    ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
-                    )}
-                    <span style={{
-                      color: isAnalyzingDone ? '#0f172a' : isAnalyzingActive ? '#0f172a' : '#64748b',
-                      fontWeight: isAnalyzingActive ? 600 : isAnalyzingDone ? 500 : 400
-                    }}>
-                      {activeResourceType === 'github_repository' ? 'AST syntax & domain capabilities extracted' : 'Content analyzed & structured'}
-                    </span>
-                  </div>
-
-                  {/* Step 4 */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isIndexingDone ? (
-                      <CheckCircle2 size={16} color="#10b981" style={{ flexShrink: 0 }} />
-                    ) : isIndexingActive ? (
-                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, flexShrink: 0 }}>
-                        <span style={{
-                          position: 'absolute',
-                          width: 18,
-                          height: 18,
-                          borderRadius: '50%',
-                          backgroundColor: '#2563eb',
-                          animation: 'pulseHalo 1.5s ease-out infinite'
-                        }} />
-                        <Loader2 size={16} className="animate-spin" color="#2563eb" />
-                      </div>
-                    ) : (
-                      <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #cbd5e1', flexShrink: 0 }} />
-                    )}
-                    <span style={{
-                      color: isIndexingDone ? '#0f172a' : isIndexingActive ? '#0f172a' : '#64748b',
-                      fontWeight: isIndexingActive ? 600 : isIndexingDone ? 500 : 400
-                    }}>
-                      Knowledge graph & search vectors indexed
-                    </span>
-                  </div>
+                {/* Stage checklist */}
+                <div className="steps">
+                  {renderStep(true, false, 'Source detected and validated')}
+                  {renderStep(
+                    isFetchingDone,
+                    isFetchingActive,
+                    activeResourceType === 'github_repository' ? 'Repository and dependencies fetched' : 'Content fetched'
+                  )}
+                  {renderStep(
+                    isAnalyzingDone,
+                    isAnalyzingActive,
+                    activeResourceType === 'github_repository' ? 'Code parsed, capabilities extracted' : 'Content analyzed and structured'
+                  )}
+                  {renderStep(isIndexingDone, isIndexingActive, 'Search index built')}
                 </div>
               </div>
             )}
 
-            {/* Failure Card (Section 9, 10, 42) */}
+            {/* Failure */}
             {isFailed && (
-              <div style={{
-                backgroundColor: '#fff1f2',
-                border: '1px solid #fecdd3',
-                borderRadius: '10px',
-                padding: '14px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8
-              }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                  <AlertCircle size={18} color="#e11d48" style={{ marginTop: 2, flexShrink: 0 }} />
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#9f1239' }}>
-                      {ingestionStatus?.errorDetails?.title || 'Unable to access this resource'}
+              <div className="callout callout-danger" role="alert" style={{ flexDirection: 'column', gap: 'var(--s-2)' }}>
+                <div className="row gap-2" style={{ alignItems: 'flex-start' }}>
+                  <AlertCircle size={17} aria-hidden="true" />
+                  <div className="stack gap-1">
+                    <div className="callout-title">
+                      {ingestionStatus?.errorDetails?.title || 'Couldn’t read this source'}
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#881337', marginTop: 3 }}>
-                      <strong>Reason:</strong> {ingestionStatus?.errorDetails?.reason || ingestionStatus?.errorMessage || 'An error occurred during resource retrieval.'}
+                    <div>
+                      <strong>Why:</strong> {ingestionStatus?.errorDetails?.reason || ingestionStatus?.errorMessage || 'Something went wrong while fetching it.'}
                     </div>
                     {ingestionStatus?.errorDetails?.action && (
-                      <div style={{ fontSize: '0.775rem', color: '#9f1239', marginTop: 4 }}>
-                        <strong>What you can do:</strong> {ingestionStatus.errorDetails.action}
+                      <div>
+                        <strong>Try:</strong> {ingestionStatus.errorDetails.action}
                       </div>
                     )}
                   </div>
                 </div>
 
                 {ingestionStatus?.errorDetails?.isRetryable && (
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+                  <div className="row" style={{ justifyContent: 'flex-end', width: '100%' }}>
                     <button
                       type="button"
+                      className="btn btn-secondary btn-sm"
                       onClick={() => handleSubmit(undefined, true)}
-                      style={{
-                        padding: '6px 14px',
-                        backgroundColor: '#be123c',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '0.775rem',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6
-                      }}
                     >
-                      <RotateCw size={13} />
+                      <RotateCw size={13} aria-hidden="true" />
                       <span>Retry</span>
                     </button>
                   </div>
@@ -1126,37 +820,21 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
               </div>
             )}
 
-            {/* Quick Picks for sample exploration */}
+            {/* Examples */}
             {!isIngesting && !isFailed && !preview && (
               <div>
-                <span style={{ fontSize: '0.725rem', color: '#94a3b8', display: 'block', marginBottom: 6 }}>
-                  Or try a sample resource:
+                <span className="label" style={{ marginBottom: 'var(--s-2)' }}>
+                  Or try an example
                 </span>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                <div className="row wrap gap-1">
                   {quickPicks.map((pick) => (
                     <button
                       key={pick.label}
                       type="button"
+                      className="tag tag-mono"
                       onClick={() => {
                         setUrl(pick.url);
                         fetchPreview(pick.url);
-                      }}
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        padding: '4px 9px',
-                        borderRadius: '6px',
-                        fontSize: '0.75rem',
-                        color: '#475569',
-                        transition: 'all 0.15s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#f1f5f9';
-                        e.currentTarget.style.borderColor = '#cbd5e1';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = '#f8fafc';
-                        e.currentTarget.style.borderColor = '#e2e8f0';
                       }}
                     >
                       {pick.label}
@@ -1166,93 +844,58 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
               </div>
             )}
 
-            {/* Optional Advanced Settings (Section 34) */}
+            {/* Advanced */}
             {!isIngesting && !isFailed && (
               <div>
                 <button
                   type="button"
+                  className="link-quiet xsmall"
+                  aria-expanded={showAdvanced}
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    fontSize: '0.75rem',
-                    color: '#64748b',
-                    padding: 0
-                  }}
                 >
-                  <span>Advanced options</span>
-                  {showAdvanced ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  <span>Advanced</span>
+                  {showAdvanced ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
                 </button>
 
                 {showAdvanced && (
-                  <div style={{
-                    marginTop: 8,
-                    padding: '10px 12px',
-                    backgroundColor: '#f8fafc',
-                    borderRadius: '8px',
-                    border: '1px solid #e2e8f0'
-                  }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: '#334155', cursor: 'pointer' }}>
+                  <div className="card card-sunk" style={{ marginTop: 'var(--s-2)', padding: 'var(--s-3)' }}>
+                    <label className="check">
                       <input
                         type="checkbox"
                         checked={forceReindex}
                         onChange={(e) => setForceReindex(e.target.checked)}
                       />
-                      <span>Force reindex (bypass existing cache and re-crawl fresh content)</span>
+                      <span>Force reindex: skip the cache and fetch everything again</span>
                     </label>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Bottom Actions */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
+            {/* Actions */}
+            <div className="modal-actions">
               <button
                 type="button"
+                className="btn btn-ghost"
                 onClick={onClose}
                 disabled={isIngesting}
-                style={{
-                  padding: '9px 16px',
-                  borderRadius: '8px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  color: '#475569',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  cursor: isIngesting ? 'not-allowed' : 'pointer'
-                }}
               >
                 Cancel
               </button>
               <button
                 type="submit"
+                className="btn btn-primary"
                 disabled={isIngesting || !url.trim() || Boolean(previewError)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '9px 20px',
-                  borderRadius: '8px',
-                  backgroundColor: isIngesting || !url.trim() || Boolean(previewError)
-                    ? '#94a3b8'
-                    : '#0f172a',
-                  color: '#ffffff',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  border: 'none',
-                  cursor: isIngesting || !url.trim() || Boolean(previewError) ? 'not-allowed' : 'pointer'
-                }}
               >
                 {isIngesting ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>Adding... {Math.round(displayProgress)}%</span>
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                    <span>Adding <span className="num">{Math.round(displayProgress)}%</span></span>
                   </>
                 ) : (
                   <>
-                    <Sparkles size={16} />
-                    <span>Add Resource</span>
+                    <span>Add to library</span>
+                    <ArrowRight size={16} aria-hidden="true" />
                   </>
                 )}
               </button>
@@ -1260,44 +903,26 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
           </form>
         )}
 
-        {/* Resource Ready Card (Section 29) */}
+        {/* Ready */}
         {isReady && ingestionStatus && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '10px 14px',
-              backgroundColor: '#ecfdf5',
-              border: '1px solid #a7f3d0',
-              borderRadius: '8px',
-              color: '#065f46'
-            }}>
-              <CheckCircle2 size={18} color="#059669" />
-              <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                Resource ready
-              </div>
+          <div className="stack gap-4">
+            <div className="callout callout-verified">
+              <CheckCircle2 size={17} aria-hidden="true" />
+              <div className="callout-title">Ready. You can ask about it now.</div>
             </div>
 
-            <div style={{
-              padding: '16px',
-              backgroundColor: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: '10px'
-            }}>
-              <div style={{ fontSize: '1rem', fontWeight: 700, color: '#0f172a' }}>
+            <div className="card card-sunk" style={{ padding: 'var(--s-4)' }}>
+              <div className="res-title" style={{ fontSize: 'var(--fs-lg)' }}>
                 {ingestionStatus.title}
               </div>
-              <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: 2 }}>
-                {getTypeLabel(ingestionStatus.resourceType)} · Discovered {ingestionStatus.capabilitiesCount} capabilities
+              <div className="mono xsmall muted" style={{ marginTop: 'var(--s-1)' }}>
+                {getTypeLabel(ingestionStatus.resourceType)} · <span className="num">{ingestionStatus.capabilitiesCount}</span> {ingestionStatus.capabilitiesCount === 1 ? 'capability' : 'capabilities'} found
               </div>
 
               {ingestionStatus.problemsSolved && ingestionStatus.problemsSolved.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: '#475569' }}>
-                    Problems Solved:
-                  </span>
-                  <ul style={{ margin: '4px 0 0 0', paddingLeft: 16, fontSize: '0.8rem', color: '#334155' }}>
+                <div style={{ marginTop: 'var(--s-3)' }}>
+                  <span className="label">Solves</span>
+                  <ul className="small" style={{ marginTop: 'var(--s-1)' }}>
                     {ingestionStatus.problemsSolved.slice(0, 3).map((prob, i) => (
                       <li key={i}>{prob}</li>
                     ))}
@@ -1306,64 +931,31 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
               )}
 
               {ingestionStatus.usefulFor && ingestionStatus.usefulFor.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', color: '#475569' }}>
-                    Useful For:
-                  </span>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+                <div style={{ marginTop: 'var(--s-3)' }}>
+                  <span className="label">Useful for</span>
+                  <div className="row wrap gap-1" style={{ marginTop: 'var(--s-1)' }}>
                     {ingestionStatus.usefulFor.slice(0, 4).map((tag, i) => (
-                      <span key={i} style={{
-                        fontSize: '0.725rem',
-                        backgroundColor: '#ffffff',
-                        border: '1px solid #cbd5e1',
-                        padding: '2px 7px',
-                        borderRadius: '4px',
-                        color: '#334155'
-                      }}>
-                        {tag}
-                      </span>
+                      <span key={i} className="tag">{tag}</span>
                     ))}
                   </div>
                 </div>
               )}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  padding: '9px 16px',
-                  borderRadius: '8px',
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #cbd5e1',
-                  color: '#475569',
-                  fontSize: '0.875rem',
-                  fontWeight: 600
-                }}
-              >
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={onClose}>
                 Done
               </button>
               <button
                 type="button"
+                className="btn btn-primary"
                 onClick={() => {
                   onClose();
                   router.push(`/resources?id=${encodeURIComponent(ingestionStatus.id)}`);
                 }}
-                style={{
-                  padding: '9px 18px',
-                  borderRadius: '8px',
-                  backgroundColor: '#0f172a',
-                  color: '#ffffff',
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
               >
-                <span>Open Resource</span>
-                <ArrowRight size={15} />
+                <span>Open in library</span>
+                <ArrowRight size={15} aria-hidden="true" />
               </button>
             </div>
           </div>
