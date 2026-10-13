@@ -13,16 +13,24 @@ import {
   ArrowUpRight,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  AlertTriangle,
+  MessageSquare
 } from 'lucide-react';
 import { SourceIcon } from '@/components/Primitives';
 import { ResourceType } from '@repo/shared';
 import { ResourceTypeDetector } from '../lib/adapters/detector';
+import { useDialog } from '@/lib/ui/useDialog';
+import { useIndexingStatus, ResourceStatusData } from '@/lib/ui/useIndexingStatus';
+import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds } from '@/lib/ui/api';
+import { askHref, parseGithubRepo, repoSeedPrompt } from '@/lib/ui/github';
 
 interface AddResourceModalProps {
   isOpen: boolean;
   onClose: () => void;
   onResourceAdded?: () => void;
+  /** The user closed the modal while a job was running; the job keeps going server-side. */
+  onContinueInBackground?: (resourceId: string) => void;
 }
 
 interface PreviewData {
@@ -52,18 +60,20 @@ interface IngestionStatusData {
     reason: string;
     action: string;
     isRetryable: boolean;
-    status: 'BLOCKED' | 'FAILED';
+    status?: 'BLOCKED' | 'FAILED';
   } | null;
   problemsSolved: string[];
   practicalUses: string[];
   usefulFor: string[];
   valueProposition?: string;
   capabilitiesCount: number;
-  jobStep?: string;
+  jobStep?: string | null;
+  sourceUrl?: string;
+  repositoryId?: string | null;
 }
 
-const getTargetProgress = (step?: string, status?: string): number => {
-  if (status === 'READY' || step === 'DONE') return 100;
+const getTargetProgress = (step?: string | null, status?: string): number => {
+  if (status === 'READY' || status === 'PARTIAL' || step === 'DONE') return 100;
   if (status === 'FAILED' || status === 'BLOCKED' || status === 'CANCELLED') return 0;
 
   const current = (step || status || '').toUpperCase();
@@ -90,7 +100,7 @@ const getTargetProgress = (step?: string, status?: string): number => {
   }
 };
 
-const getStageDescription = (step?: string, status?: string, resType?: string): string => {
+const getStageDescription = (step?: string | null, status?: string, resType?: string): string => {
   const current = (step || status || '').toUpperCase();
   const isRepo = resType === 'github_repository';
 
@@ -123,9 +133,11 @@ const getStageDescription = (step?: string, status?: string, resType?: string): 
 export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   isOpen,
   onClose,
-  onResourceAdded
+  onResourceAdded,
+  onContinueInBackground
 }) => {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -149,9 +161,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
   // Focus input automatically on open & reset state when closed
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-    } else {
+    if (!isOpen) {
       setUrl('');
       setForceReindex(false);
       setShowAdvanced(false);
@@ -168,16 +178,18 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     }
   }, [isOpen]);
 
-  // Keyboard shortcut: Escape to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen && !isSubmitting && !pollingActive) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isSubmitting, pollingActive, onClose]);
+  // Closing while a job runs never cancels it: the job continues and the app keeps following it.
+  const handleDismiss = () => {
+    if (pollingActive && activeResourceId) {
+      onContinueInBackground?.(activeResourceId);
+      onClose();
+      return;
+    }
+    if (isSubmitting) return; // the request is still in flight; wait for an id
+    onClose();
+  };
+
+  useDialog(dialogRef, handleDismiss, isOpen);
 
   // Debounced Live Preview Fetch
   const fetchPreview = useCallback(async (inputUrl: string) => {
@@ -244,48 +256,40 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
     }
   };
 
-  // Status Polling Loop
-  useEffect(() => {
-    if (!pollingActive || !activeResourceId) return;
+  // Status polling (shared hook): PARTIAL and CANCELLED are terminal too, and repeated failures
+  // surface as a "lost track" state instead of spinning forever.
+  const finishSubmitting = () => {
+    setIsSubmitting(false);
+    submittingRef.current = false;
+  };
 
-    let isMounted = true;
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/resources/${activeResourceId}/status`);
-        if (!res.ok) return;
-
-        const data: IngestionStatusData = await res.json();
-        if (!isMounted) return;
-
-        setIngestionStatus(data);
-
-        // Terminal States stop polling
-        if (data.status === 'READY') {
+  const { lost: lostMap, retry: retryPolling } = useIndexingStatus(
+    pollingActive && activeResourceId ? [activeResourceId] : [],
+    {
+      initialDelay: 1500,
+      maxDelay: 5000,
+      maxFailures: 6,
+      immediate: false,
+      onUpdate: (data: ResourceStatusData) => {
+        setIngestionStatus((prev) => ({ ...(prev || {}), ...(data as any), capabilitiesCount: data.capabilitiesCount ?? 0 }));
+      },
+      onTerminal: (data: ResourceStatusData) => {
+        if (data.status === 'READY' || data.status === 'PARTIAL') {
           setDisplayProgress(100);
           setTimeout(() => {
-            if (!isMounted) return;
-            clearInterval(interval);
             setPollingActive(false);
-            setIsSubmitting(false);
-            submittingRef.current = false;
-            if (onResourceAdded) onResourceAdded();
+            finishSubmitting();
+            onResourceAdded?.();
           }, 650);
-        } else if (data.status === 'FAILED' || data.status === 'BLOCKED' || data.status === 'CANCELLED') {
-          clearInterval(interval);
+        } else {
           setPollingActive(false);
-          setIsSubmitting(false);
-          submittingRef.current = false;
+          finishSubmitting();
+          onResourceAdded?.();
         }
-      } catch (err) {
-        console.error('Error polling status:', err);
       }
-    }, 1500);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [pollingActive, activeResourceId, onResourceAdded]);
+    }
+  );
+  const pollLost = Boolean(activeResourceId && lostMap[activeResourceId]);
 
   // Submit Handler
   const handleSubmit = async (e?: React.FormEvent, isRetry = false, overrideForce = false) => {
@@ -310,23 +314,43 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
         })
       });
 
-      const data = await res.json();
+      const data: any = (await readJsonSafe(res)) || {};
 
       if (!res.ok) {
         setIsSubmitting(false);
         submittingRef.current = false;
+        const blocked = data.status === 'BLOCKED';
+        const retryAfter = retryAfterSeconds(res, data);
+        const title = blocked
+          ? 'Blocked destination'
+          : res.status === 429
+            ? 'Rate limited'
+            : res.status >= 500
+              ? 'Server error'
+              : res.status === 400
+                ? 'Can’t add this URL'
+                : httpErrorTitle(res.status);
+        const action = blocked
+          ? 'Open Eye only reads public sources on the open internet.'
+          : res.status === 429
+            ? formatRetryAfter(retryAfter)
+            : res.status >= 500
+              ? 'This is on our side. Try again in a moment.'
+              : 'Check that the URL is public, unauthenticated, and properly formatted.';
         setIngestionStatus({
           id: '',
           title: trimmedUrl,
           resourceType: preview?.resourceType || 'generic_url',
-          status: data.status || 'FAILED',
+          status: blocked ? 'BLOCKED' : 'FAILED',
           errorMessage: data.error || 'Failed to add resource',
           errorDetails: {
-            title: data.status === 'BLOCKED' ? 'Prohibited or Blocked Destination' : 'Invalid Resource',
-            reason: data.error || 'The resource could not be validated or queued.',
-            action: 'Check that the URL is public, unauthenticated, and properly formatted.',
-            isRetryable: false,
-            status: data.status === 'BLOCKED' ? 'BLOCKED' : 'FAILED'
+            title,
+            reason: res.status >= 500 && !data.error
+              ? 'The server could not queue this repository.'
+              : data.error || 'The resource could not be validated or queued.',
+            action,
+            isRetryable: res.status === 429 || res.status >= 500,
+            status: blocked ? 'BLOCKED' : 'FAILED'
           },
           problemsSolved: [],
           practicalUses: [],
@@ -379,10 +403,23 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
           setIsSubmitting(false);
           submittingRef.current = false;
           // Fetch full status to display Ready view
-          const statusRes = await fetch(`/api/resources/${data.resourceId}/status`);
-          if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            setIngestionStatus(statusData);
+          try {
+            const statusRes = await fetch(`/api/resources/${data.resourceId}/status`);
+            if (statusRes.ok) {
+              const statusData = await statusRes.json();
+              setIngestionStatus(statusData);
+            }
+          } catch {
+            setIngestionStatus({
+              id: data.resourceId,
+              title: data.title || trimmedUrl,
+              resourceType: data.resourceType,
+              status: 'READY',
+              problemsSolved: [],
+              practicalUses: [],
+              usefulFor: [],
+              capabilitiesCount: 0
+            });
           }
           if (onResourceAdded) onResourceAdded();
         }, 650);
@@ -410,8 +447,8 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
         status: 'FAILED',
         errorMessage: err.message || 'Network error occurred',
         errorDetails: {
-          title: 'Network Communication Failure',
-          reason: 'Unable to reach the Open Eye ingestion server.',
+          title: 'Network error',
+          reason: 'Unable to reach the Open Eye server.',
           action: 'Check your internet connection and retry.',
           isRetryable: true,
           status: 'FAILED'
@@ -441,8 +478,9 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
       setIngestionStatus(prev => prev ? {
         ...prev,
         status: 'CANCELLED',
-        errorMessage: 'Resource ingestion cancelled by user'
+        errorMessage: 'Indexing was cancelled.'
       } : null);
+      onResourceAdded?.();
     } catch (err) {
       console.error('Cancel request error:', err);
     }
@@ -472,7 +510,9 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
   const isIngesting = isSubmitting || pollingActive;
   const isFailed = ingestionStatus?.status === 'FAILED' || ingestionStatus?.status === 'BLOCKED';
-  const isReady = ingestionStatus?.status === 'READY';
+  const isCancelled = ingestionStatus?.status === 'CANCELLED';
+  const isPartial = ingestionStatus?.status === 'PARTIAL';
+  const isReady = (ingestionStatus?.status === 'READY' || isPartial) && !pollingActive;
   const isAlreadyExists = ingestionStatus?.status === 'ALREADY_EXISTS';
 
   // Immediate client-side type detection on URL keystroke (Hook must be called unconditionally)
@@ -529,7 +569,37 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
   const isAnalyzingActive = !isAnalyzingDone && ['ANALYZING', 'FILE_FILTERING', 'MANIFEST_ANALYSIS', 'AST_ANALYSIS', 'CAPABILITY_EXTRACTION'].includes(currentStep);
   const isIndexingActive = !isIndexingDone && currentStep === 'INDEXING';
 
+  // "Open repository" needs the repositories.id; old status payloads do not carry it.
+  const [readyRepositoryId, setReadyRepositoryId] = useState<string | null>(null);
+  const readyResourceId = isReady ? ingestionStatus?.id : undefined;
+  const readyRepoIdFromStatus = ingestionStatus?.repositoryId;
+  useEffect(() => {
+    setReadyRepositoryId(readyRepoIdFromStatus || null);
+    if (!readyResourceId || readyRepoIdFromStatus) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/resources?type=github_repository', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const item = (data.items || []).find((it: any) => it.id === readyResourceId);
+        if (!cancelled && item?.repositoryId) setReadyRepositoryId(item.repositoryId);
+      } catch {
+        /* the library link below still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [readyResourceId, readyRepoIdFromStatus]);
+
   if (!isOpen) return null;
+
+  const readyName =
+    parseGithubRepo(ingestionStatus?.sourceUrl) ||
+    parseGithubRepo(activeCanonicalUrl) ||
+    ingestionStatus?.title ||
+    'this repository';
 
   const renderStep = (isDone: boolean, isActive: boolean, label: string) => (
     <div className={`step${isDone ? ' is-done' : isActive ? ' is-active' : ''}`}>
@@ -548,9 +618,6 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="add-resource-title"
       className="overlay"
       style={{ zIndex: 50 }}
       onClick={(e) => {
@@ -558,6 +625,10 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-resource-title"
         className="modal"
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
@@ -576,9 +647,9 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
-            disabled={isIngesting}
-            aria-label="Close"
+            onClick={handleDismiss}
+            disabled={isSubmitting && !pollingActive}
+            aria-label={pollingActive ? 'Close; indexing continues in the background' : 'Close'}
             className="btn btn-secondary btn-icon"
           >
             <X size={18} aria-hidden="true" />
@@ -605,6 +676,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 <input
                   id="resource-url-input"
                   ref={inputRef}
+                  data-autofocus
                   type="text"
                   className="field mono"
                   style={{ paddingRight: 40, fontSize: 'var(--fs-sm)' }}
@@ -709,15 +781,38 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                     onClick={() => handleSubmit(undefined, false, true)}
                   >
                     <RotateCw size={13} aria-hidden="true" />
-                    <span>Reindex</span>
+                    <span>Re-index</span>
                   </button>
                 </div>
               </div>
             )}
 
             {/* Ingestion in progress */}
-            {isIngesting && (
-              <div className="card card-ink stack gap-4" style={{ padding: 'var(--s-4)' }} aria-live="polite">
+            {isIngesting && pollLost && (
+              <div className="callout callout-inferred" role="alert" style={{ flexDirection: 'column', gap: 'var(--s-3)' }}>
+                <div className="row gap-2" style={{ alignItems: 'flex-start' }}>
+                  <AlertTriangle size={17} aria-hidden="true" />
+                  <div>
+                    <div className="callout-title">Lost track of this job</div>
+                    <div>
+                      Open Eye stopped answering status checks. The job may still be running on the server.
+                    </div>
+                  </div>
+                </div>
+                <div className="row wrap gap-2" style={{ justifyContent: 'flex-end', width: '100%' }}>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleDismiss}>
+                    Continue in background
+                  </button>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={retryPolling}>
+                    <RotateCw size={13} aria-hidden="true" />
+                    <span>Check again</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isIngesting && !pollLost && (
+              <div className="card card-ink stack gap-4" style={{ padding: 'var(--s-4)' }}>
                 <div className="row between gap-3" style={{ alignItems: 'flex-start' }}>
                   <div className="grow">
                     <div className="row wrap gap-2">
@@ -749,10 +844,10 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                 {/* Progress */}
                 <div className="stack gap-2">
                   <div className="row between gap-3" style={{ alignItems: 'baseline' }}>
-                    <span className="small" style={{ fontWeight: 500 }}>
+                    <span className="small" style={{ fontWeight: 500 }} role="status">
                       {getStageDescription(ingestionStatus?.jobStep, ingestionStatus?.status, activeResourceType)}
                     </span>
-                    <span className="num" style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
+                    <span className="num" style={{ fontSize: 'var(--fs-lg)', fontWeight: 600 }} aria-hidden="true">
                       {Math.round(displayProgress)}%
                     </span>
                   </div>
@@ -762,6 +857,7 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={Math.round(displayProgress)}
+                    aria-label="Indexing progress"
                   >
                     <div className="progress-fill" style={{ width: `${Math.max(4, Math.round(displayProgress))}%` }} />
                   </div>
@@ -781,6 +877,25 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
                     activeResourceType === 'github_repository' ? 'Code parsed, capabilities extracted' : 'Content analyzed and structured'
                   )}
                   {renderStep(isIndexingDone, isIndexingActive, 'Search index built')}
+                </div>
+              </div>
+            )}
+
+            {/* Cancelled */}
+            {isCancelled && !isIngesting && (
+              <div className="callout callout-info" role="status" style={{ flexDirection: 'column', gap: 'var(--s-2)' }}>
+                <div className="row gap-2" style={{ alignItems: 'flex-start' }}>
+                  <Ban size={16} aria-hidden="true" />
+                  <div>
+                    <div className="callout-title">Indexing cancelled</div>
+                    <div>Nothing was added. You can start again whenever you like.</div>
+                  </div>
+                </div>
+                <div className="row" style={{ justifyContent: 'flex-end', width: '100%' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleSubmit(undefined, true)}>
+                    <RotateCw size={13} aria-hidden="true" />
+                    <span>Start again</span>
+                  </button>
                 </div>
               </div>
             )}
@@ -874,14 +989,15 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
 
             {/* Actions */}
             <div className="modal-actions">
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={onClose}
-                disabled={isIngesting}
-              >
-                Cancel
-              </button>
+              {pollingActive ? (
+                <button type="button" className="btn btn-secondary" onClick={handleDismiss}>
+                  Continue in background
+                </button>
+              ) : (
+                <button type="button" className="btn btn-ghost" onClick={onClose} disabled={isSubmitting}>
+                  Cancel
+                </button>
+              )}
               <button
                 type="submit"
                 className="btn btn-primary"
@@ -906,10 +1022,20 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
         {/* Ready */}
         {isReady && ingestionStatus && (
           <div className="stack gap-4">
-            <div className="callout callout-verified">
-              <CheckCircle2 size={17} aria-hidden="true" />
-              <div className="callout-title">Ready. You can ask about it now.</div>
-            </div>
+            {isPartial ? (
+              <div className="callout callout-inferred" role="status">
+                <AlertTriangle size={17} aria-hidden="true" />
+                <div>
+                  <div className="callout-title">Indexed with gaps. You can ask about it now.</div>
+                  <div>Some files could not be analyzed, so answers may miss parts of the code.</div>
+                </div>
+              </div>
+            ) : (
+              <div className="callout callout-verified" role="status">
+                <CheckCircle2 size={17} aria-hidden="true" />
+                <div className="callout-title">Ready. You can ask about it now.</div>
+              </div>
+            )}
 
             <div className="card card-sunk" style={{ padding: 'var(--s-4)' }}>
               <div className="res-title" style={{ fontSize: 'var(--fs-lg)' }}>
@@ -948,14 +1074,29 @@ export const AddResourceModal: React.FC<AddResourceModalProps> = ({
               </button>
               <button
                 type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  onClose();
+                  router.push(
+                    readyRepositoryId
+                      ? `/repositories/${encodeURIComponent(readyRepositoryId)}`
+                      : `/resources?id=${encodeURIComponent(ingestionStatus.id)}`
+                  );
+                }}
+              >
+                <span>{readyRepositoryId ? 'Open repository' : 'Open in library'}</span>
+                <ArrowUpRight size={15} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
                 className="btn btn-primary"
                 onClick={() => {
                   onClose();
-                  router.push(`/resources?id=${encodeURIComponent(ingestionStatus.id)}`);
+                  router.push(askHref(repoSeedPrompt(readyName)));
                 }}
               >
-                <span>Open in library</span>
-                <ArrowRight size={15} aria-hidden="true" />
+                <MessageSquare size={15} aria-hidden="true" />
+                <span className="truncate" style={{ maxWidth: '22ch' }}>Ask about {readyName}</span>
               </button>
             </div>
           </div>
