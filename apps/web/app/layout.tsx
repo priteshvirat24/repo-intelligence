@@ -1,27 +1,15 @@
 import type { Metadata, Viewport } from 'next';
-import { Bricolage_Grotesque, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
+// Fonts are bundled from npm (@fontsource, SIL OFL) rather than fetched from Google at build time:
+// the Railway build could not reach fonts.googleapis.com and silently fell back to system fonts.
+import '@fontsource-variable/bricolage-grotesque/opsz.css';
+import '@fontsource/ibm-plex-sans/latin-400.css';
+import '@fontsource/ibm-plex-sans/latin-500.css';
+import '@fontsource/ibm-plex-sans/latin-600.css';
+import '@fontsource/ibm-plex-sans/latin-700.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
 import '../styles/globals.css';
-
-const display = Bricolage_Grotesque({
-  subsets: ['latin'],
-  variable: '--ff-display',
-  axes: ['opsz'],
-  display: 'swap'
-});
-
-const sans = IBM_Plex_Sans({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--ff-sans',
-  display: 'swap'
-});
-
-const mono = IBM_Plex_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--ff-mono',
-  display: 'swap'
-});
 
 // Favicon: the Open Eye mark (ink almond, vermilion pupil). SVG data URIs cannot read CSS tokens,
 // so the two brand values are inlined here only.
@@ -50,7 +38,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );

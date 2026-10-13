@@ -40,6 +40,9 @@
   --info-tint: #DCE5F0;
 
   /* Type */
+  --ff-display: 'Bricolage Grotesque Variable';
+  --ff-sans: 'IBM Plex Sans';
+  --ff-mono: 'IBM Plex Mono';
   --font-display: var(--ff-display), 'Helvetica Neue', Arial, sans-serif;
   --font-sans: var(--ff-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: var(--ff-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
