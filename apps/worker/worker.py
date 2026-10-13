@@ -232,12 +232,15 @@ class IngestionWorker:
                 subsystems = [{"name": Path(d).name or d, "path": d} for d in code_dirs[:4]]
 
             for sub in subsystems[:4]:
-                sub_path = sub.get("path", "")
-                sub_symbols = [so for so in symbol_outlines if sub_path in so]
+                # The model sometimes returns a list of paths for one subsystem
+                raw_path = sub.get("path")
+                sub_paths = [p for p in (raw_path if isinstance(raw_path, list) else [raw_path]) if isinstance(p, str) and p]
+                sub_path = ", ".join(sub_paths)
+                sub_symbols = [so for so in symbol_outlines if any(p in so for p in sub_paths)]
                 sub_text = "\n".join(sub_symbols[:15])
                 try:
                     mod_res = ModuleAnalyzer.analyze_module(
-                        module_name=sub.get("name", sub_path),
+                        module_name=str(sub.get("name") or sub_path),
                         module_path=sub_path,
                         symbol_outline=sub_text,
                         doc_excerpt="",
