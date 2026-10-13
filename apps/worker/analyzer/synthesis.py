@@ -63,8 +63,8 @@ Synthesize into an Open-World Knowledge Model matching this JSON schema:
       "evidence": [
         {{
           "file_path": "path/to/source.py",
-          "quote": "symbol or literal text quote from source",
-          "symbol_name": "SymbolName",
+          "quote": "text copied VERBATIM from the provided content, or empty string if you cannot copy it exactly",
+          "symbol_name": "Exact name of a class/function from the symbol outlines that implements this",
           "evidence_type": "code_ast" | "doc" | "example"
         }}
       ]

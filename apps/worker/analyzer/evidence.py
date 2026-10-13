@@ -47,6 +47,26 @@ class EvidenceVerificationGate:
             return None
         return line_of[pos], line_of[pos + len(quote_clean) - 1]
 
+    MIN_SYMBOL_CHARS = 3
+
+    @classmethod
+    def locate_symbol_definition(cls, content: str, symbol: str) -> Optional[Tuple[int, int]]:
+        """Line of the symbol's definition (def/class/function/func/fn/struct/...), if any."""
+        name = symbol.split(".")[-1].strip()  # "Class.method" -> "method"
+        if len(name) < cls.MIN_SYMBOL_CHARS or not re.fullmatch(r"[A-Za-z_$][\w$]*", name):
+            return None
+        definition = re.compile(
+            r"^[ \t]*(?:export[ \t]+)?(?:default[ \t]+)?(?:pub(?:\([^)]*\))?[ \t]+)?(?:abstract[ \t]+)?"
+            r"(?:async[ \t]+)?(?:def|class|function\*?|func|fn|struct|enum|trait|interface|type|impl|const|let|var)"
+            r"[ \t]+(?:\([^)]*\)[ \t]*)?" + re.escape(name) + r"\b",
+            re.MULTILINE,
+        )
+        match = definition.search(content)
+        if not match:
+            return None
+        line_no = content[:match.start()].count("\n") + 1
+        return line_no, line_no
+
     @classmethod
     def verify_evidence(cls, repo_dir: Path, evidence: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -85,19 +105,15 @@ class EvidenceVerificationGate:
         if quote:
             calculated_lines = cls.locate_text_in_file(content, quote)
 
-        if quote and not calculated_lines:
-            # The model quoted text that is not in the file: the claim is fabricated, and a common
-            # symbol name elsewhere in the file must not rescue it
-            return {"verified": False, "reason": "quote_or_symbol_not_found_in_file"}
-
-        # Symbol-only claim: locate the symbol in the file
+        # Quote not found verbatim (the synthesis pass only sees summaries and symbol outlines, so its
+        # quotes are often paraphrased): accept the claim only if the named symbol is DEFINED in this
+        # file. A mere mention (e.g. "import os") does not substantiate anything. The persisted snippet
+        # is then the real definition line, never the model's quote.
         if not calculated_lines and symbol:
-            symbol_pattern = re.compile(rf'\b{re.escape(symbol)}\b')
-            match = symbol_pattern.search(content)
-            if match:
-                pos = match.start()
-                line_no = content[:pos].count("\n") + 1
-                calculated_lines = (line_no, line_no)
+            calculated_lines = cls.locate_symbol_definition(content, symbol)
+
+        if quote and not calculated_lines:
+            return {"verified": False, "reason": "quote_or_symbol_not_found_in_file"}
 
         if not calculated_lines:
             return {
