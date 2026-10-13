@@ -107,7 +107,8 @@ class DatabaseRepository:
                         SELECT id FROM ingestion_jobs
                         WHERE repository_id IS NOT NULL
                         AND (
-                            status = 'QUEUED'
+                            -- a QUEUED job's locked_at, when set, is its retry "not before" time
+                            (status = 'QUEUED' AND (locked_at IS NULL OR locked_at <= NOW()))
                             OR (status = 'RUNNING' AND {stale})
                         )
                         AND attempts < {config.MAX_JOB_ATTEMPTS}
@@ -193,6 +194,43 @@ class DatabaseRepository:
                     {"job_id": job_id, "repo_id": repo_id}
                 )
                 conn.commit()
+        finally:
+            conn.close()
+
+    def requeue_job_for_retry(self, job_id: str, repo_id: str, error_message: str, worker_id: str, delay_seconds: int) -> bool:
+        """
+        Puts a job that hit a transient error back in the queue, not claimable before NOW() + delay
+        (stored in locked_at, with locked_by cleared). Only applies if this worker still owns the job.
+        Returns False if ownership was lost (cancelled/superseded), in which case nothing changes.
+        """
+        conn = self.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE ingestion_jobs
+                    SET status = 'QUEUED', step = 'RETRY_SCHEDULED', error_message = %s,
+                        locked_by = NULL, locked_at = NOW() + make_interval(secs => %s), updated_at = NOW()
+                    WHERE id = %s AND status = 'RUNNING' AND locked_by = %s
+                    """,
+                    (error_message, delay_seconds, job_id, worker_id)
+                )
+                if cur.rowcount == 0:
+                    conn.rollback()
+                    return False
+                cur.execute(
+                    "UPDATE repositories SET status = 'PENDING', error_message = %s, updated_at = NOW() WHERE id = %s",
+                    (error_message, repo_id)
+                )
+                cur.execute(
+                    f"""
+                    UPDATE resources SET status = 'PENDING', error_message = %(msg)s, updated_at = NOW()
+                    WHERE status <> 'CANCELLED' AND {RESOURCE_MATCH_SQL}
+                    """,
+                    {"msg": error_message, "job_id": job_id, "repo_id": repo_id}
+                )
+                conn.commit()
+                return True
         finally:
             conn.close()
 

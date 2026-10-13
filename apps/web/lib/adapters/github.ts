@@ -3,6 +3,7 @@ import { validateGitHubUrl } from '../validation/url';
 import { GitHubClient } from '../github/client';
 import { ResourceAdapter, ResourceDescriptor, IngestResult } from './types';
 import { ResourceTypeDetector } from './detector';
+import { queueRepositoryJob } from '../github/jobs';
 
 export class GitHubResourceAdapter implements ResourceAdapter {
   name = 'GitHubResourceAdapter';
@@ -199,19 +200,9 @@ export class GitHubResourceAdapter implements ResourceAdapter {
 
     const repositoryId = repoRes.rows[0].id;
 
-    // Cancel any stale/existing active jobs for this repository
-    await query(`
-      UPDATE ingestion_jobs
-      SET status = 'FAILED', error_message = 'Superseded by new ingestion job', updated_at = NOW()
-      WHERE repository_id = $1 AND status IN ('QUEUED', 'RUNNING')
-    `, [repositoryId]);
-
-    // Queue ingestion job
-    const jobRes = await query(`
-      INSERT INTO ingestion_jobs (repository_id, resource_id, status, step)
-      VALUES ($1, $2, 'QUEUED', 'QUEUED')
-      RETURNING id;
-    `, [repositoryId, resourceId]);
+    // Supersede any active job and queue a new one atomically (serialized per repository)
+    const queued = await queueRepositoryJob(repositoryId, resourceId, { supersede: 'always' });
+    const jobId = queued.queued ? queued.jobId : queued.activeJobId;
 
     return {
       success: true,
@@ -225,7 +216,7 @@ export class GitHubResourceAdapter implements ResourceAdapter {
       metadata: {
         repositoryId,
         resourceId,
-        jobId: jobRes.rows[0].id,
+        jobId,
         stars: meta.stars,
         language: meta.primaryLanguage
       },

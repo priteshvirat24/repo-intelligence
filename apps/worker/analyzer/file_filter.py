@@ -25,11 +25,15 @@ class FileFilter:
     HIGH_VALUE_MANIFESTS = {
         "package.json", "pyproject.toml", "requirements.txt", "setup.py",
         "go.mod", "cargo.toml", "dockerfile", "docker-compose.yml",
+        "pom.xml", "build.gradle", "build.gradle.kts", "cmakelists.txt", "meson.build",
         "openapi.json", "openapi.yaml", "swagger.json", "swagger.yaml"
     }
 
     HIGH_VALUE_CODE_EXTENSIONS = {
-        ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs"
+        ".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs",
+        ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".java",
+        # Patch sets are the implementation for projects that modify an upstream codebase
+        ".patch", ".diff",
     }
 
     HIGH_VALUE_DOC_EXTENSIONS = {

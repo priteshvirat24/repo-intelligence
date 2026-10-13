@@ -19,9 +19,9 @@ export function validateGitHubUrl(rawUrl: string): URLValidationResult {
     return { valid: false, error: 'Please enter a valid GitHub repository URL' };
   }
 
-  // Reject unsupported protocols
-  if (rawUrl.startsWith('git@') || rawUrl.startsWith('ssh://')) {
-    return { valid: false, error: 'SSH URLs are not supported. Use https://github.com/owner/repo' };
+  // SSH clone URLs for GitHub are normalized to https above; any other SSH host is unsupported
+  if (!normalized.startsWith('https://') && (rawUrl.startsWith('git@') || rawUrl.startsWith('ssh://'))) {
+    return { valid: false, error: 'SSH URLs are only supported for github.com. Use https://github.com/owner/repo' };
   }
 
   // Strict regex for https://github.com/{owner}/{repo}

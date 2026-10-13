@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { validateGitHubUrl } from '@/lib/validation/url';
-import { GitHubClient } from '@/lib/github/client';
+import { UniversalIngestionService } from '@/lib/ai/universal_ingestion';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 
 // Reads live database state: must never be prerendered/cached at build time
@@ -60,83 +60,35 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { url } = body;
 
-    // 1. Strict URL validation
     const validation = validateGitHubUrl(url);
-    if (!validation.valid || !validation.owner || !validation.repo) {
+    if (!validation.valid || !validation.canonicalUrl) {
       return NextResponse.json({ error: validation.error || 'Invalid URL' }, { status: 400 });
     }
 
-    const { owner, repo, canonicalUrl } = validation;
-
-    // 2. GitHub Pre-flight verification
-    const ghClient = new GitHubClient();
-    let meta;
-    try {
-      meta = await ghClient.fetchMetadata(owner, repo);
-    } catch (err: any) {
-      const msg = err.message || '';
-      if (msg.startsWith('REPOSITORY_NOT_FOUND')) {
-        return NextResponse.json({ error: msg, code: 'REPOSITORY_NOT_FOUND' }, { status: 404 });
-      }
-      if (msg.startsWith('PRIVATE_REPOSITORY')) {
-        return NextResponse.json({ error: msg, code: 'PRIVATE_REPOSITORY' }, { status: 403 });
-      }
-      if (msg.startsWith('REPOSITORY_TOO_LARGE')) {
-        return NextResponse.json({ error: msg, code: 'REPOSITORY_TOO_LARGE' }, { status: 413 });
-      }
-      // No placeholder metadata: without GitHub's real data we cannot describe the repo or enforce limits
-      console.warn('GitHub pre-flight check failed:', err.message);
-      return NextResponse.json({
-        error: `Could not fetch repository metadata from GitHub (${msg || 'network error'}). Please retry shortly.`,
-        code: 'GITHUB_UNAVAILABLE'
-      }, { status: 503 });
+    // Same path as "Add resource": creates the resource + repository rows, enforces the size limit,
+    // and queues the job atomically. (This endpoint used to insert a repository without a resource row,
+    // which left it invisible to search.)
+    const result = await UniversalIngestionService.ingestResource(validation.canonicalUrl);
+    if (!result.resourceId) {
+      const status = /REPOSITORY_NOT_FOUND/.test(result.errorMessage || '') ? 404
+        : /PRIVATE_REPOSITORY|ACCESS_FORBIDDEN/.test(result.errorMessage || '') ? 403
+        : /REPOSITORY_TOO_LARGE/.test(result.errorMessage || '') ? 413
+        : /GITHUB_UNAVAILABLE|GITHUB_RATE_LIMITED/.test(result.errorMessage || '') ? 503
+        : 400;
+      return NextResponse.json({ error: result.errorMessage || 'Repository could not be queued' }, { status });
     }
 
-    // 3. Create or update repository record
-    const repoRes = await query(`
-      INSERT INTO repositories (owner, name, url, description, default_branch, stars, license, primary_language, latest_commit_hash, status, error_message, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING', NULL, NOW())
-      ON CONFLICT (owner, name) DO UPDATE
-      SET description = COALESCE(EXCLUDED.description, repositories.description),
-          default_branch = EXCLUDED.default_branch,
-          stars = EXCLUDED.stars,
-          license = COALESCE(EXCLUDED.license, repositories.license),
-          primary_language = COALESCE(EXCLUDED.primary_language, repositories.primary_language),
-          latest_commit_hash = COALESCE(EXCLUDED.latest_commit_hash, repositories.latest_commit_hash),
-          status = 'PENDING',
-          error_message = NULL,
-          updated_at = NOW()
-      RETURNING id, owner, name, status;
-    `, [
-      meta.owner,
-      meta.name,
-      canonicalUrl,
-      meta.description,
-      meta.defaultBranch,
-      meta.stars,
-      meta.license,
-      meta.primaryLanguage,
-      meta.commitSha
-    ]);
-
-    const repository = repoRes.rows[0];
-
-    // 4. Create Ingestion Job in PostgreSQL-native queue
-    const jobRes = await query(`
-      INSERT INTO ingestion_jobs (repository_id, status, step)
-      VALUES ($1, 'QUEUED', 'QUEUED')
-      RETURNING id, status, step;
-    `, [repository.id]);
-
-    // 5. Return 202 Accepted immediately
+    const repoRes = await query('SELECT id FROM repositories WHERE resource_id = $1 ORDER BY updated_at DESC LIMIT 1', [result.resourceId]);
     return NextResponse.json({
-      repositoryId: repository.id,
-      jobId: jobRes.rows[0].id,
-      status: 'PENDING'
-    }, { status: 202 });
-
+      repositoryId: repoRes.rows[0]?.id ?? null,
+      resourceId: result.resourceId,
+      jobId: result.jobId ?? null,
+      status: result.status,
+      alreadyExists: result.alreadyExists,
+      alreadyProcessing: result.alreadyProcessing
+    }, { status: result.alreadyExists ? 200 : 202 });
   } catch (error: any) {
-    console.error('Error creating repository ingestion:', error);
+    console.error('Error submitting repository:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

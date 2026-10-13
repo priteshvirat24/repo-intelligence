@@ -25,6 +25,12 @@ export function normalizeResourceError(
   ).trim();
   const lower = message.toLowerCase();
 
+  // 0. Explicit error codes from the GitHub client and the ingestion worker. Matched before the
+  // keyword heuristics below, which misread them (a CLONE_FAILED git message mentioning "commit"
+  // would otherwise be reported as an unsupported URL).
+  const coded = mapCodedError(message);
+  if (coded) return coded;
+
   // 1. SSRF & Security Blocked
   if (
     lower.includes('ssrf') ||
@@ -175,4 +181,70 @@ export function normalizeResourceError(
     action: 'Check that the URL is correct or try again in a few moments.',
     isRetryable: true
   };
+}
+
+function mapCodedError(message: string): NormalizedResourceError | null {
+  const code = message.match(/^([A-Z][A-Z_]+):/)?.[1];
+  const detail = message.replace(/^[A-Z][A-Z_]+:\s*/, '');
+  switch (code) {
+    case 'REPOSITORY_TOO_LARGE':
+      return {
+        status: 'FAILED', code: 'RESOURCE_TOO_LARGE', title: 'Repository Too Large',
+        reason: detail || 'The repository exceeds the configured size limit.',
+        action: 'Index a smaller repository, or raise MAX_REPOSITORY_SIZE_MB if your server has room.',
+        isRetryable: false
+      };
+    case 'REPOSITORY_NOT_FOUND':
+    case 'PRIVATE_REPOSITORY':
+      return {
+        status: 'FAILED', code: 'RESOURCE_NOT_FOUND', title: 'Repository Not Found or Private',
+        reason: detail || 'GitHub did not return this repository.',
+        action: 'Check the owner/repo spelling. Only public repositories can be indexed.',
+        isRetryable: false
+      };
+    case 'ACCESS_FORBIDDEN':
+      return {
+        status: 'BLOCKED', code: 'SOURCE_BLOCKED', title: 'GitHub Denied Access',
+        reason: detail || 'GitHub refused access to this repository.',
+        action: 'Make sure the repository is public.',
+        isRetryable: false
+      };
+    case 'GITHUB_RATE_LIMITED':
+      return {
+        status: 'FAILED', code: 'RATE_LIMITED', title: 'GitHub Rate Limit Reached',
+        reason: 'GitHub temporarily limited API requests from this server.',
+        action: 'Wait a few minutes and retry. Setting GITHUB_TOKEN raises the limit.',
+        isRetryable: true
+      };
+    case 'GITHUB_UNAVAILABLE':
+    case 'GITHUB_API_ERROR':
+    case 'CLONE_FAILED':
+      return {
+        status: 'FAILED', code: 'NETWORK_ERROR', title: 'Could Not Reach GitHub',
+        reason: detail || 'Fetching the repository from GitHub failed.',
+        action: 'Retry in a few minutes.',
+        isRetryable: true
+      };
+    case 'LLM_UNAVAILABLE':
+    case 'LLM_INVALID_JSON':
+    case 'EMBEDDING_RATE_LIMITED':
+    case 'EMBEDDING_COUNT_MISMATCH':
+      return {
+        status: 'FAILED', code: 'INTERNAL_ERROR', title: 'AI Provider Temporarily Unavailable',
+        reason: detail || 'The language or embedding model did not return a usable response.',
+        action: 'Retry in a few minutes. Nothing was saved from the failed run.',
+        isRetryable: true
+      };
+    default:
+      break;
+  }
+  if (message.startsWith('Ingestion abandoned')) {
+    return {
+      status: 'FAILED', code: 'INTERNAL_ERROR', title: 'Indexing Stopped Unexpectedly',
+      reason: message,
+      action: 'Retry indexing. If it keeps failing, check the worker logs.',
+      isRetryable: true
+    };
+  }
+  return null;
 }

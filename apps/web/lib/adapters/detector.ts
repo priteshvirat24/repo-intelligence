@@ -17,6 +17,12 @@ export class ResourceTypeDetector {
     let trimmed = rawUrl.trim();
     if (!trimmed) return '';
 
+    // SSH clone URLs from GitHub's "Code" button: git@github.com:owner/repo.git, ssh://git@github.com/owner/repo
+    const sshMatch = trimmed.match(/^(?:ssh:\/\/)?git@github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/i);
+    if (sshMatch) {
+      trimmed = `https://github.com/${sshMatch[1]}/${sshMatch[2]}`;
+    }
+
     // Handle quick owner/repo shorthand for GitHub (e.g. "facebook/react" or "citrolabs/ego-lite")
     // GitHub owners cannot contain dots, so "docs.python.org/3" is a host/path, not owner/repo
     if (/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(trimmed)) {
@@ -58,6 +64,7 @@ export class ResourceTypeDetector {
 
       // Normalization specific to GitHub
       if (domain === 'github.com' || domain === 'gitlab.com') {
+        parsed.protocol = 'https:';
         // Strip .git suffix
         if (parsed.pathname.endsWith('.git')) {
           parsed.pathname = parsed.pathname.slice(0, -4);

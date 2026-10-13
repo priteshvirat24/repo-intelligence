@@ -25,6 +25,22 @@ TS_LANG = _load_language("tree_sitter_typescript", "language_typescript")
 TSX_LANG = _load_language("tree_sitter_typescript", "language_tsx")
 GO_LANG = _load_language("tree_sitter_go", "language")
 RUST_LANG = _load_language("tree_sitter_rust", "language")
+C_LANG = _load_language("tree_sitter_c", "language")
+CPP_LANG = _load_language("tree_sitter_cpp", "language")
+JAVA_LANG = _load_language("tree_sitter_java", "language")
+
+C_EXTENSIONS = (".c",)
+CPP_EXTENSIONS = (".cc", ".cpp", ".cxx", ".c++", ".h", ".hh", ".hpp", ".hxx", ".ipp", ".inl")
+JAVA_EXTENSIONS = (".java",)
+
+
+def _iter_nodes(root):
+    """Iterative pre-order traversal: deeply nested code must not hit Python's recursion limit."""
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(reversed(node.children))
 
 
 def _node_text(src: bytes, node) -> str:
@@ -317,11 +333,105 @@ class TreeSitterAnalyzer:
             return cls.parse_javascript_typescript(content, is_typescript=True, is_tsx=(ext == ".tsx"))
         elif ext in (".js", ".jsx", ".mjs"):
             return cls.parse_javascript_typescript(content, is_typescript=False)
+        elif ext == ".cjs":
+            return cls.parse_javascript_typescript(content, is_typescript=False)
         elif ext == ".go":
             return cls.parse_go(content)
         elif ext == ".rs":
             return cls.parse_rust(content)
+        elif ext in C_EXTENSIONS:
+            return cls.parse_c_family(content, CPP_LANG if C_LANG is None else C_LANG)
+        elif ext in CPP_EXTENSIONS:
+            # Headers are parsed as C++ (a near-superset of C for declarations)
+            return cls.parse_c_family(content, CPP_LANG)
+        elif ext in JAVA_EXTENSIONS:
+            return cls.parse_java(content)
         return []
+
+    @staticmethod
+    def _c_declarator_name(src: bytes, declarator) -> Optional[str]:
+        """Walks a C/C++ declarator chain (pointer/reference/function declarators) to the declared name."""
+        node = declarator
+        for _ in range(8):
+            if node is None:
+                return None
+            if node.type in ("identifier", "field_identifier", "qualified_identifier", "destructor_name",
+                             "operator_name", "type_identifier"):
+                return _node_text(src, node)
+            inner = node.child_by_field_name("declarator")
+            if inner is None:
+                # e.g. parenthesized_declarator without a field name
+                inner = next((c for c in node.named_children if c.type.endswith("declarator") or c.type.endswith("identifier")), None)
+            node = inner
+        return None
+
+    @classmethod
+    def parse_c_family(cls, content: str, language) -> List[CodeSymbol]:
+        if language is None:
+            return []
+        src = content.encode("utf-8")
+        tree = Parser(language).parse(src)
+        symbols: List[CodeSymbol] = []
+        for node in _iter_nodes(tree.root_node):
+            if node.type == "function_definition":
+                name = cls._c_declarator_name(src, node.child_by_field_name("declarator"))
+                if name:
+                    declarator = node.child_by_field_name("declarator")
+                    signature = _node_text(src, declarator).split("{")[0].strip()[:160] if declarator else name
+                    symbols.append(CodeSymbol(
+                        name=name.replace("::", "."),
+                        symbol_type="method" if "::" in name else "function",
+                        line_start=node.start_point.row + 1,
+                        line_end=node.end_point.row + 1,
+                        signature=signature,
+                    ))
+            elif node.type in ("class_specifier", "struct_specifier", "union_specifier", "enum_specifier"):
+                name_node = node.child_by_field_name("name")
+                # Only definitions (with a body), not forward declarations or `struct S s;` uses
+                if name_node is not None and node.child_by_field_name("body") is not None:
+                    kind = node.type.replace("_specifier", "")
+                    tname = _node_text(src, name_node)
+                    symbols.append(CodeSymbol(
+                        name=tname.replace("::", "."),
+                        symbol_type=kind,
+                        line_start=node.start_point.row + 1,
+                        line_end=node.end_point.row + 1,
+                        signature=f"{kind} {tname}",
+                    ))
+        return symbols
+
+    @classmethod
+    def parse_java(cls, content: str) -> List[CodeSymbol]:
+        if JAVA_LANG is None:
+            return []
+        src = content.encode("utf-8")
+        tree = Parser(JAVA_LANG).parse(src)
+        symbols: List[CodeSymbol] = []
+        type_nodes = {"class_declaration": "class", "interface_declaration": "interface",
+                      "enum_declaration": "enum", "record_declaration": "record"}
+        for node in _iter_nodes(tree.root_node):
+            name_node = node.child_by_field_name("name")
+            if name_node is None:
+                continue
+            if node.type in type_nodes:
+                tname = _node_text(src, name_node)
+                symbols.append(CodeSymbol(
+                    name=tname, symbol_type=type_nodes[node.type],
+                    line_start=node.start_point.row + 1, line_end=node.end_point.row + 1,
+                    signature=f"{type_nodes[node.type]} {tname}",
+                ))
+            elif node.type in ("method_declaration", "constructor_declaration"):
+                mname = _node_text(src, name_node)
+                params = node.child_by_field_name("parameters")
+                owner = node.parent.parent if node.parent is not None else None
+                owner_name = owner.child_by_field_name("name") if owner is not None and owner.type in type_nodes else None
+                qualified = f"{_node_text(src, owner_name)}.{mname}" if owner_name is not None else mname
+                symbols.append(CodeSymbol(
+                    name=qualified, symbol_type="method",
+                    line_start=node.start_point.row + 1, line_end=node.end_point.row + 1,
+                    signature=f"{mname}{_node_text(src, params) if params else '()'}"[:160],
+                ))
+        return symbols
 
     @classmethod
     def generate_symbol_outline(cls, file_path: str, symbols: List[CodeSymbol]) -> str:

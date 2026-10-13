@@ -54,7 +54,8 @@ class EvidenceVerificationGate:
         r"[ \t]+(?:\([^)]*\)[ \t]*)?"
     )
     _ANY_DEFINITION = re.compile(_DEFINITION_PREFIX + r"([A-Za-z_$][\w$]*)", re.MULTILINE)
-    _INDEX_CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs"}
+    _INDEX_CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs",
+                        ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".java", ".patch", ".diff"}
     _INDEX_SKIP_DIRS = {".git", "node_modules", "dist", "build", "vendor", "__pycache__", ".next", "venv", ".venv", "target"}
     _INDEX_MAX_FILE_BYTES = 1_000_000
     _definition_index_cache: Dict[str, Dict[str, Tuple[str, int]]] = {}
@@ -72,7 +73,7 @@ class EvidenceVerificationGate:
         symbols and yield nothing, so they can never match an unrelated definition like `def json()`.
         """
         names = []
-        for token in re.split(r"[\s,;`'\"()\[\]{}]+", symbol):
+        for token in re.split(r"[\s,;`'\"()\[\]{}]+", symbol.replace("::", ".")):
             # Only whole identifiers: "font-hijacker" must not become the generic words "font"/"hijacker"
             if not re.fullmatch(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*", token):
                 continue
@@ -85,15 +86,59 @@ class EvidenceVerificationGate:
         return names
 
     @classmethod
-    def locate_symbol_definition(cls, content: str, symbol: str) -> Optional[Tuple[int, int]]:
+    def locate_symbol_definition(cls, content: str, symbol: str, rel_path: Optional[str] = None) -> Optional[Tuple[int, int]]:
         """Line of the symbol's definition (def/class/function/func/fn/struct/...), if any."""
-        for name in cls._symbol_candidates(symbol):
+        candidates = cls._symbol_candidates(symbol)
+        if rel_path:
+            defined = {}
+            for name, line in cls._file_definitions(rel_path, content):
+                defined.setdefault(name, line)
+            for name in candidates:
+                if name in defined:
+                    return defined[name], defined[name]
+        for name in candidates:
             definition = re.compile(cls._DEFINITION_PREFIX + re.escape(name) + r"\b", re.MULTILINE)
             match = definition.search(content)
             if match:
                 line_no = content[:match.start()].count("\n") + 1
                 return line_no, line_no
         return None
+
+    # Definitions added by a patch: "+class Foo {", "+void Foo::Bar(...) {", "+  int helper(int x)"
+    # (a line ending in ";" is a declaration or call, not a definition)
+    _PATCH_DEFINITION = re.compile(
+        r"^\+(?!\+\+)[ \t]*(?:"
+        r"(?:class|struct|enum|interface|union)[ \t]+(?:[A-Z_]+[ \t]+)?([A-Za-z_]\w*)[^;]*$"
+        r"|(?:[A-Za-z_~][\w:<>,*&~]*[ \t]+)+[*&]?((?:[A-Za-z_]\w*::)*~?[A-Za-z_]\w*)[ \t]*\([^;]*$"
+        r"|(?:export[ \t]+)?(?:async[ \t]+)?(?:def|function|func|fn)[ \t]+([A-Za-z_$][\w$]*)"
+        r")",
+        re.MULTILINE,
+    )
+    _NOT_FUNCTION_NAMES = {"if", "for", "while", "switch", "return", "sizeof", "catch", "else", "do", "case", "new", "delete"}
+
+    @classmethod
+    def _file_definitions(cls, rel_path: str, content: str):
+        """(name, line) pairs for every definition in a file, from the language parser where available."""
+        from .ast_parser import TreeSitterAnalyzer
+        ext = Path(rel_path).suffix.lower()
+        if ext in (".patch", ".diff"):
+            for match in cls._PATCH_DEFINITION.finditer(content):
+                name = next(g for g in match.groups() if g)
+                name = name.split("::")[-1].lstrip("~")
+                # ALL_CAPS names are macro invocations (NS_SUCCEEDED(rv)), not definitions
+                if name not in cls._NOT_FUNCTION_NAMES and not re.fullmatch(r"[A-Z0-9_]+", name):
+                    yield name, content[:match.start()].count("\n") + 1
+            return
+        try:
+            symbols = TreeSitterAnalyzer.analyze_file(rel_path, content)
+        except (Exception, RecursionError):
+            symbols = []
+        if symbols:
+            for symbol in symbols:
+                yield symbol.name.split(".")[-1], symbol.line_start
+            return
+        for match in cls._ANY_DEFINITION.finditer(content):
+            yield match.group(1), content[:match.start()].count("\n") + 1
 
     @classmethod
     def _definition_index(cls, repo_dir: Path) -> Dict[str, Tuple[str, int]]:
@@ -113,11 +158,12 @@ class EvidenceVerificationGate:
             rel_str = rel.as_posix()
             is_test = cls.classify_evidence_strength(rel_str, None, "code", "") == "EXAMPLE"
             content = path.read_text(errors="ignore")
-            for match in cls._ANY_DEFINITION.finditer(content):
-                name = match.group(1)
+            for name, line in cls._file_definitions(rel_str, content):
+                if len(name) < cls.MIN_SYMBOL_CHARS:
+                    continue
                 if name in index and not (name in from_test and not is_test):
                     continue
-                index[name] = (rel_str, content[:match.start()].count("\n") + 1)
+                index[name] = (rel_str, line)
                 if is_test:
                     from_test.add(name)
                 else:
@@ -175,7 +221,7 @@ class EvidenceVerificationGate:
             # its quotes are often paraphrased): accept the claim only if the named symbol is DEFINED
             # in this file. A mere mention (e.g. "import os") does not substantiate anything.
             if not calculated_lines and symbol:
-                calculated_lines = cls.locate_symbol_definition(content, symbol)
+                calculated_lines = cls.locate_symbol_definition(content, symbol, file_path_str)
 
         # The model often names a real symbol but attributes it to the wrong (or a non-existent) file.
         # Point the evidence at the file that actually defines it.

@@ -23,7 +23,63 @@ from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
 from .db.repository import DatabaseRepository, JobLostError
 
-CODE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs")
+# Error messages that mean "try again later" rather than "this repository cannot be indexed"
+_TRANSIENT_MARKERS = (
+    "LLM_UNAVAILABLE", "LLM_INVALID_JSON", "EMBEDDING_RATE_LIMITED", "EMBEDDING_COUNT_MISMATCH",
+    "Could not resolve host", "timed out", "Timeout", "Connection reset", "Connection refused",
+    "early EOF", "RPC failed", "The requested URL returned error: 5", "unable to access",
+    "server closed the connection", "could not connect to server", "SSL", "Temporary failure",
+)
+
+
+def is_transient_error(error: Exception) -> bool:
+    """True for failures worth retrying: network/provider/database blips, not bad input."""
+    import httpx
+    import psycopg2
+    import subprocess
+    if isinstance(error, (TimeoutError, ConnectionError, subprocess.TimeoutExpired, psycopg2.OperationalError)):
+        return True
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code == 429 or error.response.status_code >= 500
+    if isinstance(error, httpx.TransportError):
+        return True
+    message = str(error)
+    if message.startswith("REPOSITORY_TOO_LARGE") or "Repository not found" in message or "not found in database" in message:
+        return False
+    return any(marker in message for marker in _TRANSIENT_MARKERS)
+
+
+CODE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs",
+                   ".c", ".h", ".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx", ".java")
+
+
+def select_chunks(chunks: List[SemanticChunk], budget: int) -> List[SemanticChunk]:
+    """
+    Picks up to `budget` chunks spread across files instead of the first N in walk order (which
+    left later directories unsearchable): READMEs/docs first, then round-robin over the rest.
+    """
+    if len(chunks) <= budget:
+        return list(chunks)
+    by_file: Dict[str, List[SemanticChunk]] = {}
+    for chunk in chunks:
+        by_file.setdefault(chunk.file_path, []).append(chunk)
+    priority = {"readme": 0, "doc": 1, "code": 2}
+    files = sorted(by_file, key=lambda f: (priority.get(by_file[f][0].doc_type, 3), f))
+    selected: List[SemanticChunk] = []
+    depth = 0
+    while len(selected) < budget:
+        added = False
+        for file_path in files:
+            file_chunks = by_file[file_path]
+            if depth < len(file_chunks):
+                selected.append(file_chunks[depth])
+                added = True
+                if len(selected) >= budget:
+                    break
+        if not added:
+            break
+        depth += 1
+    return selected
 
 
 def _named_items(value: Any) -> List[Dict[str, Any]]:
@@ -236,9 +292,11 @@ class IngestionWorker:
             if not subsystems:
                 # Infer top subsystems from code directories
                 code_dirs = sorted(list(set(str(Path(f[0]).parent) for f in scan_result["included_files"] if Path(f[0]).suffix.lower() in CODE_EXTENSIONS and str(Path(f[0]).parent) != ".")))
-                subsystems = [{"name": Path(d).name or d, "path": d} for d in code_dirs[:4]]
+                subsystems = [{"name": Path(d).name or d, "path": d} for d in code_dirs[:config.MAX_SUBSYSTEMS]]
 
-            for sub in subsystems[:4]:
+            subsystems_found = len(subsystems)
+            subsystems = subsystems[:config.MAX_SUBSYSTEMS]
+            for sub in subsystems:
                 # The model sometimes returns a list of paths for one subsystem
                 raw_path = sub.get("path")
                 sub_paths = [p for p in (raw_path if isinstance(raw_path, list) else [raw_path]) if isinstance(p, str) and p]
@@ -455,7 +513,7 @@ class IngestionWorker:
                 ko["embedding"] = ko_embeddings[idx] if idx < len(ko_embeddings) else None
 
             # B. Embed Chunks (cap at 250)
-            selected_chunks = all_chunks[:250]
+            selected_chunks = select_chunks(all_chunks, config.MAX_CHUNKS)
             chunk_dicts = [
                 {
                     "file_path": c.file_path,
@@ -482,14 +540,23 @@ class IngestionWorker:
             domain_tags = [d for d in (synthesis.get("domains") or []) if isinstance(d, str)]
             knowledge_relationships = synthesis.get("relationships", [])
 
-            # Calculate analysis completeness
+            # Calculate analysis completeness. Files excluded by type (images, lockfiles, licenses) are not
+            # "missing" analysis; only budgets that actually cut content make a result partial.
             files_discovered = stage_metrics["counts"].get("files_discovered", 0)
             files_included = stage_metrics["counts"].get("files_included", 0)
-            is_truncated = scan_result.get("is_truncated", False) or files_discovered > config.MAX_FILES
-            completeness_level = "limited" if files_included < 5 else ("partial" if is_truncated or files_included < files_discovered else "full")
-            reason = "Repository exceeded configured file or size analysis budget" if is_truncated else (
-                f"Analyzed {files_included} of {files_discovered} discovered files" if completeness_level == "partial" else None
-            )
+            reasons = []
+            if scan_result.get("is_truncated", False):
+                reasons.append("Repository exceeded the file or text-size budget; some files were not analyzed")
+            if len(all_chunks) > len(selected_chunks):
+                reasons.append(f"Indexed {len(selected_chunks)} of {len(all_chunks)} text excerpts for search")
+            if subsystems_found > len(subsystems):
+                reasons.append(f"Studied {len(subsystems)} of {subsystems_found} subsystems in depth")
+            if files_included < 5:
+                completeness_level = "limited"
+                reasons.insert(0, f"Repository has only {files_included} analyzable file{'s' if files_included != 1 else ''}")
+            else:
+                completeness_level = "partial" if reasons else "full"
+            reason = "; ".join(reasons) or None
 
             analysis_completeness = {
                 "level": completeness_level,
@@ -525,8 +592,18 @@ class IngestionWorker:
             print(f"[{self.worker_id}] Abandoning job {job_id}: {e}", file=sys.stderr)
         except Exception as e:
             err_msg = str(e)
-            print(f"[{self.worker_id}] Ingestion failed for job {job_id}: {err_msg}", file=sys.stderr)
-            self.db.mark_job_failed(job_id, repo_id, err_msg, self.worker_id)
+            attempts = int(job.get("attempts") or 1)
+            if is_transient_error(e) and attempts < config.MAX_JOB_ATTEMPTS:
+                delay = 60 * (2 ** (attempts - 1))  # 1 min, 2 min, 4 min ...
+                print(f"[{self.worker_id}] Transient failure for job {job_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                try:
+                    self.db.requeue_job_for_retry(job_id, repo_id, f"Retrying after a temporary error: {err_msg}"[:1000], self.worker_id, delay)
+                except Exception as requeue_error:
+                    print(f"[{self.worker_id}] Could not requeue job {job_id}: {requeue_error}", file=sys.stderr)
+                    self.db.mark_job_failed(job_id, repo_id, err_msg, self.worker_id)
+            else:
+                print(f"[{self.worker_id}] Ingestion failed for job {job_id}: {err_msg}", file=sys.stderr)
+                self.db.mark_job_failed(job_id, repo_id, err_msg, self.worker_id)
         finally:
             if scratch_dir:
                 GitCloner.cleanup(scratch_dir)
