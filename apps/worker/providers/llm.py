@@ -37,17 +37,17 @@ def parse_json_object(raw: str) -> Optional[Dict[str, Any]]:
                 return value
         except json.JSONDecodeError:
             pass
-    # Fall back to the first decodable object embedded in surrounding prose
-    decoder = json.JSONDecoder()
+    # Fall back to the outermost object embedded in surrounding prose ("Here you go: {...}"). Only the
+    # first top-level "{" is tried: decoding from a later brace would return a nested fragment (one
+    # evidence item) of a truncated response as if it were the whole answer.
     start = text.find('{')
-    while start != -1:
+    if start != -1:
         try:
-            value, _ = decoder.raw_decode(text, start)
+            value, _ = json.JSONDecoder().raw_decode(text, start)
             if isinstance(value, dict):
                 return value
         except json.JSONDecodeError:
             pass
-        start = text.find('{', start + 1)
     return None
 
 class MistralLLMProvider(BaseLLMProvider):
@@ -83,8 +83,7 @@ class MistralLLMProvider(BaseLLMProvider):
                         time.sleep(2.0 * (attempt + 1))
                         continue
                     resp.raise_for_status()
-                    data = resp.json()
-                    return data["choices"][0]["message"]["content"]
+                    return _completion_text(resp.json())
             except (httpx.HTTPStatusError, httpx.RequestError, httpx.TimeoutException) as e:
                 print(f"[MistralLLMProvider] Attempt {attempt + 1}/3 error: {e}")
                 if attempt < 2:
@@ -128,8 +127,16 @@ class OpenAILLMProvider(BaseLLMProvider):
         with httpx.Client(timeout=60.0) as client:
             resp = client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
             resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return _completion_text(resp.json())
+
+
+def _completion_text(data: Dict[str, Any]) -> str:
+    """Returns the completion text, refusing output the model did not finish (cut off at the length limit)."""
+    choice = data["choices"][0]
+    if choice.get("finish_reason") == "length":
+        raise ValueError("LLM_INVALID_JSON: model output was truncated at the length limit")
+    return choice["message"]["content"]
+
 
 def get_llm_provider() -> BaseLLMProvider:
     """Returns the configured real LLM provider. There is deliberately no mock fallback."""

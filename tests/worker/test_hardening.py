@@ -116,6 +116,15 @@ def test_parse_json_object_handles_fences_inside_strings():
     assert parse_json_object(payload)["capabilities"][0]["quote"].startswith("```bash")
     assert parse_json_object("Sure: {\"a\": 2} thanks") == {"a": 2}
     assert parse_json_object("[1, 2]") is None
+    # A truncated response must not yield a nested fragment as if it were the whole answer
+    assert parse_json_object('{"capabilities": [{"name": "x", "evidence": [{"file_path": "a"}') is None
+
+
+def test_truncated_completion_is_rejected():
+    from apps.worker.providers.llm import _completion_text
+    with pytest.raises(ValueError, match="truncated"):
+        _completion_text({"choices": [{"finish_reason": "length", "message": {"content": "{"}}]})
+    assert _completion_text({"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}]}) == "{}"
 
 
 def test_map_slug_is_deterministic_and_not_overbroad():

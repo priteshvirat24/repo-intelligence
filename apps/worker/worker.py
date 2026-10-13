@@ -325,6 +325,15 @@ class IngestionWorker:
                 llm=self.llm
             )
 
+            proposal_counts = {
+                key: len(synthesis.get(key) or []) if isinstance(synthesis.get(key), list) else 0
+                for key in ("capabilities", "features", "concepts", "techniques", "useCases", "components", "interfaces")
+            }
+            print(f"[{self.worker_id}] Synthesis proposed: {proposal_counts}", flush=True)
+            if not any(proposal_counts.values()):
+                # An empty analysis must not replace a repository's existing knowledge; retry instead
+                raise ValueError("LLM_INVALID_JSON: repository synthesis returned no capabilities, features, or concepts")
+
             # PASS 4: Evidence Mapping & Verification
             print(f"[{self.worker_id}] Running Pass 4: Strict Evidence Verification Gate...")
             verified_capabilities = []
