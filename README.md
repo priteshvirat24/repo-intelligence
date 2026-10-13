@@ -84,15 +84,58 @@ A repository is only ONE type of resource. Open Eye generalizes across an expans
 
 ---
 
-## Architectural Stack
+## Architecture
 
-- **Frontend**: Next.js 14 App Router, Vanilla CSS design system, Glassmorphism, Streaming SSE.
-- **Database**: PostgreSQL 16/18 with `pgvector` and Full-Text Search (`tsvector`).
-- **Web Providers**:
-  - `TavilyProvider`: Web discovery, external search, and research caching.
-  - `FirecrawlProvider`: High-fidelity markdown extraction and documentation crawling.
-- **AI Models**: Mistral AI (`mistral-small-latest`, `mistral-embed` 1024-dim) with offline fallback.
-- **Worker**: Python 3.11+ AST worker with PostgreSQL SKIP LOCKED queue.
+> **Full design document with all diagrams (HLD, LLD, data model, how Open Eye reaches the web): [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+
+Three running parts share one database. The web app and the worker never call each other: the database (including the job queue) is the only contract between them.
+
+```mermaid
+flowchart LR
+    U(["User's browser"])
+
+    subgraph Railway["Railway project: open-eye"]
+        WEB["Web app<br/>Next.js UI + API routes"]
+        WK["Worker<br/>Python ingestion pipeline"]
+        DB[("PostgreSQL + pgvector")]
+    end
+
+    subgraph Ext["External services"]
+        GHAPI["GitHub REST API"]
+        GHGIT["GitHub git (HTTPS clone)"]
+        MIS["Mistral AI<br/>LLM + embeddings"]
+        TAV["Tavily<br/>web search"]
+        FC["Firecrawl<br/>page scraping"]
+        SITES["Public websites"]
+    end
+
+    U -- "HTTPS pages + /api/*" --> WEB
+    WEB -- "SQL (private network)" --> DB
+    WK -- "SQL: claim jobs, persist results" --> DB
+
+    WEB -- "repo metadata, size check" --> GHAPI
+    WEB -- "query embeddings, answers" --> MIS
+    WEB -- "live search" --> TAV
+    WEB -- "scrape top results" --> FC
+    WEB -. "fallback fetch, SSRF-checked" .-> SITES
+
+    WK -- "shallow clone" --> GHGIT
+    WK -- "analysis + embeddings" --> MIS
+```
+
+**Indexing a repository** (write path): the web app validates the URL with the GitHub API and queues a job → the worker shallow-clones the repo, parses it with tree-sitter (Python, JS/TS, Go, Rust, C/C++, Java), asks the LLM to describe it, **verifies every capability against a real definition in the code**, embeds the text, and saves everything in one transaction.
+
+**Answering a question** (read path): the question is turned into requirements → hybrid search (pgvector similarity + full-text) over indexed knowledge and code → optional live web search → the LLM writes an answer that cites numbered sources (`file:line`), streamed to the browser.
+
+| Layer | Stack |
+|---|---|
+| Frontend | Next.js 14 App Router, React 18, token-based CSS design system (light + dark), Server-Sent Events |
+| API | Next.js route handlers (TypeScript), per-IP rate limiting, SSRF guard on all outbound fetches |
+| Worker | Python 3.11, tree-sitter, psycopg2; Postgres `FOR UPDATE SKIP LOCKED` job queue with retries |
+| Database | PostgreSQL 18 + `pgvector` (1024-d embeddings) + full-text search (`tsvector`) |
+| AI | Mistral AI (`mistral-embed` embeddings, Mistral chat models); OpenAI supported. No mock fallback: missing keys fail loudly |
+| Web access | GitHub REST API, git over HTTPS, Tavily (search), Firecrawl (scraping) |
+| Hosting | Railway (web, worker, Postgres); health check and config as code in `.railway/railway.ts` |
 
 ---
 
