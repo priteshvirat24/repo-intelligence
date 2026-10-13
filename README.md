@@ -92,35 +92,35 @@ Three running parts share one database. The web app and the worker never call ea
 
 ```mermaid
 flowchart LR
-    U(["User's browser"])
+    U(["User browser"])
 
     subgraph Railway["Railway project: open-eye"]
-        WEB["Web app<br/>Next.js UI + API routes"]
-        WK["Worker<br/>Python ingestion pipeline"]
+        WEB["Web app<br>Next.js UI + API routes"]
+        WK["Worker<br>Python ingestion pipeline"]
         DB[("PostgreSQL + pgvector")]
     end
 
     subgraph Ext["External services"]
         GHAPI["GitHub REST API"]
         GHGIT["GitHub git (HTTPS clone)"]
-        MIS["Mistral AI<br/>LLM + embeddings"]
-        TAV["Tavily<br/>web search"]
-        FC["Firecrawl<br/>page scraping"]
+        MIS["Mistral AI<br>LLM + embeddings"]
+        TAV["Tavily<br>web search"]
+        FC["Firecrawl<br>page scraping"]
         SITES["Public websites"]
     end
 
-    U -- "HTTPS pages + /api/*" --> WEB
-    WEB -- "SQL (private network)" --> DB
-    WK -- "SQL: claim jobs, persist results" --> DB
+    U -->|"HTTPS pages + /api/*"| WEB
+    WEB -->|"SQL (private network)"| DB
+    WK -->|"SQL: claim jobs, persist results"| DB
 
-    WEB -- "repo metadata, size check" --> GHAPI
-    WEB -- "query embeddings, answers" --> MIS
-    WEB -- "live search" --> TAV
-    WEB -- "scrape top results" --> FC
-    WEB -. "fallback fetch, SSRF-checked" .-> SITES
+    WEB -->|"repo metadata, size check"| GHAPI
+    WEB -->|"query embeddings, answers"| MIS
+    WEB -->|"live search"| TAV
+    WEB -->|"scrape top results"| FC
+    WEB -.->|"fallback fetch, SSRF-checked"| SITES
 
-    WK -- "shallow clone" --> GHGIT
-    WK -- "analysis + embeddings" --> MIS
+    WK -->|"shallow clone"| GHGIT
+    WK -->|"analysis + embeddings"| MIS
 ```
 
 **Indexing a repository** (write path): the web app validates the URL with the GitHub API and queues a job → the worker shallow-clones the repo, parses it with tree-sitter (Python, JS/TS, Go, Rust, C/C++, Java), asks the LLM to describe it, **verifies every capability against a real definition in the code**, embeds the text, and saves everything in one transaction.

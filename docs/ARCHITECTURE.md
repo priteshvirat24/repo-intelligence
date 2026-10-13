@@ -37,35 +37,35 @@ The web app and the worker never call each other. **The database is the only con
 
 ```mermaid
 flowchart LR
-    U(["User's browser"])
+    U(["User browser"])
 
     subgraph Railway["Railway project: open-eye"]
-        WEB["Web app<br/>Next.js UI + API routes"]
-        WK["Worker<br/>Python ingestion pipeline"]
+        WEB["Web app<br>Next.js UI + API routes"]
+        WK["Worker<br>Python ingestion pipeline"]
         DB[("PostgreSQL + pgvector")]
     end
 
     subgraph Ext["External services"]
         GHAPI["GitHub REST API"]
         GHGIT["GitHub git (HTTPS clone)"]
-        MIS["Mistral AI<br/>LLM + embeddings"]
-        TAV["Tavily<br/>web search"]
-        FC["Firecrawl<br/>page scraping"]
+        MIS["Mistral AI<br>LLM + embeddings"]
+        TAV["Tavily<br>web search"]
+        FC["Firecrawl<br>page scraping"]
         SITES["Public websites"]
     end
 
-    U -- "HTTPS pages + /api/*" --> WEB
-    WEB -- "SQL (private network)" --> DB
-    WK -- "SQL: claim jobs, persist results" --> DB
+    U -->|"HTTPS pages + /api/*"| WEB
+    WEB -->|"SQL (private network)"| DB
+    WK -->|"SQL: claim jobs, persist results"| DB
 
-    WEB -- "repo metadata, size check" --> GHAPI
-    WEB -- "query embeddings, answers" --> MIS
-    WEB -- "live search" --> TAV
-    WEB -- "scrape top results" --> FC
-    WEB -. "fallback fetch, SSRF-checked" .-> SITES
+    WEB -->|"repo metadata, size check"| GHAPI
+    WEB -->|"query embeddings, answers"| MIS
+    WEB -->|"live search"| TAV
+    WEB -->|"scrape top results"| FC
+    WEB -.->|"fallback fetch, SSRF-checked"| SITES
 
-    WK -- "shallow clone" --> GHGIT
-    WK -- "analysis + embeddings" --> MIS
+    WK -->|"shallow clone"| GHGIT
+    WK -->|"analysis + embeddings"| MIS
 ```
 
 **Two flows drive everything:**
@@ -97,14 +97,14 @@ The user's browser only ever talks to the web app. External API keys live in Rai
 ```mermaid
 flowchart TD
     Q["Outbound request needed"] --> K{"Which kind?"}
-    K -- "GitHub metadata" --> GH["api.github.com with token"]
-    K -- "Repository code" --> CL["git clone --depth 1<br/>hooks off, symlinks off"]
-    K -- "AI" --> MI["api.mistral.ai"]
-    K -- "Web search" --> TV["api.tavily.com (cached)"]
-    K -- "Arbitrary URL" --> S{"SSRF check:<br/>scheme, host, resolved IPs"}
-    S -- "private / loopback / metadata" --> X["Blocked"]
-    S -- "public" --> F["fetch with manual redirects"]
-    F -- "each redirect" --> S
+    K -->|"GitHub metadata"| GH["api.github.com with token"]
+    K -->|"Repository code"| CL["git clone --depth 1<br>hooks off, symlinks off"]
+    K -->|"AI"| MI["api.mistral.ai"]
+    K -->|"Web search"| TV["api.tavily.com (cached)"]
+    K -->|"Arbitrary URL"| S{"SSRF check:<br>scheme, host, resolved IPs"}
+    S -->|"private / loopback / metadata"| X["Blocked"]
+    S -->|"public"| F["fetch with manual redirects"]
+    F -->|"each redirect"| S
 ```
 
 ---
@@ -115,14 +115,14 @@ flowchart TD
 flowchart LR
     subgraph RW["Railway project open-eye, environment production, region sfo"]
         direction LR
-        W["service: web<br/>Railpack build of the monorepo<br/>start: next start on PORT<br/>healthcheck: /api/health"]
-        K["service: worker<br/>Dockerfile.worker (python:3.11-slim + git)<br/>CMD python -m apps.worker.worker"]
-        P[("service: Postgres<br/>postgres-ssl:18 + volume")]
-        W -- "postgres.railway.internal" --> P
-        K -- "postgres.railway.internal" --> P
+        W["service: web<br>Railpack build of the monorepo<br>start: next start on PORT<br>healthcheck: /api/health"]
+        K["service: worker<br>Dockerfile.worker (python:3.11-slim + git)<br>CMD python -m apps.worker.worker"]
+        P[("service: Postgres<br>postgres-ssl:18 + volume")]
+        W -->|"postgres.railway.internal"| P
+        K -->|"postgres.railway.internal"| P
     end
-    DEV["Developer machine"] -- "pnpm deploy:railway<br/>(railway up)" --> W
-    DEV -- "staging dir: Dockerfile.worker + apps/worker" --> K
+    DEV["Developer machine"] -->|"pnpm deploy:railway<br>(railway up)"| W
+    DEV -->|"staging dir: Dockerfile.worker + apps/worker"| K
     PUB(["Public: web-production-478ae.up.railway.app"]) --> W
 ```
 
@@ -179,16 +179,16 @@ The worker polls the `ingestion_jobs` table every 2 s. Each stage updates the jo
 
 ```mermaid
 flowchart TD
-    A["Claim job<br/>FOR UPDATE SKIP LOCKED"] --> B["CLONING<br/>git clone --depth 1, hooks off, symlinks off<br/>abort if checkout > size limit"]
-    B --> C["FILE_FILTERING<br/>code: py ts tsx js jsx mjs cjs go rs c h cc cpp hpp java + patch<br/>docs, manifests; skip binaries, vendor, symlinks<br/>budgets: 2000 files, 500 KB/file, 20 MB text"]
-    C --> D["MANIFEST_ANALYSIS<br/>requirements.txt, pyproject (tomllib), setup.py,<br/>package.json, go.mod, Cargo.toml, Dockerfile"]
-    D --> E["AST_ANALYSIS<br/>tree-sitter: Python, JS/TS/TSX, Go, Rust, C, C++, Java<br/>symbol outlines + chunking (512-token chunks, secrets redacted)"]
-    E --> F["CAPABILITY_EXTRACTION: 3 LLM passes<br/>1. Cartography: purpose, domains, subsystems<br/>2. Module analysis: up to 6 subsystems<br/>3. Synthesis: capabilities, features, concepts,<br/>techniques, use cases, components, interfaces, limitations"]
+    A["Claim job<br>FOR UPDATE SKIP LOCKED"] --> B["CLONING<br>git clone --depth 1, hooks off, symlinks off<br>abort if checkout > size limit"]
+    B --> C["FILE_FILTERING<br>code: py ts tsx js jsx mjs cjs go rs c h cc cpp hpp java + patch<br>docs, manifests; skip binaries, vendor, symlinks<br>budgets: 2000 files, 500 KB/file, 20 MB text"]
+    C --> D["MANIFEST_ANALYSIS<br>requirements.txt, pyproject (tomllib), setup.py,<br>package.json, go.mod, Cargo.toml, Dockerfile"]
+    D --> E["AST_ANALYSIS<br>tree-sitter: Python, JS/TS/TSX, Go, Rust, C, C++, Java<br>symbol outlines + chunking (512-token chunks, secrets redacted)"]
+    E --> F["CAPABILITY_EXTRACTION: 3 LLM passes<br>1. Cartography: purpose, domains, subsystems<br>2. Module analysis: up to 6 subsystems<br>3. Synthesis: capabilities, features, concepts,<br>techniques, use cases, components, interfaces, limitations"]
     F --> G{"Synthesis empty?"}
-    G -- yes --> R["Retryable error<br/>(existing data untouched)"]
-    G -- no --> H["Evidence gate (4.3)<br/>keep only capabilities with verified evidence"]
-    H --> I["INDEXING<br/>embed knowledge objects + up to 250 chunks<br/>spread across files, README first"]
-    I --> J["Persist in ONE transaction<br/>re-check ownership + not cancelled<br/>replace documents, chunks, capabilities, evidence,<br/>knowledge objects, dependencies, limitations<br/>mark job COMPLETED, resource READY"]
+    G -->|yes| R["Retryable error<br>(existing data untouched)"]
+    G -->|no| H["Evidence gate (4.3)<br>keep only capabilities with verified evidence"]
+    H --> I["INDEXING<br>embed knowledge objects + up to 250 chunks<br>spread across files, README first"]
+    I --> J["Persist in ONE transaction<br>re-check ownership + not cancelled<br>replace documents, chunks, capabilities, evidence,<br>knowledge objects, dependencies, limitations<br>mark job COMPLETED, resource READY"]
 ```
 
 **Completeness** is recorded honestly: `full`, `partial` (with the reason: file budget hit, N of M excerpts indexed, N of M subsystems studied) or `limited` (fewer than 5 analysable files).
@@ -200,14 +200,14 @@ The LLM proposes evidence for each capability; the gate accepts it only if it ca
 ```mermaid
 flowchart TD
     E["Claim: file_path, quote, symbol_name"] --> P{"Path inside repo?"}
-    P -- no --> REJ["Rejected"]
-    P -- yes --> Q{"Whole quote found in that file?<br/>(whitespace/case-insensitive, at least 8 chars)"}
-    Q -- yes --> OK["Verified: real lines from the file"]
-    Q -- no --> S{"Symbol DEFINED in that file?<br/>(parser: def/class/function/method/struct/...)"}
-    S -- yes --> OK
-    S -- no --> R{"Symbol defined anywhere in the repo?<br/>(definition index: all parsed languages + added lines in .patch files)"}
-    R -- yes --> OK2["Verified at the real file:line<br/>(model named the wrong file)"]
-    R -- no --> REJ
+    P -->|no| REJ["Rejected"]
+    P -->|yes| Q{"Whole quote found in that file?<br>(whitespace/case-insensitive, at least 16 chars)"}
+    Q -->|yes| OK["Verified: real lines from the file"]
+    Q -->|no| S{"Symbol DEFINED in that file?<br>(parser: def/class/function/method/struct/...)"}
+    S -->|yes| OK
+    S -->|no| R{"Symbol defined anywhere in the repo?<br>(definition index: all parsed languages + added lines in .patch files)"}
+    R -->|yes| OK2["Verified at the real file:line<br>(model named the wrong file)"]
+    R -->|no| REJ
 ```
 
 Rules that prevent fabricated evidence:
@@ -226,8 +226,8 @@ stateDiagram-v2
     [*] --> QUEUED: web inserts job (repository row locked)
     QUEUED --> RUNNING: worker claims (FOR UPDATE SKIP LOCKED, attempts + 1)
     RUNNING --> COMPLETED: persisted atomically
-    RUNNING --> QUEUED: transient error (network, rate limit, LLM, DB)<br/>retry after 1, 2, 4 min
-    RUNNING --> FAILED: permanent error (too large, not found, ...)<br/>or attempts exhausted
+    RUNNING --> QUEUED: transient error (network, rate limit, LLM, DB) · retry after 1, 2, 4 min
+    RUNNING --> FAILED: permanent error (too large, not found, ...) · or attempts exhausted
     RUNNING --> RUNNING: lock refreshed at every stage
     RUNNING --> QUEUED: lock stale > 10 min (worker died), reclaimed
     QUEUED --> FAILED: superseded by a newer job / cancelled by user
@@ -258,13 +258,13 @@ sequenceDiagram
     DEC->>LLM: requirements, domains, expansions (JSON)
     API->>RET: retrieve(requirements)
     RET->>LLM: embed query
-    RET->>DB: vector similarity (cosine) + full-text rank<br/>over knowledge objects and code chunks
+    RET->>DB: vector similarity (cosine) + full-text rank<br>over knowledge objects and code chunks
     RET-->>API: ranked repositories, chunks, objects
     API->>API: compose: which repo covers which requirement
     opt Web/Both mode and library can't cover it
         API->>WEBS: search, scrape top results
     end
-    API->>DB: evidence for top candidates<br/>(verified first, max 3 per repo, rank order)
+    API->>DB: evidence for top candidates<br>(verified first, max 3 per repo, rank order)
     API-->>UI: event: metadata (citations, composition, web sources)
     API->>LLM: grounded prompt (untrusted data fenced)
     LLM-->>API: tokens (stream)
