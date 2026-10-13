@@ -269,7 +269,7 @@ sequenceDiagram
     API->>LLM: grounded prompt (untrusted data fenced)
     LLM-->>API: tokens (stream)
     API-->>UI: event: message ... event: done
-    UI->>UI: render Markdown; citation chips open the evidence drawer
+    UI->>UI: render Markdown, citation chips open the evidence drawer
 ```
 
 ---
