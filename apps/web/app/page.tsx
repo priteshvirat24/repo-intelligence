@@ -109,8 +109,16 @@ function StudioChatContent() {
     }
   }, [searchParams]);
 
+  // Scroll once when a new question is asked, bringing it to the top. Never follow the streaming
+  // answer: the reader starts at the top of the answer and scrolls at their own pace.
+  const lastQuestionCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const questions = messages.filter((m) => m.role === 'user');
+    if (questions.length > lastQuestionCountRef.current) {
+      const latest = questions[questions.length - 1];
+      document.getElementById(`turn-${latest.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    lastQuestionCountRef.current = questions.length;
   }, [messages]);
 
   const handleSendMessage = async (queryText?: string) => {
@@ -359,7 +367,7 @@ function StudioChatContent() {
                     if (msg.role === 'user') {
                       questionNumber += 1;
                       return (
-                        <section key={msg.id} className="turn" aria-label={`Question ${questionNumber}`}>
+                        <section key={msg.id} id={`turn-${msg.id}`} className="turn" aria-label={`Question ${questionNumber}`}>
                           <div className="turn-meta">
                             <span className="label">Q{questionNumber} &middot; You asked</span>
                           </div>
