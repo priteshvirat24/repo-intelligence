@@ -9,19 +9,16 @@ import {
   Code,
   GitBranch,
   Shield,
-  Clock,
+  GitCommit,
   CheckCircle2,
   AlertTriangle,
   Layers,
-  Cpu,
-  Boxes,
-  FileCode,
   RotateCw,
-  Trash2,
-  ArrowRight
+  Trash2
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { EvidenceDrawer, EvidenceItem } from '@/components/EvidenceDrawer';
+import { StatusBadge } from '@/components/Primitives';
 
 export default function RepositoryDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -76,440 +73,323 @@ export default function RepositoryDetailPage({ params }: { params: { id: string 
 
   if (isLoading) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="app-shell">
         <Navbar onOpenAddModal={() => {}} />
-        <div style={{ margin: 'auto', color: 'var(--text-muted)' }}>
-          Loading repository intelligence profile...
-        </div>
+        <main className="page">
+          <div className="loading-line" style={{ paddingTop: 'var(--s-9)' }}>
+            <span className="dot dot-pulse" aria-hidden="true" />
+            Loading repository&hellip;
+          </div>
+        </main>
       </div>
     );
   }
 
   if (!repo) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="app-shell">
         <Navbar onOpenAddModal={() => {}} />
-        <div style={{ margin: 'auto', textAlign: 'center' }}>
-          <h2>Repository Not Found</h2>
-          <Link href="/" style={{ color: 'var(--accent-cyan)', marginTop: 10, display: 'inline-block' }}>
-            Return to Studio
-          </Link>
-        </div>
+        <main className="page">
+          <div className="empty" style={{ marginTop: 'var(--s-9)' }}>
+            <span className="eyebrow plain">404</span>
+            <h3>Repository not found.</h3>
+            <p>It may have been removed from the library, or the link is wrong.</p>
+            <Link href="/" className="btn btn-secondary">
+              <ArrowLeft size={15} aria-hidden="true" />
+              Back to Studio
+            </Link>
+          </div>
+        </main>
       </div>
     );
   }
 
   const openKnowledge = repo.openKnowledge || {};
+  const completeness = repo.analysisCompleteness;
+  const completenessTone = completeness?.level === 'full'
+    ? 'verified'
+    : completeness?.level === 'partial'
+    ? 'inferred'
+    : 'danger';
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app-shell">
       <Navbar onOpenAddModal={() => {}} />
 
-      <main style={{
-        maxWidth: 1400,
-        margin: '0 auto',
-        width: '100%',
-        padding: '32px 24px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 28
-      }}>
-        {/* Navigation back and Actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Link href="/" style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
-            <ArrowLeft size={14} />
-            Back to Studio & Chat
+      <main className="page">
+        {/* Back + actions */}
+        <div className="row between wrap gap-3" style={{ paddingTop: 'var(--s-5)' }}>
+          <Link href="/" className="link-quiet">
+            <ArrowLeft size={14} aria-hidden="true" />
+            Back to Studio
           </Link>
 
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={handleReindex}
-              disabled={isReindexing}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 14px',
-                borderRadius: 8,
-                background: 'rgba(99, 102, 241, 0.15)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                color: '#a5b4fc',
-                fontSize: '0.825rem',
-                cursor: 'pointer'
-              }}
-            >
-              <RotateCw size={14} className={isReindexing ? 'animate-spin' : ''} />
-              {isReindexing ? 'Re-indexing...' : 'Re-index'}
+          <div className="row gap-2">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={handleReindex} disabled={isReindexing}>
+              <RotateCw size={14} className={isReindexing ? 'animate-spin' : ''} aria-hidden="true" />
+              {isReindexing ? 'Re-indexing…' : 'Re-index'}
             </button>
-            <button
-              onClick={handleDelete}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '8px 14px',
-                borderRadius: 8,
-                background: 'rgba(244, 63, 94, 0.12)',
-                border: '1px solid rgba(244, 63, 94, 0.25)',
-                color: '#fb7185',
-                fontSize: '0.825rem',
-                cursor: 'pointer'
-              }}
-            >
-              <Trash2 size={14} />
+            <button type="button" className="btn btn-ghost btn-sm danger" onClick={handleDelete}>
+              <Trash2 size={14} aria-hidden="true" />
               Delete
             </button>
           </div>
         </div>
 
-        {/* Repository Header Card */}
-        <div className="glass-panel" style={{ padding: 28 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-            <div>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 4 }}>
-                {repo.owner}
-              </div>
-              <h1 style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {repo.name}
-              </h1>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {repo.analysisCompleteness && (
-                <span style={{
-                  fontSize: '0.725rem',
-                  fontWeight: 600,
-                  padding: '4px 10px',
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  background: repo.analysisCompleteness.level === 'full'
-                    ? 'rgba(16, 185, 129, 0.15)'
-                    : repo.analysisCompleteness.level === 'partial'
-                    ? 'rgba(245, 158, 11, 0.15)'
-                    : 'rgba(239, 68, 68, 0.15)',
-                  color: repo.analysisCompleteness.level === 'full'
-                    ? '#34d399'
-                    : repo.analysisCompleteness.level === 'partial'
-                    ? '#fbbf24'
-                    : '#f87171',
-                  border: `1px solid ${
-                    repo.analysisCompleteness.level === 'full'
-                      ? 'rgba(16, 185, 129, 0.3)'
-                      : repo.analysisCompleteness.level === 'partial'
-                      ? 'rgba(245, 158, 11, 0.3)'
-                      : 'rgba(239, 68, 68, 0.3)'
-                  }`
-                }} title={`Discovered: ${repo.analysisCompleteness.filesDiscovered || 0} files | Analyzed: ${repo.analysisCompleteness.filesAnalyzed || 0} files | Subsystems: ${repo.analysisCompleteness.subsystemsAnalyzed || 0}`}>
-                  <Layers size={13} />
-                  {repo.analysisCompleteness.level?.toUpperCase()} ANALYSIS
-                  {repo.analysisCompleteness.filesAnalyzed ? ` (${repo.analysisCompleteness.filesAnalyzed} files)` : ''}
+        {/* Header */}
+        <header className="page-head" style={{ paddingTop: 'var(--s-7)' }}>
+          <div className="page-head-title">
+            <span className="eyebrow">{repo.owner}</span>
+            <h1 className="h-page" style={{ overflowWrap: 'anywhere' }}>{repo.name}</h1>
+            <div className="row wrap gap-2" style={{ marginTop: 'var(--s-1)' }}>
+              <StatusBadge status={repo.status} />
+              {completeness && (
+                <span
+                  className={`badge badge-${completenessTone}`}
+                  title={`Discovered: ${completeness.filesDiscovered || 0} files | Analyzed: ${completeness.filesAnalyzed || 0} files | Subsystems: ${completeness.subsystemsAnalyzed || 0}`}
+                >
+                  <Layers size={12} aria-hidden="true" />
+                  {completeness.level?.toUpperCase()} ANALYSIS
+                  {completeness.filesAnalyzed ? ` · ${completeness.filesAnalyzed} files` : ''}
                 </span>
               )}
-
-              <span className={`badge-${repo.status.toLowerCase()}`} style={{
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                padding: '4px 10px',
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5
-              }}>
-                {repo.status === 'READY' && <CheckCircle2 size={14} />}
-                {repo.status}
-              </span>
             </div>
           </div>
 
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6, maxWidth: 840, marginBottom: 20 }}>
-            {repo.description || 'No description provided.'}
-          </p>
-
-          {/* Inferred Domain Badges */}
-          {repo.domainTags && repo.domainTags.length > 0 && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Discovered Domains:</span>
-              {repo.domainTags.map((tag: string, i: number) => (
-                <span
-                  key={i}
-                  style={{
-                    fontSize: '0.75rem',
-                    padding: '3px 10px',
-                    borderRadius: 6,
-                    background: 'rgba(6, 182, 212, 0.12)',
-                    color: '#22d3ee',
-                    border: '1px solid rgba(6, 182, 212, 0.3)',
-                    fontFamily: 'var(--font-mono)'
-                  }}
-                >
-                  #{tag}
-                </span>
-              ))}
+          <div className="page-head-aside">
+            <p className="lede">{repo.description || 'No description on GitHub.'}</p>
+            <div className="meta-row">
+              {repo.primaryLanguage && (
+                <span><Code size={13} aria-hidden="true" />{repo.primaryLanguage}</span>
+              )}
+              <span><Star size={13} aria-hidden="true" />{repo.stars?.toLocaleString() || 0} stars</span>
+              {repo.license && (
+                <span><Shield size={13} aria-hidden="true" />{repo.license}</span>
+              )}
+              {repo.defaultBranch && (
+                <span><GitBranch size={13} aria-hidden="true" />{repo.defaultBranch}</span>
+              )}
+              {repo.latestCommitHash && (
+                <span><GitCommit size={13} aria-hidden="true" />{repo.latestCommitHash.slice(0, 7)}</span>
+              )}
             </div>
-          )}
-
-          {/* Meta specs */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 24,
-            paddingTop: 16,
-            borderTop: '1px solid var(--border-subtle)',
-            fontSize: '0.825rem',
-            color: 'var(--text-muted)'
-          }}>
-            {repo.primaryLanguage && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Code size={14} color="var(--accent-cyan)" />
-                {repo.primaryLanguage}
-              </span>
-            )}
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Star size={14} color="var(--accent-amber)" />
-              {repo.stars?.toLocaleString() || 0} stars
-            </span>
-            {repo.license && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Shield size={14} color="var(--accent-emerald)" />
-                {repo.license}
-              </span>
-            )}
-            {repo.defaultBranch && (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <GitBranch size={14} />
-                {repo.defaultBranch}
-              </span>
-            )}
-            {repo.latestCommitHash && (
-              <span style={{ fontFamily: 'var(--font-mono)' }}>
-                commit: {repo.latestCommitHash.slice(0, 7)}
-              </span>
-            )}
           </div>
-        </div>
+        </header>
 
-        {/* Purpose & Problem Space Section */}
-        {(openKnowledge.purpose || openKnowledge.problemSpace) && (
-          <div className="glass-panel" style={{ padding: 24 }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Purpose & Problem Space
-            </h3>
-            {openKnowledge.purpose && (
-              <div style={{ marginBottom: 10 }}>
-                <strong style={{ color: 'var(--accent-cyan)', fontSize: '0.85rem' }}>Purpose: </strong>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{openKnowledge.purpose}</span>
-              </div>
-            )}
-            {openKnowledge.problemSpace && (
-              <div>
-                <strong style={{ color: 'var(--accent-indigo)', fontSize: '0.85rem' }}>Technical Problem Space: </strong>
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{openKnowledge.problemSpace}</span>
-              </div>
-            )}
+        {repo.domainTags && repo.domainTags.length > 0 && (
+          <div className="row wrap gap-2" style={{ marginBottom: 'var(--s-7)' }}>
+            <span className="label" style={{ marginRight: 'var(--s-1)' }}>Domains</span>
+            {repo.domainTags.map((tag: string, i: number) => (
+              <span key={i} className="tag tag-mono">#{tag}</span>
+            ))}
           </div>
         )}
 
-        {/* Open-World Discovered Capabilities */}
-        <div className="glass-panel" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-              Discovered Capabilities ({repo.capabilities?.length || 0})
-            </h3>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
-            {repo.capabilities && repo.capabilities.map((cap: any, i: number) => (
-              <div
-                key={i}
-                style={{
-                  background: 'rgba(30, 41, 59, 0.4)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 10,
-                  padding: 16,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <span style={{ fontSize: '0.925rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {cap.name}
-                  </span>
-                  <span style={{
-                    fontSize: '0.675rem',
-                    padding: '2px 6px',
-                    borderRadius: 4,
-                    background: 'rgba(99, 102, 241, 0.15)',
-                    color: '#a5b4fc',
-                    fontFamily: 'var(--font-mono)'
-                  }}>
-                    {Math.round(cap.confidence * 100)}%
-                  </span>
+        {/* Purpose & problem space */}
+        {(openKnowledge.purpose || openKnowledge.problemSpace) && (
+          <section style={{ marginBottom: 'var(--s-8)' }}>
+            <div className="rule-head">
+              <h2 className="h-section">Purpose</h2>
+            </div>
+            <div className="grid-2">
+              {openKnowledge.purpose && (
+                <div>
+                  <span className="label" style={{ marginBottom: 'var(--s-1)' }}>What it&apos;s for</span>
+                  <p style={{ fontSize: 'var(--fs-md)', lineHeight: 1.55, maxWidth: 'var(--measure)' }}>{openKnowledge.purpose}</p>
                 </div>
-
-                <div style={{ fontSize: '0.725rem', color: 'var(--accent-cyan)' }}>
-                  {cap.category}
+              )}
+              {openKnowledge.problemSpace && (
+                <div>
+                  <span className="label" style={{ marginBottom: 'var(--s-1)' }}>Problem space</span>
+                  <p style={{ fontSize: 'var(--fs-md)', lineHeight: 1.55, maxWidth: 'var(--measure)' }}>{openKnowledge.problemSpace}</p>
                 </div>
-
-                <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)', margin: 0 }}>
-                  {cap.implementationNotes || cap.name}
-                </p>
-
-                {/* Evidence count */}
-                {cap.evidence && cap.evidence.length > 0 && (
-                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 4 }}>
-                      Verified Evidence:
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {cap.evidence.map((ev: any, evIdx: number) => (
-                        <button
-                          key={evIdx}
-                          onClick={() => setSelectedEvidence({
-                            repo: `${repo.owner}/${repo.name}`,
-                            filePath: ev.filePath,
-                            lines: ev.startLine ? `L${ev.startLine}-L${ev.endLine}` : undefined,
-                            quote: ev.quoteSnippet,
-                            symbolName: ev.symbolName,
-                            verified: ev.verified
-                          })}
-                          style={{
-                            fontSize: '0.675rem',
-                            padding: '3px 8px',
-                            borderRadius: 4,
-                            background: 'rgba(16, 185, 129, 0.1)',
-                            color: '#6ee7b7',
-                            border: '1px solid rgba(16, 185, 129, 0.2)',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {ev.filePath}{ev.startLine ? `:${ev.startLine}` : ''}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Features, Concepts & Techniques */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 20 }}>
-          {/* Features */}
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Key Features
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {repo.features && repo.features.length > 0 ? (
-                repo.features.map((feat: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--text-primary)' }}>{feat.name}:</strong> {feat.description}
-                  </div>
-                ))
-              ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>None recorded.</span>
               )}
             </div>
+          </section>
+        )}
+
+        {/* Capabilities */}
+        <section style={{ marginBottom: 'var(--s-8)' }}>
+          <div className="rule-head">
+            <h2 className="h-section">Capabilities</h2>
+            <span className="count">{repo.capabilities?.length || 0}</span>
           </div>
 
-          {/* Concepts & Techniques */}
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Domain Concepts & Techniques
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {repo.concepts && repo.concepts.length > 0 ? (
-                repo.concepts.map((c: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--accent-cyan)' }}>{c.name}:</strong> {c.description}
+          {repo.capabilities && repo.capabilities.length > 0 ? (
+            <div className="grid-cards">
+              {repo.capabilities.map((cap: any, i: number) => (
+                <article key={i} className="card res-card">
+                  <div className="stack gap-2">
+                    <div className="res-card-top" style={{ alignItems: 'flex-start' }}>
+                      {cap.category ? <span className="tag">{cap.category}</span> : <span />}
+                      {typeof cap.confidence === 'number' && (
+                        <span className="badge badge-outline" title="Model confidence">
+                          <span className="num">{Math.round(cap.confidence * 100)}%</span>
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="res-title" style={{ fontSize: 'var(--fs-md)' }}>{cap.name}</h3>
+                    {cap.implementationNotes && <p className="small muted">{cap.implementationNotes}</p>}
                   </div>
-                ))
-              ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>None recorded.</span>
-              )}
-            </div>
-          </div>
-        </div>
 
-        {/* Inputs & Outputs / Data Flow */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Consumed Inputs (Data Requirements)
-            </h4>
-            {repo.inputs && repo.inputs.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {repo.inputs.map((inp: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '0.825rem' }}>
-                    <span style={{ color: 'var(--accent-amber)', fontWeight: 600 }}>{inp.name}</span>
-                    <span style={{ color: 'var(--text-secondary)', marginLeft: 6 }}>({inp.description})</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No explicit inputs specified.</span>
-            )}
-          </div>
-
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Produced Outputs (Export Formats)
-            </h4>
-            {repo.outputs && repo.outputs.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {repo.outputs.map((out: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '0.825rem' }}>
-                    <span style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}>{out.name}</span>
-                    <span style={{ color: 'var(--text-secondary)', marginLeft: 6 }}>({out.description})</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No explicit outputs specified.</span>
-            )}
-          </div>
-        </div>
-
-        {/* Dependencies & Limitations */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Manifest Dependencies ({repo.dependencies?.length || 0})
-            </h4>
-            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {repo.dependencies && repo.dependencies.map((d: any, idx: number) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', padding: '4px 0' }}>
-                  <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{d.packageName}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{d.versionSpec || 'latest'}</span>
-                </div>
+                  {cap.evidence && cap.evidence.length > 0 && (
+                    <div className="card-foot" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <span className="label">Evidence</span>
+                      <div className="row wrap gap-2" style={{ maxWidth: '100%' }}>
+                        {cap.evidence.map((ev: any, evIdx: number) => (
+                          <button
+                            key={evIdx}
+                            type="button"
+                            className={`cite ${ev.verified ? 'is-verified' : 'is-inferred'}`}
+                            title={ev.verified ? 'Verified against source' : 'Inferred, not verified'}
+                            onClick={() => setSelectedEvidence({
+                              repo: `${repo.owner}/${repo.name}`,
+                              filePath: ev.filePath,
+                              lines: ev.startLine ? `L${ev.startLine}-L${ev.endLine}` : undefined,
+                              quote: ev.quoteSnippet,
+                              symbolName: ev.symbolName,
+                              verified: ev.verified
+                            })}
+                          >
+                            {ev.verified
+                              ? <CheckCircle2 size={12} aria-hidden="true" />
+                              : <AlertTriangle size={12} aria-hidden="true" />}
+                            <span>{ev.filePath}{ev.startLine ? `:${ev.startLine}` : ''}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </article>
               ))}
             </div>
-          </div>
+          ) : (
+            <p className="small muted">No capabilities extracted yet.</p>
+          )}
+        </section>
 
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h4 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>
-              Known Limitations ({repo.limitations?.length || 0})
-            </h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {repo.limitations && repo.limitations.length > 0 ? (
-                repo.limitations.map((lim: any, idx: number) => (
-                  <div key={idx} style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
-                    <strong style={{ color: 'var(--accent-rose)' }}>[{lim.category}]</strong> {lim.description}
-                  </div>
-                ))
-              ) : (
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No known limitations recorded.</span>
-              )}
+        {/* Features / concepts */}
+        <div className="grid-2" style={{ marginBottom: 'var(--s-8)' }}>
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Features</h2>
+              <span className="count">{repo.features?.length || 0}</span>
             </div>
-          </div>
+            {repo.features && repo.features.length > 0 ? (
+              <div className="def-list">
+                {repo.features.map((feat: any, idx: number) => (
+                  <div key={idx} className="def-item">
+                    <strong>{feat.name}.</strong> {feat.description}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">None recorded.</p>
+            )}
+          </section>
+
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Concepts &amp; techniques</h2>
+              <span className="count">{repo.concepts?.length || 0}</span>
+            </div>
+            {repo.concepts && repo.concepts.length > 0 ? (
+              <div className="def-list">
+                {repo.concepts.map((c: any, idx: number) => (
+                  <div key={idx} className="def-item">
+                    <strong>{c.name}.</strong> {c.description}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">None recorded.</p>
+            )}
+          </section>
+        </div>
+
+        {/* Inputs / outputs */}
+        <div className="grid-2" style={{ marginBottom: 'var(--s-8)' }}>
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Inputs</h2>
+              <span className="count">{repo.inputs?.length || 0}</span>
+            </div>
+            {repo.inputs && repo.inputs.length > 0 ? (
+              <div className="def-list">
+                {repo.inputs.map((inp: any, idx: number) => (
+                  <div key={idx} className="def-item">
+                    <strong className="mono" style={{ fontSize: 'var(--fs-xs)' }}>{inp.name}</strong>
+                    {inp.description && <> &mdash; {inp.description}</>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">No explicit inputs found.</p>
+            )}
+          </section>
+
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Outputs</h2>
+              <span className="count">{repo.outputs?.length || 0}</span>
+            </div>
+            {repo.outputs && repo.outputs.length > 0 ? (
+              <div className="def-list">
+                {repo.outputs.map((out: any, idx: number) => (
+                  <div key={idx} className="def-item">
+                    <strong className="mono" style={{ fontSize: 'var(--fs-xs)' }}>{out.name}</strong>
+                    {out.description && <> &mdash; {out.description}</>}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">No explicit outputs found.</p>
+            )}
+          </section>
+        </div>
+
+        {/* Dependencies / limitations */}
+        <div className="grid-2">
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Dependencies</h2>
+              <span className="count">{repo.dependencies?.length || 0}</span>
+            </div>
+            {repo.dependencies && repo.dependencies.length > 0 ? (
+              <div style={{ maxHeight: 260, overflowY: 'auto', paddingRight: 'var(--s-2)' }}>
+                {repo.dependencies.map((d: any, idx: number) => (
+                  <div key={idx} className="dep-row">
+                    <span className="mono truncate">{d.packageName}</span>
+                    <span className="mono faint" style={{ flexShrink: 0 }}>{d.versionSpec || 'latest'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">No manifest dependencies found.</p>
+            )}
+          </section>
+
+          <section>
+            <div className="rule-head">
+              <h2 className="h-section">Known limitations</h2>
+              <span className="count">{repo.limitations?.length || 0}</span>
+            </div>
+            {repo.limitations && repo.limitations.length > 0 ? (
+              <div className="def-list">
+                {repo.limitations.map((lim: any, idx: number) => (
+                  <div key={idx} className="def-item">
+                    {lim.category && <span className="badge badge-outline" style={{ marginRight: 'var(--s-2)' }}>{lim.category}</span>}
+                    {lim.description}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="small muted">None recorded.</p>
+            )}
+          </section>
         </div>
       </main>
 
-      {/* Evidence Drawer */}
       <EvidenceDrawer
         isOpen={Boolean(selectedEvidence)}
         evidence={selectedEvidence}

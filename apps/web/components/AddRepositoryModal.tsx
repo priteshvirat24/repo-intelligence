@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, GitBranch, CheckCircle2, Loader2, AlertCircle, Sparkles } from 'lucide-react';
+import { X, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 
 interface AddRepositoryModalProps {
   isOpen: boolean;
@@ -81,103 +81,47 @@ export const AddRepositoryModal: React.FC<AddRepositoryModalProps> = ({ isOpen, 
     }
   };
 
-  return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 50,
-      padding: 16
-    }}>
-      <div className="glass-panel" style={{
-        width: '100%',
-        maxWidth: 540,
-        padding: 28,
-        position: 'relative'
-      }}>
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute',
-            top: 20,
-            right: 20,
-            color: 'var(--text-muted)',
-            transition: 'color 0.2s'
-          }}
-        >
-          <X size={20} />
-        </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{
-            width: 40,
-            height: 40,
-            borderRadius: 10,
-            background: 'rgba(99, 102, 241, 0.15)',
-            border: '1px solid rgba(99, 102, 241, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}>
-            <GitBranch size={20} color="var(--accent-indigo)" />
+  return (
+    <div className="overlay" style={{ zIndex: 50 }}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="add-repo-title">
+        <div className="modal-head">
+          <div className="stack gap-1">
+            <h2 id="add-repo-title" className="modal-title">Add a repository</h2>
+            <p className="small muted">Open Eye clones it, parses the code and indexes it for questions.</p>
           </div>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Onboard Repository</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              Ingest, extract AST capabilities, and index code chunks.
-            </p>
-          </div>
+          <button type="button" className="btn btn-secondary btn-icon" onClick={onClose} aria-label="Close">
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <form onSubmit={handleSubmit} className="stack gap-4">
           <div>
-            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6 }}>
-              GITHUB REPOSITORY URL
+            <label htmlFor="add-repo-url" className="label" style={{ marginBottom: 'var(--s-2)' }}>
+              GitHub repository URL
             </label>
             <input
+              id="add-repo-url"
               type="text"
+              className="field"
               placeholder="https://github.com/owner/repository"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               disabled={isLoading}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                borderRadius: 'var(--radius-md)',
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-primary)',
-                fontSize: '0.9rem',
-                outline: 'none',
-                transition: 'border 0.2s'
-              }}
               required
             />
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-              QUICK PICKS
-            </span>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <span className="label" style={{ marginBottom: 'var(--s-2)' }}>Examples</span>
+            <div className="row wrap gap-1">
               {quickPicks.map((pick) => (
                 <button
                   key={pick.label}
                   type="button"
+                  className="tag tag-mono"
                   onClick={() => setUrl(pick.url)}
                   disabled={isLoading}
-                  style={{
-                    padding: '4px 10px',
-                    borderRadius: 6,
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid var(--border-subtle)',
-                    fontSize: '0.75rem',
-                    color: 'var(--text-secondary)'
-                  }}
                 >
                   {pick.label}
                 </button>
@@ -186,90 +130,45 @@ export const AddRepositoryModal: React.FC<AddRepositoryModalProps> = ({ isOpen, 
           </div>
 
           {error && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: 10,
-              borderRadius: 8,
-              background: 'rgba(244, 63, 94, 0.1)',
-              border: '1px solid rgba(244, 63, 94, 0.25)',
-              color: '#fb7185',
-              fontSize: '0.825rem'
-            }}>
-              <AlertCircle size={16} />
+            <div className="callout callout-danger" role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
               <span>{error}</span>
             </div>
           )}
 
           {isLoading && currentStep && (
-            <div style={{
-              padding: 14,
-              borderRadius: 8,
-              background: 'rgba(99, 102, 241, 0.08)',
-              border: '1px solid rgba(99, 102, 241, 0.2)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 8
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--accent-indigo)' }}>
-                  Ingestion in Progress
-                </span>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Step: {currentStep}
+            <div className="card card-ink stack gap-2" style={{ padding: 'var(--s-3) var(--s-4)' }}>
+              <div className="row between gap-3">
+                <span style={{ fontWeight: 600 }}>Indexing</span>
+                <span className="badge badge-neutral">
+                  <span className="dot dot-pulse" aria-hidden="true" />
+                  {currentStep}
                 </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              <div className="row gap-2 small muted">
                 {currentStep === 'DONE' ? (
-                  <CheckCircle2 size={16} color="var(--accent-emerald)" />
+                  <CheckCircle2 size={16} aria-hidden="true" style={{ color: 'var(--verified)' }} />
                 ) : (
-                  <Loader2 size={16} className="animate-spin" color="var(--accent-cyan)" />
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                 )}
                 <span>
-                  {currentStep === 'CLONING' && 'Performing shallow git clone...'}
-                  {currentStep === 'ANALYZING' && 'Parsing Tree-sitter AST & verifying capabilities...'}
-                  {currentStep === 'INDEXING' && 'Generating embeddings & updating pgvector...'}
-                  {currentStep === 'DONE' && 'Repository ready for intelligence queries!'}
-                  {currentStep === 'QUEUED' && 'Waiting for background worker...'}
+                  {currentStep === 'CLONING' && 'Cloning the repository…'}
+                  {currentStep === 'ANALYZING' && 'Parsing source files and checking evidence…'}
+                  {currentStep === 'INDEXING' && 'Building the search index…'}
+                  {currentStep === 'DONE' && 'Ready. You can ask about it now.'}
+                  {currentStep === 'QUEUED' && 'Waiting for a worker…'}
                 </span>
               </div>
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isLoading}
-              style={{
-                padding: '10px 18px',
-                borderRadius: 8,
-                color: 'var(--text-secondary)',
-                fontSize: '0.875rem',
-                fontWeight: 500
-              }}
-            >
+          <div className="modal-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose} disabled={isLoading}>
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={isLoading || !url}
-              style={{
-                padding: '10px 22px',
-                borderRadius: 8,
-                background: isLoading ? 'rgba(99, 102, 241, 0.4)' : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                fontSize: '0.875rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                boxShadow: '0 2px 12px rgba(99, 102, 241, 0.4)'
-              }}
-            >
-              {isLoading && <Loader2 size={16} className="animate-spin" />}
-              {isLoading ? 'Ingesting...' : 'Start Ingestion'}
+            <button type="submit" className="btn btn-primary" disabled={isLoading || !url}>
+              {isLoading && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
+              {isLoading ? 'Indexing…' : 'Start indexing'}
             </button>
           </div>
         </form>

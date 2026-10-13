@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { X, CheckCircle2, FileCode, Copy, Check, ShieldCheck, Youtube, FileText, Globe, GitBranch, ExternalLink, AlertTriangle } from 'lucide-react';
+import { X, CheckCircle2, Copy, Check, ArrowUpRight, AlertTriangle } from 'lucide-react';
 import { ResourceLocatorType, ResourceType } from '@repo/shared';
+import { SourceIcon } from '@/components/Primitives';
 
 export interface EvidenceItem {
   repo?: string;
@@ -37,197 +38,99 @@ export const EvidenceDrawer: React.FC<EvidenceDrawerProps> = ({ isOpen, evidence
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const getSourceIcon = (type?: ResourceType) => {
-    switch (type) {
-      case 'youtube_video': return <Youtube size={18} color="#ef4444" />;
-      case 'pdf':
-      case 'research_paper': return <FileText size={18} color="#f59e0b" />;
-      case 'github_repository': return <GitBranch size={18} color="var(--accent-indigo)" />;
-      default: return <Globe size={18} color="var(--accent-cyan)" />;
-    }
-  };
-
   const quoteLines = (evidence.quote || '').split('\n');
+  const resourceType = evidence.resourceType || (evidence.repo ? 'github_repository' : undefined);
+
+  const locatorEntries: Array<{ label: string; value: string }> = [];
+  if (evidence.locator?.timestampLabel) locatorEntries.push({ label: 'Timestamp', value: String(evidence.locator.timestampLabel) });
+  if (evidence.locator?.pageNumber) locatorEntries.push({ label: 'Page', value: String(evidence.locator.pageNumber) });
+  if (evidence.locator?.sectionHeading) locatorEntries.push({ label: 'Section', value: String(evidence.locator.sectionHeading) });
+  if (evidence.lines) locatorEntries.push({ label: 'Lines', value: evidence.lines });
+  if (evidence.symbolName) locatorEntries.push({ label: 'Symbol', value: evidence.symbolName });
 
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      background: 'rgba(0, 0, 0, 0.75)',
-      backdropFilter: 'blur(8px)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 100,
-      padding: 20
-    }} onClick={onClose}>
-      <div style={{
-        width: '100%',
-        maxWidth: 780,
-        background: '#090d16',
-        border: '1px solid var(--border-subtle)',
-        borderRadius: 14,
-        overflow: 'hidden',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
-        display: 'flex',
-        flexDirection: 'column',
-        maxHeight: '90vh'
-      }} onClick={(e) => e.stopPropagation()}>
+    <div className="overlay" style={{ zIndex: 100 }} onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="evidence-title"
+        style={{ maxWidth: 780, padding: 0, display: 'flex', flexDirection: 'column', maxHeight: '90vh', overflow: 'hidden' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div style={{
-          padding: '18px 24px',
-          borderBottom: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(15, 23, 42, 0.6)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {getSourceIcon(evidence.resourceType)}
-            <div>
-              <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                {evidence.resourceTitle || evidence.repo || 'Source Evidence'}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                {evidence.formattedCitation || evidence.filePath || 'Source Excerpt'}
-              </div>
+        <div style={{ padding: 'var(--s-5) var(--s-5) var(--s-4)', borderBottom: 'var(--bw) solid var(--ink)' }}>
+          <div className="row between gap-3" style={{ alignItems: 'flex-start' }}>
+            <div className="stack gap-2" style={{ minWidth: 0 }}>
+              <span className="res-type">
+                <SourceIcon type={resourceType} size={13} />
+                <span>Evidence</span>
+              </span>
+              <h2 id="evidence-title" className="display" style={{ fontSize: 'var(--fs-xl)', overflowWrap: 'anywhere' }}>
+                {evidence.resourceTitle || evidence.repo || 'Source evidence'}
+              </h2>
+              <span className="mono small muted" style={{ overflowWrap: 'anywhere' }}>
+                {evidence.formattedCitation || evidence.filePath || 'Source excerpt'}
+              </span>
             </div>
+
+            <button type="button" className="btn btn-secondary btn-icon" onClick={onClose} aria-label="Close evidence">
+              <X size={18} aria-hidden="true" />
+            </button>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <span style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              padding: '3px 8px',
-              borderRadius: 6,
-              background: evidence.verified ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-              color: evidence.verified ? '#10b981' : '#f59e0b',
-              border: evidence.verified ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(245, 158, 11, 0.3)'
-            }}>
-              {evidence.verified ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-              <span>{evidence.verified ? 'Verified Fact' : 'Inferred (not verified)'}</span>
-            </span>
-
-            <button
-              onClick={onClose}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                padding: 4
-              }}
-            >
-              <X size={18} />
-            </button>
+          <div style={{ marginTop: 'var(--s-3)' }}>
+            {evidence.verified ? (
+              <span className="badge badge-verified">
+                <CheckCircle2 size={12} aria-hidden="true" />
+                <span>Verified Fact</span>
+              </span>
+            ) : (
+              <span className="badge badge-inferred">
+                <AlertTriangle size={12} aria-hidden="true" />
+                <span>Inferred (not verified)</span>
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Content Box */}
-        <div style={{ padding: 24, overflowY: 'auto' }}>
-          {/* Locators Details */}
-          {evidence.locator && (
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 12,
-              marginBottom: 16,
-              padding: '10px 14px',
-              borderRadius: 8,
-              background: 'rgba(15, 23, 42, 0.8)',
-              border: '1px solid var(--border-subtle)',
-              fontSize: '0.8rem'
-            }}>
-              {evidence.locator.timestampLabel && (
-                <div><span style={{ color: 'var(--text-muted)' }}>Timestamp:</span> <strong style={{ color: '#ef4444' }}>{evidence.locator.timestampLabel}</strong></div>
-              )}
-              {evidence.locator.pageNumber && (
-                <div><span style={{ color: 'var(--text-muted)' }}>Page:</span> <strong style={{ color: '#f59e0b' }}>Page {evidence.locator.pageNumber}</strong></div>
-              )}
-              {evidence.locator.sectionHeading && (
-                <div><span style={{ color: 'var(--text-muted)' }}>Section:</span> <strong style={{ color: 'var(--accent-cyan)' }}>{evidence.locator.sectionHeading}</strong></div>
-              )}
-              {evidence.lines && (
-                <div><span style={{ color: 'var(--text-muted)' }}>Lines:</span> <strong style={{ color: 'var(--accent-indigo)' }}>{evidence.lines}</strong></div>
-              )}
-            </div>
+        {/* Body */}
+        <div style={{ padding: 'var(--s-5)', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 'var(--s-4)' }}>
+          {locatorEntries.length > 0 && (
+            <dl className="meta-row" style={{ gap: 'var(--s-2) var(--s-6)' }}>
+              {locatorEntries.map((entry) => (
+                <div key={entry.label} className="row gap-2">
+                  <dt className="faint">{entry.label}</dt>
+                  <dd style={{ color: 'var(--ink)', fontWeight: 600 }}>{entry.value}</dd>
+                </div>
+              ))}
+            </dl>
           )}
 
-          {/* Quote Preview */}
-          <div style={{
-            background: '#040711',
-            borderRadius: 8,
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            padding: 16,
-            fontFamily: 'monospace',
-            fontSize: '0.85rem',
-            lineHeight: 1.6,
-            color: '#e2e8f0',
-            whiteSpace: 'pre-wrap',
-            maxHeight: 380,
-            overflowY: 'auto'
-          }}>
+          <div className="quote-well" style={{ whiteSpace: 'pre-wrap' }}>
             {quoteLines.map((line, idx) => (
-              <div key={idx} style={{ display: 'flex', gap: 12 }}>
-                <span style={{ color: 'rgba(255, 255, 255, 0.25)', userSelect: 'none', width: 28, textAlign: 'right' }}>
-                  {idx + 1}
-                </span>
-                <span>{line}</span>
+              <div key={idx} className="quote-line">
+                <span className="ln">{idx + 1}</span>
+                <span style={{ minWidth: 0 }}>{line}</span>
               </div>
             ))}
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{
-          padding: '14px 24px',
-          borderTop: '1px solid var(--border-subtle)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          background: 'rgba(15, 23, 42, 0.5)'
-        }}>
+        <div className="row between gap-3" style={{ padding: 'var(--s-3) var(--s-5)', borderTop: 'var(--bw) solid var(--line)' }}>
           {evidence.sourceUrl ? (
-            <a
-              href={evidence.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                fontSize: '0.85rem',
-                color: 'var(--accent-cyan)',
-                textDecoration: 'none'
-              }}
-            >
-              <ExternalLink size={14} />
-              <span>Open Original Source</span>
+            <a href={evidence.sourceUrl} target="_blank" rel="noreferrer" className="link-quiet">
+              <span>Open original source</span>
+              <ArrowUpRight size={14} aria-hidden="true" />
             </a>
           ) : (
-            <div />
+            <span />
           )}
 
-          <button
-            onClick={handleCopy}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 6,
-              background: 'rgba(30, 41, 59, 0.6)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-primary)',
-              fontSize: '0.8rem',
-              cursor: 'pointer'
-            }}
-          >
-            {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
-            <span>{copied ? 'Copied' : 'Copy Excerpt'}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={handleCopy}>
+            {copied ? <Check size={14} aria-hidden="true" style={{ color: 'var(--verified)' }} /> : <Copy size={14} aria-hidden="true" />}
+            <span>{copied ? 'Copied' : 'Copy excerpt'}</span>
           </button>
         </div>
       </div>

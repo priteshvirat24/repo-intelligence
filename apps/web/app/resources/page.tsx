@@ -1,28 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar } from '@/components/Navbar';
 import { AddResourceModal } from '@/components/AddResourceModal';
+import { SourceIcon, StatusBadge } from '@/components/Primitives';
 import {
-  Globe,
-  GitBranch,
-  Youtube,
-  Linkedin,
-  FileText,
-  BookOpen,
   Search,
-  ExternalLink,
+  ArrowUpRight,
   MessageSquare,
-  Sparkles,
   RefreshCw,
   Trash2,
   CheckCircle2,
   AlertTriangle,
-  Clock,
-  Layers,
-  ChevronRight,
+  Plus,
   X
 } from 'lucide-react';
 import { UniversalResource, ResourceType } from '@repo/shared';
@@ -125,482 +116,224 @@ function ResourcesPageContent() {
     router.push(`/?prompt=${encodeURIComponent(prompt)}`);
   };
 
-  const getSourceIcon = (type: ResourceType) => {
-    switch (type) {
-      case 'github_repository': return <GitBranch size={16} color="var(--accent-indigo)" />;
-      case 'youtube_video': return <Youtube size={16} color="#ef4444" />;
-      case 'linkedin_post': return <Linkedin size={16} color="#0284c7" />;
-      case 'pdf':
-      case 'research_paper': return <FileText size={16} color="#f59e0b" />;
-      case 'documentation_site': return <BookOpen size={16} color="#10b981" />;
-      default: return <Globe size={16} color="var(--accent-cyan)" />;
-    }
-  };
-
   const getSourceLabel = (type: ResourceType) => {
     switch (type) {
-      case 'github_repository': return 'GitHub Repo';
-      case 'youtube_video': return 'YouTube Video';
+      case 'github_repository': return 'GitHub repo';
+      case 'youtube_video': return 'Video';
       case 'linkedin_post': return 'LinkedIn';
-      case 'pdf': return 'PDF Document';
-      case 'research_paper': return 'Research Paper';
-      case 'documentation_site': return 'Documentation';
+      case 'pdf': return 'PDF';
+      case 'research_paper': return 'Paper';
+      case 'documentation_site': return 'Docs';
       case 'article': return 'Article';
-      default: return 'Web Resource';
+      default: return 'Web page';
     }
   };
 
   const filterTabs = [
-    { id: 'all', label: 'All Resources', count: stats.totalResources },
+    { id: 'all', label: 'All', count: stats.totalResources },
     { id: 'github_repository', label: 'GitHub', count: stats.totalRepositories },
-    { id: 'web_page', label: 'Web & Docs', count: stats.totalWebSources },
-    { id: 'youtube_video', label: 'YouTube', count: stats.totalVideos },
-    { id: 'pdf', label: 'PDFs & Papers', count: stats.totalDocuments },
+    { id: 'web_page', label: 'Web & docs', count: stats.totalWebSources },
+    { id: 'youtube_video', label: 'Videos', count: stats.totalVideos },
+    { id: 'pdf', label: 'PDFs & papers', count: stats.totalDocuments },
     { id: 'linkedin_post', label: 'LinkedIn', count: resources.filter(r => r.resourceType === 'linkedin_post').length }
   ];
 
+  const ledger = [
+    { label: 'Repositories', value: stats.totalRepositories, primary: true },
+    { label: 'All sources', value: stats.totalResources },
+    { label: 'Web & docs', value: stats.totalWebSources },
+    { label: 'Videos', value: stats.totalVideos },
+    { label: 'PDFs & papers', value: stats.totalDocuments },
+    { label: 'Domains', value: stats.totalDomains }
+  ];
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="app-shell">
       <Navbar
         onOpenAddModal={() => setIsAddModalOpen(true)}
         resourceCount={stats.totalResources}
       />
 
-      <main style={{ flex: 1, maxWidth: 1400, margin: '0 auto', padding: '32px 24px', width: '100%', boxSizing: 'border-box' }}>
-        {/* Header Banner */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, letterSpacing: '-0.02em' }}>
-                  Resource Library
-                </h1>
-                <span style={{
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  border: '1px solid rgba(99, 102, 241, 0.3)',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  color: 'var(--accent-cyan)'
-                }}>
-                  Universal Collection
-                </span>
-              </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', margin: 0, maxWidth: 750 }}>
-                What knowledge has Open Eye collected? Browse all indexed software repositories, video tutorials, technical articles, and research documents connected across your problem space.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '10px 20px',
-                borderRadius: 10,
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                fontWeight: 600,
-                fontSize: '0.9rem',
-                border: 'none',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px rgba(99, 102, 241, 0.35)'
-              }}
-            >
-              <Sparkles size={16} />
-              <span>+ Add Resource</span>
+      <main className="page">
+        <header className="page-head">
+          <div className="page-head-title">
+            <span className="eyebrow">Library</span>
+            <h1 className="h-page">Everything Open Eye has read.</h1>
+          </div>
+          <div className="page-head-aside">
+            <p className="lede">
+              Mostly GitHub repositories, plus any docs, videos or papers you&apos;ve added.
+              Open one to see what was extracted and the evidence behind it.
+            </p>
+            <button type="button" className="btn btn-primary" onClick={() => setIsAddModalOpen(true)}>
+              <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
+              <span>Add repository</span>
             </button>
           </div>
+        </header>
 
-          {/* Collection Intelligence Metrics Bar */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 16,
-            marginTop: 24
-          }}>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Total Resources</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', marginTop: 4 }}>
-                {stats.totalResources}
-              </div>
+        {/* Collection counts, as reported by the API */}
+        <div className="ledger" aria-label="Collection counts">
+          {ledger.map((cell) => (
+            <div key={cell.label} className={`ledger-cell${cell.primary ? ' is-primary' : ''}`}>
+              <span className="label">{cell.label}</span>
+              <div className="ledger-value">{cell.value ?? 0}</div>
             </div>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Repositories</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent-indigo)', marginTop: 4 }}>
-                {stats.totalRepositories}
-              </div>
-            </div>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Web Sources & Docs</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--accent-cyan)', marginTop: 4 }}>
-                {stats.totalWebSources}
-              </div>
-            </div>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Videos</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#ef4444', marginTop: 4 }}>
-                {stats.totalVideos}
-              </div>
-            </div>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Documents & Papers</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f59e0b', marginTop: 4 }}>
-                {stats.totalDocuments}
-              </div>
-            </div>
-            <div className="glass-panel" style={{ padding: '16px 20px' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>Domains Indexed</div>
-              <div style={{ fontSize: '1.75rem', fontWeight: 800, color: '#10b981', marginTop: 4 }}>
-                {stats.totalDomains}
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Search & Filter Bar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 28 }}>
-          <form onSubmit={handleSearch} style={{ display: 'flex', gap: 12 }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <Search size={18} style={{ position: 'absolute', left: 16, top: 14, color: 'var(--text-muted)' }} />
+        {/* Search & filters */}
+        <div className="stack gap-4" style={{ marginBottom: 'var(--s-6)' }}>
+          <form onSubmit={handleSearch} className="search-bar" role="search">
+            <div className="field-wrap">
+              <Search size={17} className="field-icon" aria-hidden="true" />
+              <label htmlFor="library-search" className="sr-only">Search the library</label>
               <input
+                id="library-search"
                 type="text"
-                placeholder="Search resources by keyword, problem solved, technique, domain..."
+                className="field has-icon"
+                placeholder="Search by name, problem, technique or domain"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 16px 12px 46px',
-                  borderRadius: 10,
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                  fontSize: '0.95rem',
-                  outline: 'none',
-                  boxSizing: 'border-box'
-                }}
               />
             </div>
-            <button
-              type="submit"
-              style={{
-                padding: '0 24px',
-                borderRadius: 10,
-                background: 'rgba(30, 41, 59, 0.8)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-primary)',
-                fontWeight: 600,
-                cursor: 'pointer'
-              }}
-            >
-              Search
-            </button>
+            <button type="submit" className="btn btn-secondary">Search</button>
           </form>
 
-          {/* Filter Tabs */}
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
+          <div className="pill-row" role="group" aria-label="Filter by source type">
             {filterTabs.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
+                className="pill"
+                aria-pressed={activeFilter === tab.id}
                 onClick={() => setActiveFilter(tab.id)}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 8,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  border: activeFilter === tab.id
-                    ? '1px solid rgba(99, 102, 241, 0.5)'
-                    : '1px solid transparent',
-                  background: activeFilter === tab.id
-                    ? 'rgba(99, 102, 241, 0.2)'
-                    : 'rgba(15, 23, 42, 0.5)',
-                  color: activeFilter === tab.id
-                    ? 'var(--text-primary)'
-                    : 'var(--text-secondary)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s'
-                }}
               >
                 <span>{tab.label}</span>
-                <span style={{
-                  padding: '1px 6px',
-                  borderRadius: 12,
-                  background: 'rgba(255, 255, 255, 0.08)',
-                  fontSize: '0.75rem',
-                  color: 'var(--text-muted)'
-                }}>
-                  {tab.count}
-                </span>
+                <span className="num">{tab.count}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Resources Grid */}
+        {/* Results */}
         {isLoading ? (
-          <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)' }}>
-            Loading resources...
+          <div className="loading-line">
+            <span className="dot dot-pulse" aria-hidden="true" />
+            Loading the library&hellip;
           </div>
         ) : resources.length === 0 ? (
-          <div className="glass-panel" style={{ padding: 60, textAlign: 'center' }}>
-            <Globe size={40} color="var(--text-muted)" style={{ margin: '0 auto 16px' }} />
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 8px' }}>No Resources Found</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', maxWidth: 450, margin: '0 auto 20px' }}>
-              Add a GitHub repository, YouTube video, technical article, or PDF document to start building your universal knowledge base.
+          <div className="empty">
+            <span className="eyebrow plain">Nothing here yet</span>
+            <h3>{searchQuery.trim() || activeFilter !== 'all' ? 'No matches.' : 'Start with a repository.'}</h3>
+            <p>
+              {searchQuery.trim() || activeFilter !== 'all'
+                ? 'Nothing in the library matches this search or filter. Try a broader term, or switch back to All.'
+                : 'Paste a public GitHub URL and Open Eye will read the code, pull out what it can do, and keep the evidence. Docs, videos and PDFs work too.'}
             </p>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              style={{
-                padding: '10px 20px',
-                borderRadius: 8,
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                fontWeight: 600,
-                border: 'none',
-                cursor: 'pointer'
-              }}
-            >
-              Add First Resource
+            <button type="button" className="btn btn-primary" onClick={() => setIsAddModalOpen(true)}>
+              <Plus size={16} strokeWidth={2.5} aria-hidden="true" />
+              <span>Add repository</span>
             </button>
           </div>
         ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))',
-            gap: 20
-          }}>
+          <div className="grid-cards">
             {resources.map((res) => {
-              const problems = (res.problemsSolved && res.problemsSolved.length > 0)
-                ? res.problemsSolved
-                : ['General technical capabilities and domain knowledge'];
-
-              const uses = (res.practicalUses && res.practicalUses.length > 0)
-                ? res.practicalUses
-                : ['Integration and technical reference in architecture'];
-
               const usefulTags = (res.usefulFor && res.usefulFor.length > 0)
                 ? res.usefulFor
                 : (res.domainTags || []);
+              const summary = res.valueProposition || res.description || '';
 
               return (
                 <div
                   key={res.id}
-                  className="glass-panel"
+                  className="card card-interactive res-card"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open details for ${res.title}`}
                   onClick={() => handleOpenDetail(res.id)}
-                  style={{
-                    padding: 24,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    cursor: 'pointer',
-                    transition: 'transform 0.15s, border-color 0.15s',
-                    position: 'relative'
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      handleOpenDetail(res.id);
+                    }
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.4)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border-subtle)')}
                 >
-                  {/* Top Bar: Source Type & Status */}
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '3px 8px',
-                        borderRadius: 6,
-                        background: 'rgba(255, 255, 255, 0.05)',
-                        border: '1px solid var(--border-subtle)',
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        color: 'var(--text-secondary)'
-                      }}>
-                        {getSourceIcon(res.resourceType)}
+                  <div className="stack gap-3">
+                    <div className="res-card-top">
+                      <span className="res-type">
+                        <SourceIcon type={res.resourceType} size={13} />
                         <span>{getSourceLabel(res.resourceType)}</span>
-                        {res.sourceDomain && (
-                          <span style={{ color: 'var(--text-muted)', marginLeft: 4 }}>• {res.sourceDomain}</span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{
-                          padding: '2px 8px',
-                          borderRadius: 4,
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          background: res.status === 'READY'
-                            ? 'rgba(16, 185, 129, 0.15)'
-                            : res.status === 'BLOCKED'
-                            ? 'rgba(239, 68, 68, 0.15)'
-                            : 'rgba(245, 158, 11, 0.15)',
-                          color: res.status === 'READY'
-                            ? '#10b981'
-                            : res.status === 'BLOCKED'
-                            ? '#ef4444'
-                            : '#f59e0b',
-                          border: `1px solid ${res.status === 'READY' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`
-                        }}>
-                          {res.status}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Title */}
-                    <h3 style={{
-                      fontSize: '1.15rem',
-                      fontWeight: 700,
-                      margin: '0 0 8px 0',
-                      lineHeight: 1.35,
-                      color: 'var(--text-primary)'
-                    }}>
-                      {res.title}
-                    </h3>
-
-                    {/* Value Proposition / Summary */}
-                    <p style={{
-                      fontSize: '0.875rem',
-                      color: 'var(--text-secondary)',
-                      margin: '0 0 16px 0',
-                      lineHeight: 1.45,
-                      display: '-webkit-box',
-                      WebkitLineClamp: 2,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: 'hidden'
-                    }}>
-                      {res.valueProposition || res.description || ''}
-                    </p>
-
-                    {/* Problem Solved */}
-                    <div style={{ marginBottom: 12 }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Problem Solved
+                        {res.sourceDomain && <span className="domain truncate">/ {res.sourceDomain}</span>}
                       </span>
-                      <p style={{
-                        fontSize: '0.85rem',
-                        color: 'var(--text-primary)',
-                        margin: '4px 0 0 0',
-                        fontWeight: 500,
-                        lineHeight: 1.4
-                      }}>
-                        {problems[0]}
-                      </p>
+                      <StatusBadge status={res.status} />
                     </div>
 
-                    {/* How Open Eye Uses It */}
-                    <div style={{ marginBottom: 16 }}>
-                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        How Open Eye Can Use It
-                      </span>
-                      <p style={{
-                        fontSize: '0.85rem',
-                        color: 'var(--accent-cyan)',
-                        margin: '4px 0 0 0',
-                        lineHeight: 1.4
-                      }}>
-                        {uses[0]}
-                      </p>
-                    </div>
+                    <h3 className="res-title">{res.title}</h3>
 
-                    {/* Tags */}
+                    {summary && <p className="small muted clamp-2">{summary}</p>}
+
+                    {/* Only what analysis actually extracted — no filler */}
+                    {res.problemsSolved && res.problemsSolved.length > 0 && (
+                      <div className="res-fact">
+                        <span className="label">Solves</span>
+                        <p>{res.problemsSolved[0]}</p>
+                      </div>
+                    )}
+
+                    {res.practicalUses && res.practicalUses.length > 0 && (
+                      <div className="res-fact">
+                        <span className="label">Use it for</span>
+                        <p>{res.practicalUses[0]}</p>
+                      </div>
+                    )}
+
                     {usefulTags.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+                      <div className="row wrap gap-1">
                         {usefulTags.slice(0, 4).map((tag, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: 4,
-                              background: 'rgba(30, 41, 59, 0.6)',
-                              fontSize: '0.75rem',
-                              color: 'var(--text-secondary)'
-                            }}
-                          >
-                            {tag}
-                          </span>
+                          <span key={i} className="tag">{tag}</span>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Actions Bar */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingTop: 14,
-                    borderTop: '1px solid var(--border-subtle)',
-                    marginTop: 8
-                  }}>
-                    <div style={{ display: 'flex', gap: 10 }}>
+                  <div className="card-foot" style={{ marginTop: 'var(--s-1)' }}>
+                    <div className="row gap-4">
                       <a
                         href={res.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: '0.8rem',
-                          color: 'var(--text-secondary)',
-                          textDecoration: 'none'
-                        }}
+                        className="link-quiet"
                       >
-                        <ExternalLink size={13} />
                         <span>Source</span>
+                        <ArrowUpRight size={13} aria-hidden="true" />
                       </a>
 
-                      <button
-                        onClick={(e) => handleAskAbout(res, e)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          fontSize: '0.8rem',
-                          color: 'var(--accent-indigo)',
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontWeight: 600,
-                          padding: 0
-                        }}
-                      >
-                        <MessageSquare size={13} />
-                        <span>Ask Open Eye</span>
+                      <button type="button" className="link-action" onClick={(e) => handleAskAbout(res, e)}>
+                        <MessageSquare size={13} aria-hidden="true" />
+                        <span>Ask about it</span>
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="icon-actions">
                       <button
-                        title="Reindex Resource"
+                        type="button"
+                        className="btn btn-ghost btn-icon"
+                        title="Reindex"
+                        aria-label={`Reindex ${res.title}`}
                         onClick={(e) => handleReindex(res.id, e)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: 4
-                        }}
                       >
-                        <RefreshCw size={14} />
+                        <RefreshCw size={14} aria-hidden="true" />
                       </button>
                       <button
-                        title="Delete Resource"
+                        type="button"
+                        className="btn btn-ghost btn-icon danger"
+                        title="Remove from library"
+                        aria-label={`Remove ${res.title}`}
                         onClick={(e) => handleDelete(res.id, e)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          color: 'var(--text-muted)',
-                          cursor: 'pointer',
-                          padding: 4
-                        }}
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={14} aria-hidden="true" />
                       </button>
                     </div>
                   </div>
@@ -611,188 +344,133 @@ function ResourcesPageContent() {
         )}
       </main>
 
-      {/* Resource Detail Drawer / Modal */}
+      {/* Resource detail sheet */}
       {selectedResource && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(8px)',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          zIndex: 60
-        }}>
-          <div style={{
-            width: '100%',
-            maxWidth: 680,
-            background: 'var(--bg-secondary)',
-            borderLeft: '1px solid var(--border-subtle)',
-            height: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            overflowY: 'auto',
-            padding: 32,
-            boxSizing: 'border-box'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {getSourceIcon(selectedResource.resourceType)}
-                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--accent-cyan)' }}>
-                  {getSourceLabel(selectedResource.resourceType)} Intelligence Profile
-                </span>
-              </div>
+        <div className="overlay overlay-right">
+          <aside className="sheet" role="dialog" aria-modal="true" aria-labelledby="resource-detail-title">
+            <div className="row between gap-3" style={{ marginBottom: 'var(--s-5)' }}>
+              <span className="res-type">
+                <SourceIcon type={selectedResource.resourceType} size={13} />
+                <span>{getSourceLabel(selectedResource.resourceType)}</span>
+                {selectedResource.sourceDomain && <span className="domain truncate">/ {selectedResource.sourceDomain}</span>}
+              </span>
               <button
+                type="button"
+                className="btn btn-secondary btn-icon"
+                aria-label="Close details"
                 onClick={() => setSelectedResource(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: 4
-                }}
               >
-                <X size={20} />
+                <X size={18} aria-hidden="true" />
               </button>
             </div>
 
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, margin: '0 0 12px 0', lineHeight: 1.3 }}>
+            <h2 id="resource-detail-title" className="display" style={{ fontSize: 'var(--fs-2xl)', marginBottom: 'var(--s-3)', overflowWrap: 'anywhere' }}>
               {selectedResource.title}
             </h2>
 
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: '0 0 24px 0', lineHeight: 1.5 }}>
-              {selectedResource.description || selectedResource.valueProposition}
-            </p>
+            {(selectedResource.description || selectedResource.valueProposition) && (
+              <p className="muted" style={{ fontSize: 'var(--fs-md)', lineHeight: 1.55, marginBottom: 'var(--s-5)', maxWidth: '60ch' }}>
+                {selectedResource.description || selectedResource.valueProposition}
+              </p>
+            )}
 
-            {/* Quick Action */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
-              <button
-                onClick={(e) => handleAskAbout(selectedResource, e)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 18px',
-                  borderRadius: 8,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                  color: '#ffffff',
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <MessageSquare size={16} />
-                <span>Ask Open Eye About This Resource</span>
+            <div className="row wrap gap-3" style={{ marginBottom: 'var(--s-7)' }}>
+              <button type="button" className="btn btn-primary" onClick={(e) => handleAskAbout(selectedResource, e)}>
+                <MessageSquare size={16} aria-hidden="true" />
+                <span>Ask about this</span>
               </button>
-              <a
-                href={selectedResource.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '10px 18px',
-                  borderRadius: 8,
-                  background: 'rgba(30, 41, 59, 0.6)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-primary)',
-                  fontWeight: 600,
-                  fontSize: '0.875rem',
-                  textDecoration: 'none'
-                }}
-              >
-                <ExternalLink size={16} />
-                <span>Open Original Source</span>
+              <a href={selectedResource.sourceUrl} target="_blank" rel="noreferrer" className="btn btn-secondary">
+                <span>Open source</span>
+                <ArrowUpRight size={16} aria-hidden="true" />
               </a>
             </div>
 
             {/* Problems Solved (only what analysis actually extracted) */}
             {selectedResource.problemsSolved?.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 8px' }}>
-                Problems Solved
-              </h4>
-              <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--text-primary)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {selectedResource.problemsSolved.map((p: string, i: number) => (
-                  <li key={i}>{p}</li>
-                ))}
-              </ul>
-            </div>
+              <section style={{ marginBottom: 'var(--s-7)' }}>
+                <div className="rule-head">
+                  <h3 className="label">Problems Solved</h3>
+                  <span className="count">{selectedResource.problemsSolved.length}</span>
+                </div>
+                <ul className="def-list" style={{ listStyle: 'none', padding: 0 }}>
+                  {selectedResource.problemsSolved.map((p: string, i: number) => (
+                    <li key={i} className="def-item" style={{ color: 'var(--ink)' }}>{p}</li>
+                  ))}
+                </ul>
+              </section>
             )}
 
             {/* Practical Uses (only what analysis actually extracted) */}
             {selectedResource.practicalUses?.length > 0 && (
-            <div style={{ marginBottom: 24 }}>
-              <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 8px' }}>
-                How You Can Use This Resource
-              </h4>
-              <ul style={{ margin: 0, paddingLeft: 20, color: 'var(--accent-cyan)', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {selectedResource.practicalUses.map((u: string, i: number) => (
-                  <li key={i}>{u}</li>
-                ))}
-              </ul>
-            </div>
+              <section style={{ marginBottom: 'var(--s-7)' }}>
+                <div className="rule-head">
+                  <h3 className="label">Practical Uses</h3>
+                  <span className="count">{selectedResource.practicalUses.length}</span>
+                </div>
+                <ul className="def-list" style={{ listStyle: 'none', padding: 0 }}>
+                  {selectedResource.practicalUses.map((u: string, i: number) => (
+                    <li key={i} className="def-item" style={{ color: 'var(--ink)' }}>{u}</li>
+                  ))}
+                </ul>
+              </section>
             )}
 
             {/* Capabilities */}
             {selectedResource.capabilities?.length > 0 && (
-              <div style={{ marginBottom: 24 }}>
-                <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 12px' }}>
-                  Extracted Capabilities ({selectedResource.capabilities.length})
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <section style={{ marginBottom: 'var(--s-7)' }}>
+                <div className="rule-head">
+                  <h3 className="label">Capabilities</h3>
+                  <span className="count">{selectedResource.capabilities.length}</span>
+                </div>
+                <div className="def-list">
                   {selectedResource.capabilities.map((cap: any) => (
-                    <div key={cap.id} style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px solid var(--border-subtle)'
-                    }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)' }}>
-                        {cap.name}
-                      </div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: 4 }}>
-                        {cap.description}
-                      </div>
+                    <div key={cap.id} className="def-item">
+                      <strong style={{ display: 'block', marginBottom: 2 }}>{cap.name}</strong>
+                      {cap.description}
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Verified Evidence */}
+            {/* Evidence — labelled by its real verification state */}
             {selectedResource.evidence?.length > 0 && (
-              <div>
-                <h4 style={{ fontSize: '0.9rem', textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em', margin: '0 0 12px' }}>
-                  Verified Evidence Citations ({selectedResource.evidence.length})
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <section>
+                <div className="rule-head">
+                  <h3 className="label">Evidence</h3>
+                  <span className="count">
+                    {selectedResource.evidence.length > 5 ? `5 of ${selectedResource.evidence.length}` : selectedResource.evidence.length}
+                  </span>
+                </div>
+                <div className="stack gap-4">
                   {selectedResource.evidence.slice(0, 5).map((ev: any) => (
-                    <div key={ev.id} style={{
-                      padding: 12,
-                      borderRadius: 8,
-                      background: 'rgba(15, 23, 42, 0.4)',
-                      border: '1px solid rgba(16, 185, 129, 0.2)',
-                      fontSize: '0.85rem'
-                    }}>
-                      <div style={{ color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <CheckCircle2 size={14} />
-                        <span>{ev.filePath || 'Verified Citation'}</span>
+                    <div key={ev.id} className="stack gap-2">
+                      <div className="row between gap-3">
+                        <span className="mono xsmall truncate" style={{ color: 'var(--ink)' }}>
+                          {ev.filePath || 'Source excerpt'}
+                        </span>
+                        {ev.isVerified ? (
+                          <span className="badge badge-verified">
+                            <CheckCircle2 size={12} aria-hidden="true" />
+                            Verified
+                          </span>
+                        ) : (
+                          <span className="badge badge-inferred">
+                            <AlertTriangle size={12} aria-hidden="true" />
+                            Inferred
+                          </span>
+                        )}
                       </div>
-                      <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
-                        "{ev.quoteSnippet}"
-                      </div>
+                      {ev.quoteSnippet && <div className="quote-well">{ev.quoteSnippet}</div>}
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
-          </div>
+          </aside>
         </div>
       )}
 
-      {/* Add Resource Modal */}
       <AddResourceModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}

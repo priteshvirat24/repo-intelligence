@@ -4,50 +4,42 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
-  Send,
-  Sparkles,
-  Layers,
-  Database,
-  Search,
+  ArrowUp,
+  ArrowRight,
   ArrowUpRight,
-  Code,
-  Star,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  FileCode,
-  Compass,
-  Cpu,
-  RefreshCw,
-  Globe,
-  Youtube,
-  FileText,
-  Linkedin,
-  GitBranch,
   BookmarkPlus,
-  ExternalLink,
-  BookOpen
+  Check,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { AddResourceModal } from '@/components/AddResourceModal';
 import { ArchitectureGraph } from '@/components/ArchitectureGraph';
 import { EvidenceDrawer, EvidenceItem } from '@/components/EvidenceDrawer';
-import {
-  RequirementCard,
-  CandidateRepoCard,
-  OverlapNotice,
-  MissingCapabilityNotice
-} from '@/components/ChatCards';
+import { SourceIcon } from '@/components/Primitives';
 import {
   OpenQueryRequirements,
   CompositionPlan,
   ArchitectureGraphData,
-  CandidateScore,
   ResourceCitation,
   WebSearchResult,
-  ChatSourceMode,
-  ResourceType
+  ChatSourceMode
 } from '@repo/shared';
+
+const STARTER_QUESTIONS = [
+  'What can the indexed repositories do together?',
+  'Which repository handles authentication, and in which files?',
+  'Plan a research agent with browser automation using the repos we have.'
+];
+
+const MODE_LABELS: Record<ChatSourceMode, string> = {
+  INTERNAL: 'Library',
+  WEB: 'Web',
+  BOTH: 'Both'
+};
+
+// The API reports sources as 'OPEN EYE' | 'WEB' | 'OPEN EYE + WEB'; show them in the UI's vocabulary.
+const formatSources = (s?: string) => (s || 'OPEN EYE').replace('OPEN EYE', 'Library').replace('WEB', 'Web');
 
 interface Message {
   id: string;
@@ -255,349 +247,156 @@ function StudioChatContent() {
     }
   };
 
-  const getSourceIcon = (type?: string) => {
-    switch (type) {
-      case 'github_repository': return <GitBranch size={14} color="var(--accent-indigo)" />;
-      case 'youtube_video': return <Youtube size={14} color="#ef4444" />;
-      case 'linkedin_post': return <Linkedin size={14} color="#0284c7" />;
-      case 'pdf':
-      case 'research_paper': return <FileText size={14} color="#f59e0b" />;
-      default: return <Globe size={14} color="var(--accent-cyan)" />;
-    }
-  };
+  let questionNumber = 0;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+    <div className="studio">
       <Navbar
         onOpenAddModal={() => setIsAddModalOpen(true)}
         resourceCount={resources.length}
       />
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Sidebar: Indexed Knowledge Shelf */}
-        <div style={{
-          width: 320,
-          borderRight: '1px solid var(--border-subtle)',
-          background: 'rgba(10, 15, 26, 0.7)',
-          display: 'flex',
-          flexDirection: 'column',
-          padding: '20px 16px',
-          gap: 16
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Database size={16} color="var(--accent-cyan)" />
-              <span style={{ fontSize: '0.85rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)' }}>
-                Open Eye Shelf
-              </span>
-            </div>
-            <Link href="/resources" style={{ fontSize: '0.75rem', color: 'var(--accent-indigo)', textDecoration: 'none', fontWeight: 600 }}>
-              View All ({resources.length})
+      <div className="studio-body">
+        {/* Left: the library shelf */}
+        <aside className="shelf" aria-label="Library">
+          <div className="shelf-head">
+            <span className="label">Library <span className="num">({resources.length})</span></span>
+            <Link href="/resources" className="link-quiet xsmall">
+              View all
+              <ArrowUpRight size={12} aria-hidden="true" />
             </Link>
           </div>
 
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="shelf-list">
             {resources.length === 0 ? (
-              <div style={{ padding: '30px 10px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                No resources indexed yet.
-              </div>
+              <p className="small muted" style={{ paddingTop: 'var(--s-3)', borderTop: 'var(--bw) solid var(--ink)' }}>
+                Nothing indexed yet. Add a GitHub repository to give Open Eye something to read.
+              </p>
             ) : (
               resources.slice(0, 10).map((r) => (
-                <div
-                  key={r.id}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    background: 'rgba(255, 255, 255, 0.03)',
-                    border: '1px solid var(--border-subtle)',
-                    fontSize: '0.85rem',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 4
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600 }}>
-                    {getSourceIcon(r.resourceType)}
-                    <span style={{
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      color: 'var(--text-primary)'
-                    }}>
-                      {r.title}
-                    </span>
+                <div key={r.id} className="shelf-item">
+                  <div className="shelf-item-title">
+                    <SourceIcon type={r.resourceType} />
+                    <span className="truncate">{r.title}</span>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {r.problemsSolved?.[0] || r.sourceDomain}
-                  </div>
+                  {(r.problemsSolved?.[0] || r.sourceDomain) && (
+                    <div className="shelf-item-sub clamp-2">
+                      {r.problemsSolved?.[0] || r.sourceDomain}
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
 
-          {/* Quick Problem Inspirations */}
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14 }}>
-            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 8, textTransform: 'uppercase' }}>
-              Try Questions
-            </span>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <button
-                onClick={() => handleSendMessage('What can our indexed collection collectively do?')}
-                style={{
-                  textAlign: 'left',
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--accent-cyan)',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  padding: 2
-                }}
-              >
-                • What can our collection do?
-              </button>
-              <button
-                onClick={() => handleSendMessage('Find open-source tools and tutorials for satellite image segmentation.')}
-                style={{
-                  textAlign: 'left',
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--accent-cyan)',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  padding: 2
-                }}
-              >
-                • Satellite image segmentation
-              </button>
-              <button
-                onClick={() => handleSendMessage('Build a production research agent with browser automation.')}
-                style={{
-                  textAlign: 'left',
-                  background: 'none',
-                  border: 'none',
-                  color: 'var(--accent-cyan)',
-                  fontSize: '0.78rem',
-                  cursor: 'pointer',
-                  padding: 2
-                }}
-              >
-                • Autonomous research agent
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Center: Main Chat Studio */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Chat Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
-            {messages.length === 0 ? (
-              <div style={{ maxWidth: 760, margin: '60px auto', textAlign: 'center' }}>
-                <div style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #06b6d4 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 20px',
-                  boxShadow: '0 0 25px rgba(99, 102, 241, 0.4)'
-                }}>
-                  <span style={{ fontSize: '1.8rem' }}>👁️</span>
-                </div>
-                <h2 style={{ fontSize: '2rem', fontWeight: 800, margin: '0 0 10px', letterSpacing: '-0.02em' }}>
-                  Open Eye Studio
-                </h2>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '1rem', lineHeight: 1.6, margin: '0 auto 30px' }}>
-                  Universal resource intelligence connecting software repositories, video tutorials, technical articles, and live web discoveries to solve complex engineering challenges.
-                </p>
-
-                {/* Mode Selector Pill in Empty State */}
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 8px',
-                  borderRadius: 12,
-                  background: 'rgba(15, 23, 42, 0.8)',
-                  border: '1px solid var(--border-subtle)',
-                  marginBottom: 32
-                }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', padding: '0 8px', fontWeight: 600 }}>Knowledge Mode:</span>
-                  {(['INTERNAL', 'WEB', 'BOTH'] as ChatSourceMode[]).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setSourceMode(m)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 8,
-                        fontSize: '0.8rem',
-                        fontWeight: 600,
-                        border: sourceMode === m ? '1px solid rgba(99, 102, 241, 0.5)' : 'none',
-                        background: sourceMode === m ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
-                        color: sourceMode === m ? '#ffffff' : 'var(--text-secondary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {m === 'INTERNAL' ? 'Open Eye' : m === 'WEB' ? 'Live Web' : 'Both (Hybrid)'}
-                    </button>
-                  ))}
-                </div>
+          {/* Starter questions live in the intro until a conversation starts */}
+          {messages.length > 0 && (
+            <div className="shelf-foot">
+              <span className="label" style={{ marginBottom: 'var(--s-2)' }}>Try asking</span>
+              <div className="prompt-list compact" style={{ borderTop: 0 }}>
+                {STARTER_QUESTIONS.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    className="prompt-item"
+                    onClick={() => handleSendMessage(q)}
+                    disabled={isLoading}
+                  >
+                    <span>{q}</span>
+                    <ArrowRight size={14} aria-hidden="true" />
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
-                {messages.map((msg) => (
-                  <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {msg.role === 'user' ? (
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <div style={{
-                          maxWidth: '75%',
-                          padding: '14px 20px',
-                          borderRadius: '16px 16px 2px 16px',
-                          background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
-                          color: '#ffffff',
-                          fontSize: '0.95rem',
-                          lineHeight: 1.5,
-                          boxShadow: '0 4px 12px rgba(79, 70, 229, 0.25)'
-                        }}>
-                          {msg.content}
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                        {/* Source Indicator Badge */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{
-                            padding: '3px 10px',
-                            borderRadius: 20,
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            letterSpacing: '0.04em',
-                            background: msg.sourcesUsed?.includes('WEB') ? 'rgba(6, 182, 212, 0.15)' : 'rgba(99, 102, 241, 0.15)',
-                            color: msg.sourcesUsed?.includes('WEB') ? 'var(--accent-cyan)' : 'var(--accent-indigo)',
-                            border: `1px solid ${msg.sourcesUsed?.includes('WEB') ? 'rgba(6, 182, 212, 0.3)' : 'rgba(99, 102, 241, 0.3)'}`
-                          }}>
-                            SOURCES: {msg.sourcesUsed || 'OPEN EYE'}
-                          </span>
-                        </div>
+            </div>
+          )}
+        </aside>
 
-                        {/* Live Web Discoveries Section if any */}
-                        {msg.webSources && msg.webSources.length > 0 && (
-                          <div style={{
-                            padding: 16,
-                            borderRadius: 12,
-                            background: 'rgba(6, 182, 212, 0.05)',
-                            border: '1px solid rgba(6, 182, 212, 0.2)',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 12
-                          }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                              <Globe size={14} />
-                              <span>Live Web Discoveries (Tavily)</span>
-                            </div>
+        {/* Center: the reading surface */}
+        <main className="studio-main">
+          <div className="studio-scroll">
+            <div className="studio-column">
+              {messages.length === 0 ? (
+                <section className="studio-intro">
+                  <span className="eyebrow">Studio</span>
+                  <h1 className="h-page">Ask your repositories.</h1>
+                  <p className="lede">
+                    Open Eye reads the GitHub repositories you index and answers with the files and
+                    lines behind each claim. Anything it can&apos;t verify is marked as inferred.
+                  </p>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 10 }}>
-                              {msg.webSources.map((w, idx) => {
-                                const isSaved = savedWebUrls.has(w.url);
-                                const isSaving = savingWebUrls.has(w.url);
+                  {resources.length === 0 && (
+                    <div className="row wrap gap-3">
+                      <button type="button" className="btn btn-primary" onClick={() => setIsAddModalOpen(true)}>
+                        Add your first repository
+                      </button>
+                      <span className="small muted">Paste any public GitHub URL.</span>
+                    </div>
+                  )}
 
-                                return (
-                                  <div
-                                    key={idx}
-                                    style={{
-                                      padding: 12,
-                                      borderRadius: 8,
-                                      background: 'rgba(15, 23, 42, 0.7)',
-                                      border: '1px solid var(--border-subtle)',
-                                      display: 'flex',
-                                      flexDirection: 'column',
-                                      justifyContent: 'space-between',
-                                      gap: 8
-                                    }}
-                                  >
-                                    <div>
-                                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
-                                        {w.title}
-                                      </div>
-                                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 6 }}>
-                                        {w.domain}
-                                      </div>
-                                      <p style={{
-                                        fontSize: '0.8rem',
-                                        color: 'var(--text-secondary)',
-                                        margin: 0,
-                                        display: '-webkit-box',
-                                        WebkitLineClamp: 2,
-                                        WebkitBoxOrient: 'vertical',
-                                        overflow: 'hidden'
-                                      }}>
-                                        {w.content}
-                                      </p>
-                                    </div>
-
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
-                                      <a
-                                        href={w.url}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        style={{ fontSize: '0.75rem', color: 'var(--accent-cyan)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
-                                      >
-                                        <ExternalLink size={12} />
-                                        <span>Open</span>
-                                      </a>
-
-                                      <button
-                                        onClick={() => handleSaveWebSource(w)}
-                                        disabled={isSaved || isSaving}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          gap: 4,
-                                          padding: '4px 8px',
-                                          borderRadius: 6,
-                                          background: isSaved ? 'rgba(16, 185, 129, 0.2)' : 'rgba(99, 102, 241, 0.2)',
-                                          border: `1px solid ${isSaved ? 'rgba(16, 185, 129, 0.4)' : 'rgba(99, 102, 241, 0.4)'}`,
-                                          color: isSaved ? '#10b981' : '#ffffff',
-                                          fontSize: '0.75rem',
-                                          fontWeight: 600,
-                                          cursor: isSaved || isSaving ? 'default' : 'pointer'
-                                        }}
-                                      >
-                                        <BookmarkPlus size={12} />
-                                        <span>{isSaved ? 'Saved to Open Eye' : isSaving ? 'Saving...' : 'Save to Open Eye'}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                  <div style={{ marginTop: 'var(--s-4)' }}>
+                    <span className="label" style={{ marginBottom: 'var(--s-2)' }}>Try asking</span>
+                    <div className="prompt-list">
+                      {STARTER_QUESTIONS.map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          className="prompt-item"
+                          onClick={() => handleSendMessage(q)}
+                          disabled={isLoading}
+                        >
+                          <span>{q}</span>
+                          <ArrowRight size={16} aria-hidden="true" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <div>
+                  {messages.map((msg) => {
+                    if (msg.role === 'user') {
+                      questionNumber += 1;
+                      return (
+                        <section key={msg.id} className="turn" aria-label={`Question ${questionNumber}`}>
+                          <div className="turn-meta">
+                            <span className="label">Q{questionNumber} &middot; You asked</span>
                           </div>
-                        )}
+                          <h2 className="turn-question">{msg.content}</h2>
+                        </section>
+                      );
+                    }
 
-                        {/* Synthesis Content */}
-                        <div className="glass-panel" style={{ padding: 24, fontSize: '0.95rem', lineHeight: 1.65, whiteSpace: 'pre-wrap' }}>
-                          {msg.content || 'Thinking & reasoning over universal resources...'}
+                    return (
+                      <article key={msg.id} className="answer" style={{ marginTop: 'var(--s-5)' }}>
+                        <div className="turn-meta">
+                          <span className="label" style={{ color: 'var(--ink)' }}>Open Eye</span>
+                          <span className="badge badge-outline">Sources: {formatSources(msg.sourcesUsed)}</span>
                         </div>
 
-                        {/* Architecture Graph if generated */}
-                        {msg.architectureGraph && msg.architectureGraph.nodes.length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            <ArchitectureGraph data={msg.architectureGraph} />
-                          </div>
-                        )}
+                        {/* Answer */}
+                        <div className={`prose${msg.content ? '' : ' is-pending'}`} aria-live="polite">
+                          {msg.content || (
+                            <>
+                              <span className="dot dot-pulse" aria-hidden="true" />
+                              Reading sources&hellip;
+                            </>
+                          )}
+                        </div>
 
-                        {/* Citations Box */}
+                        {/* Evidence */}
                         {msg.citations && msg.citations.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-                              Source-Aware Citations ({msg.citations.length})
-                            </span>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          <div>
+                            <div className="rule-head">
+                              <span className="label">Evidence</span>
+                              <span className="count">{msg.citations.length}</span>
+                            </div>
+                            <div className="row wrap gap-2">
                               {msg.citations.map((c, i) => (
                                 <button
                                   key={i}
+                                  type="button"
+                                  className={`cite ${c.isVerified ? 'is-verified' : 'is-inferred'}`}
+                                  title={c.isVerified ? 'Verified against source' : 'Inferred, not verified'}
                                   onClick={() => setSelectedEvidence({
                                     resourceTitle: c.resourceTitle,
                                     resourceType: c.resourceType,
@@ -608,133 +407,133 @@ function StudioChatContent() {
                                     locator: c.locator,
                                     formattedCitation: c.formattedCitation
                                   })}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    padding: '6px 12px',
-                                    borderRadius: 6,
-                                    background: 'rgba(15, 23, 42, 0.8)',
-                                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                                    color: '#10b981',
-                                    fontSize: '0.8rem',
-                                    fontWeight: 600,
-                                    cursor: 'pointer'
-                                  }}
                                 >
-                                  {getSourceIcon(c.resourceType)}
+                                  {c.isVerified
+                                    ? <CheckCircle2 size={13} aria-hidden="true" />
+                                    : <AlertTriangle size={13} aria-hidden="true" />}
                                   <span>{c.formattedCitation}</span>
                                 </button>
                               ))}
                             </div>
                           </div>
                         )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            )}
+
+                        {/* Architecture graph */}
+                        {msg.architectureGraph && msg.architectureGraph.nodes.length > 0 && (
+                          <ArchitectureGraph data={msg.architectureGraph} />
+                        )}
+
+                        {/* Web results */}
+                        {msg.webSources && msg.webSources.length > 0 && (
+                          <div>
+                            <div className="rule-head">
+                              <span className="label">From the web</span>
+                              <span className="count">{msg.webSources.length}</span>
+                            </div>
+                            <div className="web-list" style={{ borderTop: 0 }}>
+                              {msg.webSources.map((w, idx) => {
+                                const isSaved = savedWebUrls.has(w.url);
+                                const isSaving = savingWebUrls.has(w.url);
+
+                                return (
+                                  <div key={idx} className="web-item">
+                                    <div style={{ minWidth: 0 }}>
+                                      <a href={w.url} target="_blank" rel="noreferrer" className="web-item-title link">
+                                        {w.title}
+                                      </a>
+                                      <div className="mono xsmall faint truncate" style={{ marginTop: 2 }}>{w.domain}</div>
+                                      <p className="small muted clamp-2" style={{ marginTop: 'var(--s-1)' }}>
+                                        {w.content}
+                                      </p>
+                                    </div>
+
+                                    <div className="web-item-actions">
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary btn-sm"
+                                        onClick={() => handleSaveWebSource(w)}
+                                        disabled={isSaved || isSaving}
+                                        style={isSaved ? { color: 'var(--verified)', borderColor: 'var(--verified)', background: 'var(--verified-tint)' } : undefined}
+                                      >
+                                        {isSaved ? <Check size={13} aria-hidden="true" /> : <BookmarkPlus size={13} aria-hidden="true" />}
+                                        <span>{isSaved ? 'Saved' : isSaving ? 'Saving…' : 'Save to library'}</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Bottom Chat Input Bar */}
-          <div style={{
-            padding: '16px 24px',
-            borderTop: '1px solid var(--border-subtle)',
-            background: 'rgba(9, 13, 22, 0.9)'
-          }}>
-            <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* Mode Toggle Controls */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Knowledge Source:</span>
-                  {(['INTERNAL', 'WEB', 'BOTH'] as ChatSourceMode[]).map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setSourceMode(m)}
-                      style={{
-                        padding: '3px 10px',
-                        borderRadius: 6,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        border: sourceMode === m ? '1px solid rgba(99, 102, 241, 0.5)' : '1px solid transparent',
-                        background: sourceMode === m ? 'rgba(99, 102, 241, 0.25)' : 'rgba(255, 255, 255, 0.04)',
-                        color: sourceMode === m ? '#ffffff' : 'var(--text-secondary)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {m === 'INTERNAL' ? 'Open Eye' : m === 'WEB' ? 'Web' : 'Both'}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  Press Enter to send
-                </div>
-              </div>
-
-              {/* Textarea Input Form */}
+          {/* Composer */}
+          <div className="composer">
+            <div className="composer-inner">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleSendMessage();
                 }}
-                style={{ display: 'flex', gap: 10 }}
+                className="composer-row"
               >
+                <label htmlFor="studio-input" className="sr-only">Ask a question</label>
                 <input
+                  id="studio-input"
                   type="text"
-                  placeholder="Ask Open Eye an architectural question, request web research, or connect resources..."
+                  className="field"
+                  placeholder="Ask about the code: how it works, where it lives, what to reuse"
                   value={inputQuery}
                   onChange={(e) => setInputQuery(e.target.value)}
                   disabled={isLoading}
-                  style={{
-                    flex: 1,
-                    padding: '14px 18px',
-                    borderRadius: 10,
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    border: '1px solid var(--border-subtle)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.95rem',
-                    outline: 'none'
-                  }}
+                  autoComplete="off"
                 />
                 <button
                   type="submit"
+                  className="btn btn-primary"
                   disabled={isLoading || !inputQuery.trim()}
-                  style={{
-                    padding: '0 24px',
-                    borderRadius: 10,
-                    background: isLoading || !inputQuery.trim()
-                      ? 'rgba(99, 102, 241, 0.4)'
-                      : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                    color: '#ffffff',
-                    border: 'none',
-                    fontWeight: 600,
-                    cursor: isLoading || !inputQuery.trim() ? 'not-allowed' : 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6
-                  }}
                 >
-                  <Send size={16} />
-                  <span>Send</span>
+                  <ArrowUp size={16} strokeWidth={2.5} aria-hidden="true" />
+                  <span>Ask</span>
                 </button>
               </form>
+
+              <div className="composer-meta">
+                <div className="row gap-2">
+                  <span className="label" id="source-mode-label">Search in</span>
+                  <div className="segmented" role="group" aria-labelledby="source-mode-label">
+                    {(['INTERNAL', 'WEB', 'BOTH'] as ChatSourceMode[]).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        aria-pressed={sourceMode === m}
+                        onClick={() => setSourceMode(m)}
+                      >
+                        {MODE_LABELS[m]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <span className="composer-hint mono xsmall faint">Enter to send</span>
+              </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
 
-      {/* Evidence Drawer */}
       <EvidenceDrawer
         isOpen={Boolean(selectedEvidence)}
         evidence={selectedEvidence}
         onClose={() => setSelectedEvidence(null)}
       />
 
-      {/* Add Resource Modal */}
       <AddResourceModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -749,17 +548,11 @@ function StudioChatContent() {
 export default function StudioChatPage() {
   return (
     <React.Suspense fallback={
-      <div style={{
-        minHeight: '100vh',
-        background: '#090d16',
-        color: '#ffffff',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '1rem',
-        fontWeight: 600
-      }}>
-        Loading Open Eye Studio...
+      <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <span className="loading-line">
+          <span className="dot dot-pulse" aria-hidden="true" />
+          Opening Studio&hellip;
+        </span>
       </div>
     }>
       <StudioChatContent />
