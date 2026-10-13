@@ -107,6 +107,13 @@ class IngestionWorker:
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING", self.worker_id)
             scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
+            # Safety net for disk usage (submission checks the same limit via the GitHub API)
+            checkout_bytes = GitCloner.checkout_size_bytes(scratch_dir)
+            if checkout_bytes > config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024:
+                raise ValueError(
+                    f"REPOSITORY_TOO_LARGE: Checked-out files total {checkout_bytes // (1024 * 1024)}MB, "
+                    f"exceeding the limit of {config.MAX_REPOSITORY_SIZE_MB}MB."
+                )
             stage_metrics["durations"]["cloning_ms"] = int((time.time() - s_time) * 1000)
             print(f"[{self.worker_id}] CLONING complete in {stage_metrics['durations']['cloning_ms']}ms. SHA: {commit_sha}", flush=True)
 

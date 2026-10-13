@@ -83,6 +83,19 @@ class GitCloner:
             shutil.rmtree(dir_path, ignore_errors=True)
 
     @staticmethod
+    def checkout_size_bytes(dir_path: Path) -> int:
+        """Bytes of checked-out files, excluding the .git directory; symlinks are not followed."""
+        total = 0
+        for root, dirs, files in os.walk(dir_path):
+            dirs[:] = [d for d in dirs if d != ".git"]
+            for name in files:
+                try:
+                    total += os.lstat(os.path.join(root, name)).st_size
+                except OSError:
+                    pass
+        return total
+
+    @staticmethod
     def sanitize_path(base_dir: Path, relative_path: str) -> Path:
         """
         Ensures a requested relative path does not escape the repository base directory.
