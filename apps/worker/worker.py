@@ -22,6 +22,10 @@ from .analyzer.cartography import RepositoryCartographer
 from .analyzer.module_analyzer import ModuleAnalyzer
 from .analyzer.synthesis import RepositorySynthesizer
 from .analyzer.evidence import EvidenceVerificationGate
+from .analyzer.repo_digest import (
+    readme_digest, file_doc_line, detect_families, format_families, compact_outline,
+    mostly_non_latin, is_english_readme_variant,
+)
 from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
 from .db.repository import DatabaseRepository, JobLostError
@@ -240,6 +244,9 @@ class IngestionWorker:
             all_chunks: List[SemanticChunk] = []
             readme_text = ""
             readme_depth: Optional[int] = None
+            english_readme_text = ""
+            # Per code file: one-line purpose and top-level symbols, for the analysis passes
+            file_infos: Dict[str, Dict[str, Any]] = {}
             symbol_outlines: List[str] = []
             ast_files_count = 0
             symbols_count = 0
@@ -257,6 +264,8 @@ class IngestionWorker:
                 content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                 ext = full_path.suffix.lower()
 
+                if is_english_readme_variant(rel_path) and not english_readme_text:
+                    english_readme_text = content
                 if Path(rel_path).stem.lower() == "readme":
                     # The shallowest README describes the repository; nested ones describe examples/subpackages
                     depth = len(Path(rel_path).parts)
@@ -289,6 +298,11 @@ class IngestionWorker:
                         print(f"[{self.worker_id}] Warning: AST analysis failed for {rel_path}: {ex}", file=sys.stderr)
                         symbols = []
                     symbols_count += len(symbols)
+                    file_infos[rel_path] = {
+                        "doc": file_doc_line(rel_path, content),
+                        "classes": [s.name for s in symbols if s.symbol_type in ("class", "struct", "interface", "trait", "enum", "record")],
+                        "functions": [s.name for s in symbols if s.symbol_type == "function"][:12],
+                    }
                     if symbols:
                         outline = TreeSitterAnalyzer.generate_symbol_outline(rel_path, symbols)
                         symbol_outlines.append(outline)
@@ -307,6 +321,15 @@ class IngestionWorker:
             stage_metrics["counts"]["documents_created"] = len(documents)
             stage_metrics["durations"]["ast_ms"] = int((time.time() - s_time) * 1000)
 
+            # What the analysis passes read: the informative parts of the README (an English variant when
+            # the main README is mostly in another language) and families of sibling implementations
+            if english_readme_text and mostly_non_latin(readme_text):
+                readme_text = english_readme_text
+            readme_summary = readme_digest(readme_text, 6000)
+            families = detect_families(file_infos)
+            families_summary = format_families(families)
+            stage_metrics["counts"]["implementation_families"] = len(families)
+
             # 6. Stage: HIERARCHICAL OPEN-WORLD UNDERSTANDING & SYNTHESIS
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "CAPABILITY_EXTRACTION", "ANALYZING", self.worker_id)
@@ -319,7 +342,7 @@ class IngestionWorker:
             cartography = RepositoryCartographer.analyze(
                 repo_name=full_repo_name,
                 repo_dir=scratch_dir,
-                readme_text=readme_text,
+                readme_text=readme_summary,
                 manifest_summary=manifest_summary,
                 llm=self.llm
             )
@@ -340,14 +363,20 @@ class IngestionWorker:
                 raw_path = sub.get("path")
                 sub_paths = [p for p in (raw_path if isinstance(raw_path, list) else [raw_path]) if isinstance(p, str) and p]
                 sub_path = ", ".join(sub_paths)
-                sub_symbols = [so for so in symbol_outlines if any(p in so for p in sub_paths)]
-                sub_text = "\n".join(sub_symbols[:15])
+                # Every file of the subsystem, compacted, instead of the first 15 outlines cut at 3000 chars
+                sub_text = compact_outline(file_infos, sub_paths, 6000) or "\n".join(
+                    so for so in symbol_outlines if any(p in so for p in sub_paths)
+                )[:6000]
+                sub_docs = "\n".join(
+                    f"{path}: {info['doc']}" for path, info in sorted(file_infos.items())
+                    if info.get("doc") and any(path == sp or path.startswith(sp.rstrip('/') + '/') for sp in sub_paths)
+                )
                 try:
                     mod_res = ModuleAnalyzer.analyze_module(
                         module_name=str(sub.get("name") or sub_path),
                         module_path=sub_path,
                         symbol_outline=sub_text,
-                        doc_excerpt="",
+                        doc_excerpt=sub_docs,
                         llm=self.llm
                     )
                     module_analyses.append(mod_res)
@@ -361,7 +390,9 @@ class IngestionWorker:
                 cartography=cartography,
                 module_analyses=module_analyses,
                 manifest_deps=dependencies,
-                llm=self.llm
+                llm=self.llm,
+                readme_summary=readme_summary,
+                families_summary=families_summary
             )
 
             proposal_counts = {

@@ -202,3 +202,33 @@ def test_transient_error_classification():
     assert not is_transient_error(RuntimeError("CLONE_FAILED: remote: Repository not found."))
     assert not is_transient_error(ValueError("REPOSITORY_TOO_LARGE: 900MB"))
     assert not is_transient_error(KeyError("bug"))
+
+
+# ---------------- analysis inputs: README digest and implementation families ----------------
+
+def test_readme_digest_prefers_feature_sections_over_sponsors():
+    from apps.worker.analyzer.repo_digest import readme_digest
+    readme = (
+        "# Tool\nShort intro.\n\n## Sponsors\n" + "Buy SponsorCorp, free trial! " * 200 +
+        "\n\n## Supported platforms\n| Platform | Read | Search |\n|---|---|---|\n| Reddit | yes | yes |\n| Twitter | yes | no |\n"
+    )
+    digest = readme_digest(readme, limit=1500)
+    assert "Reddit" in digest and "Twitter" in digest
+    assert "SponsorCorp" not in digest
+
+
+def test_detect_families_finds_sibling_implementations():
+    from apps.worker.analyzer.repo_digest import detect_families
+    infos = {f"pkg/channels/{n}.py": {"doc": f"{n} channel", "classes": [f"{n.title()}Channel"], "functions": []}
+             for n in ["reddit", "twitter", "linkedin", "youtube"]}
+    infos["pkg/channels/base.py"] = {"doc": "", "classes": ["Channel"], "functions": []}
+    infos["pkg/cli.py"] = {"doc": "", "classes": ["Cli"], "functions": []}
+    families = detect_families(infos)
+    assert len(families) == 1 and families[0]["directory"] == "pkg/channels"
+    assert [m["file"] for m in families[0]["members"]] == ["linkedin.py", "reddit.py", "twitter.py", "youtube.py"]
+
+
+def test_english_readme_variant_detection():
+    from apps.worker.analyzer.repo_digest import is_english_readme_variant, mostly_non_latin
+    assert is_english_readme_variant("docs/README_en.md") and not is_english_readme_variant("README.md")
+    assert mostly_non_latin("给你的 AI Agent 一键装上互联网能力") and not mostly_non_latin("Plain English readme")

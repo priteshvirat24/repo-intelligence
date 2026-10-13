@@ -85,6 +85,15 @@ flowchart TD
     N --> O
 ```
 
+### What the analysis passes read
+
+The LLM can only describe what it is shown, so the worker prepares its inputs deterministically (`apps/worker/analyzer/repo_digest.py`):
+
+- **README digest (up to 6000 chars):** HTML, badges and code blocks are stripped; sections such as sponsors, contact, licence and star history are dropped; feature tables, supported-platform lists and usage sections are preferred over whatever happens to come first. When the main README is mostly in another language and an English variant exists (`README_en.md`, `docs/README_en.md`, ...), the English one is used.
+- **Implementation families:** folders where at least 4 sibling code files each define a class (channels, providers, adapters, backends, drivers) are listed with each file's class names and one-line docstring. The synthesis pass must create **one capability per member** (for example one per supported platform) instead of a single generic capability.
+- **Module outlines:** every file of a subsystem appears in its outline (a few symbols each, 6000 chars in total), together with each file's one-line purpose.
+- **Acronyms:** the prompts forbid expanding an abbreviation (MCP, CDP, RSS) unless the expansion appears in the content.
+
 Everything is written in **one transaction**, so a question never sees a half-indexed repository. A re-index replaces the old rows in the same transaction; until it commits, the previous index stays searchable.
 
 ---

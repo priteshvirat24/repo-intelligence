@@ -69,7 +69,7 @@ Manifests: {manifest_summary}
 {dir_tree}
 
 === README EXCERPT ===
-{readme_text[:3500]}
+{readme_text[:6000]}
 </untrusted_repository_content>
 
 Return JSON matching:
