@@ -10,6 +10,9 @@ export interface EvalAggregate {
   recallAll: number | null;
   shortlistPrecision: number | null;
   trapRejection: number | null;
+  /** Of the traps the system surfaced, the share not recommended (absent in runs scored before it existed) */
+  trapRejectionSurfaced?: number | null;
+  trapsSurfaced?: number;
   errors: number;
   meanDurationMs: number;
   llmCalls: number;
@@ -86,7 +89,9 @@ export function loadEvaluation(): EvaluationData {
     .map((r) => ({ ...r, tuningName: r.tuningName ?? null, variant: variantOf(r) }))
     .sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)));
 
-  const systems = Array.from(new Set(full.map((r) => r.variant))).sort();
+  // Baselines first, then Open Eye's default tuning, then candidates by name
+  const rank = (v: string) => (v.startsWith('b0') ? 0 : v === 'b1:default' || v === 'b1' ? 1 : 2);
+  const systems = Array.from(new Set(full.map((r) => r.variant))).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   const latestBySystem = new Map<string, any>();
   for (const r of full) if (!latestBySystem.has(r.variant)) latestBySystem.set(r.variant, r);
 

@@ -22,14 +22,16 @@ function variantLabel(variant: string): string {
 
 function shortVariant(variant: string): string {
   const [system, tuning] = variant.split(':');
-  return tuning && tuning !== 'default' ? `${system.toUpperCase()} ${tuning}` : system.toUpperCase();
+  const name = system === 'b0s' ? 'B0s' : system.toUpperCase();
+  return tuning ? `${name} ${tuning}` : name;
 }
 
 const METRICS: Array<{ key: keyof EvalRunSummary['aggregate']; label: string; help: string }> = [
   { key: 'recallAt10', label: 'Recall@10', help: 'Share of the essential solutions an expert expects that appear in the top 10' },
   { key: 'recallAll', label: 'Recall (all kept)', help: 'The same over every candidate kept, up to 40' },
   { key: 'shortlistPrecision', label: 'Shortlist precision', help: 'Share of recommended starting points that are labelled essential or acceptable' },
-  { key: 'trapRejection', label: 'Trap rejection', help: 'Share of look-alike, abandoned or unusable repositories that were not recommended' }
+  { key: 'trapRejection', label: 'Trap rejection (all traps)', help: 'Share of look-alike, abandoned or unusable repositories that were not recommended. A system that finds nothing scores 100%.' },
+  { key: 'trapRejectionSurfaced', label: 'Trap rejection (traps it found)', help: 'Of the traps the system actually surfaced, the share it did not recommend' }
 ];
 
 function stats(values: Array<number | null>): { mean: number | null; min: number | null; max: number | null; n: number } {
@@ -133,7 +135,10 @@ export default function EvaluationPage() {
                     <tr>
                       <th>Metric</th>
                       {systems.map((s) => (
-                        <th key={s} className="num">{variantLabel(s)} · {bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</th>
+                        <th key={s} className="num" title={variantLabel(s)}>
+                          {shortVariant(s)}
+                          <div className="faint" style={{ textTransform: 'none' }}>{bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -143,7 +148,7 @@ export default function EvaluationPage() {
                       const best = Math.max(...cells.map((c) => c.mean ?? -1));
                       return (
                         <tr key={m.key}>
-                          <td title={m.help}>{m.label}</td>
+                          <td title={m.help} style={{ whiteSpace: 'nowrap' }}>{m.label}</td>
                           {cells.map((c, i) => (
                             <td key={systems[i]} className="num" style={c.mean === best && c.mean !== null && systems.length > 1 ? { fontWeight: 600 } : undefined}>
                               {pct(c.mean)}
@@ -154,11 +159,11 @@ export default function EvaluationPage() {
                       );
                     })}
                     <tr>
-                      <td>AI calls per run</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>AI calls per run</td>
                       {systems.map((s) => <td key={s} className="num">{Math.round(stats((bySystem.get(s) || []).map((r) => r.aggregate.llmCalls)).mean || 0)}</td>)}
                     </tr>
                     <tr>
-                      <td>Time per brief</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>Time per brief</td>
                       {systems.map((s) => <td key={s} className="num">{Math.round((stats((bySystem.get(s) || []).map((r) => r.aggregate.meanDurationMs)).mean || 0) / 1000)}s</td>)}
                     </tr>
                   </tbody>
@@ -169,7 +174,7 @@ export default function EvaluationPage() {
 
             <section className="stack gap-3">
               <div className="rule-head">
-                <h2 className="label">Per brief (latest run of each system)</h2>
+                <h2 className="label">Recall@10 per brief (latest run of each)</h2>
                 <span className="count">{data.briefs.length}</span>
               </div>
               <div className="table-wrap">
@@ -177,14 +182,14 @@ export default function EvaluationPage() {
                   <thead>
                     <tr>
                       <th>Brief</th>
-                      {systems.map((s) => <th key={s} className="num">{shortVariant(s)} recall@10</th>)}
+                      {systems.map((s) => <th key={s} className="num" title={variantLabel(s)}>{shortVariant(s)}</th>)}
                       <th>Essential solutions missed by Open Eye ({latestB1 ? shortVariant(latestB1) : 'B1'}, latest)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.briefs.map((b) => (
                       <tr key={b.briefId}>
-                        <td><span className="mono">{b.briefId}</span><div className="xsmall faint">{b.domain}</div></td>
+                        <td style={{ whiteSpace: 'nowrap' }}><span className="mono">{b.briefId}</span><div className="xsmall faint">{b.domain}</div></td>
                         {systems.map((s) => (
                           <td key={s} className="num">{b.bySystem[s]?.error ? 'error' : pct(b.bySystem[s]?.recallAt10 ?? null)}</td>
                         ))}
