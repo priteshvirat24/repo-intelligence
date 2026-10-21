@@ -12,9 +12,10 @@ from psycopg2.extras import Json, RealDictCursor
 
 from ..config import config
 from ..db.repository import DatabaseRepository, JobLostError
+from ..providers import ledger
 from .graph import ORDER, ancestors, digest, downstream
 
-DEFAULT_BUDGET = {"llmCalls": 60, "tokens": 400_000, "githubRequests": 250}
+DEFAULT_BUDGET = {"llmCalls": 60, "tokens": 400_000, "githubRequests": 250, "sourceRequests": 300}
 
 
 def create_run(cur, brief_id: str):
@@ -149,21 +150,23 @@ class TaskStore:
 
     def budget_usage(self, brief_id: str, since: Optional[str]) -> Dict[str, int]:
         """What the brief's run has spent since its budget was last reset, from the ledger."""
+        sources = sorted(ledger.SOURCE_PROVIDERS)
         conn = self.db.get_connection()
         try:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND operation <> 'embedding'),
-                           COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github'), 0),
-                           COUNT(*) FILTER (WHERE provider = 'github')
+                    SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND provider <> ALL(%s) AND operation <> 'embedding'),
+                           COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github' AND provider <> ALL(%s)), 0),
+                           COUNT(*) FILTER (WHERE provider = 'github'),
+                           COUNT(*) FILTER (WHERE provider = ANY(%s))
                     FROM provider_usage
                     WHERE scope_type = 'brief' AND scope_id = %s AND (%s::timestamptz IS NULL OR created_at >= %s::timestamptz)
                     """,
-                    (brief_id, since, since)
+                    (sources, sources, sources, brief_id, since, since)
                 )
-                calls, tokens, github = cur.fetchone()
-                return {"llmCalls": int(calls), "tokens": int(tokens), "githubRequests": int(github)}
+                calls, tokens, github, source = cur.fetchone()
+                return {"llmCalls": int(calls), "tokens": int(tokens), "githubRequests": int(github), "sourceRequests": int(source)}
         finally:
             conn.close()
 
