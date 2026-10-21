@@ -32,6 +32,7 @@ from .db.repository import DatabaseRepository, JobLostError
 from .discovery.github_search import GitHubRateLimited
 from .orchestrator.store import DEFAULT_BUDGET, TaskStore
 from .orchestrator.handlers import HANDLERS, TaskContext, fingerprint
+from .builder.runner import BuildStore, process_build
 
 # The progress step shown while each task runs (discovery refines it as it goes)
 TASK_STEP = {"understand": "UNDERSTANDING", "discover": "PLANNING_QUERIES", "verify": "VERIFYING", "execute": "EXECUTING", "blueprint": "DESIGNING"}
@@ -131,8 +132,10 @@ class IngestionWorker:
         self.running = True
         self.active_job: Optional[Dict[str, Any]] = None
         self.active_task: Optional[Dict[str, Any]] = None
+        self.active_build: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
         self.tasks = TaskStore(self.db)
+        self.builds = BuildStore(self.db)
         # Every LLM and embedding call is recorded in provider_usage
         ledger.add_sink(ledger.DatabaseSink(self.db))
         self.llm = get_llm_provider()
@@ -172,6 +175,11 @@ class IngestionWorker:
                 self.tasks.release(self.active_task, self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing task: {e}", file=sys.stderr, flush=True)
+        if self.active_build:
+            try:
+                self.builds.release(str(self.active_build["id"]), self.worker_id)
+            except Exception as e:
+                print(f"[{self.worker_id}] Error releasing build: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
@@ -798,6 +806,17 @@ class IngestionWorker:
         if task:
             self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(task["brief_id"]), "task": task["type"]})
             self.process_task(task)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        # Authorised builds (Phase 6): separate from the run graph, run only in the sandbox
+        build = self.builds.claim_next(self.worker_id)
+        if build:
+            self.active_build = build
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"buildId": str(build["id"])})
+            try:
+                process_build(self.db, build, lambda key: self._llm_for(tuning_registry.load_active(self.db), key), self.worker_id)
+            finally:
+                self.active_build = None
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         return False
