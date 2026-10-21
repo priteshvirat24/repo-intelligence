@@ -818,10 +818,25 @@ class IngestionWorker:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
                 if not self.run_next():
+                    self._idle_evolution_monitor()
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)
                 time.sleep(3)
+
+    def _idle_evolution_monitor(self):
+        """Phase 5: when idle, at most every few hours, compare live feedback on the promoted tuning with its
+        predecessor and roll back on a regression (apps/worker/evolution/monitor.py)."""
+        from .evolution import monitor
+        if time.time() - getattr(self, "_last_evolution_check", 0.0) < monitor.MONITOR_INTERVAL_SECONDS:
+            return
+        self._last_evolution_check = time.time()
+        try:
+            outcome = monitor.check(self.db)
+            if outcome["action"] != "none":
+                print(f"[{self.worker_id}] Evolution monitor: {outcome['reason']}", flush=True)
+        except Exception as e:
+            print(f"[{self.worker_id}] Evolution monitor failed: {e}", file=sys.stderr, flush=True)
 
 
 def start_scraper_daemon(port: int = 8001):
