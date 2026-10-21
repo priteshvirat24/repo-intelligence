@@ -1,411 +1,686 @@
 # Open Eye: Product Definition
 
-**Status:** v1.0, approved 2026-10-21 with the proposed defaults in section 12. System design derived from it: [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md). This document defines what the finished system must accomplish and how success is demonstrated. It deliberately makes no technology choices; architecture, tools, the evaluation harness and implementation phases are derived from it afterwards and must trace back to a requirement here.
+**Status:** v2.0 draft, 2026-10-22. It replaces v1.0, which was approved on 2026-10-21. Appendix B lists what changed and why.
 
-Product decisions are recorded in [section 12](#12-decisions).
+This document defines the finished product: what it must do, how it behaves on its own, and what evidence proves it works. It makes no technology choices. Every design, tool or component must trace back to a requirement here, written **[D§n]** in the other documents. Anything that cannot do so does not belong in the product (section 13). Decisions are cited as **[D§14.n]**, meaning decision n of section 14.
+
+**The document set** (the planning artifacts A–J):
+
+| Artifact | Document | Answers |
+|---|---|---|
+| A. Product definition | this document | What is the finished product, who is it for, how does it behave? |
+| B. End-state architecture | [SYSTEM_DESIGN.md](SYSTEM_DESIGN.md) | Which components, data flows and integrations meet these requirements? |
+| C. Autonomy specification | [AUTONOMY_SPEC.md](AUTONOMY_SPEC.md) | What does it decide alone, when does it ask, how does it handle uncertainty and failure? |
+| D. Memory specification | [MEMORY_SPEC.md](MEMORY_SPEC.md) | What is remembered, how is it retrieved, validated, shared and corrected? |
+| E. Evolution specification | [EVOLUTION_SPEC.md](EVOLUTION_SPEC.md) | How does it measure itself, propose changes, test them and prevent regressions? |
+| F. Research infrastructure strategy | [RESEARCH_STRATEGY.md](RESEARCH_STRATEGY.md) | How are sources found and fetched, which tool serves which source, how is evidence verified? |
+| G. Evaluation plan | [EVALUATION_PLAN.md](EVALUATION_PLAN.md) | Benchmarks, baselines, thresholds, adversarial cases, release criteria |
+| H. Technology decision record | [TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) | Which technologies, on what evidence, and why the others were rejected |
+| I. Delivery roadmap | [ROADMAP.md](ROADMAP.md) | Phases, dependencies, milestones and completion conditions from today to the end state |
+| J. Final acceptance specification | [ACCEPTANCE.md](ACCEPTANCE.md) | The objective checklist that must be demonstrated before the product is complete |
 
 ---
 
-## 1. The product in one paragraph
+## 1. The product
 
-Open Eye is an engineering intelligence system. A user describes what they want to build. Open Eye works out what the product requires, investigates what already exists, verifies which existing pieces actually do what is needed, decides what to reuse, adapt or build, and delivers an evidence-backed engineering blueprint. When authorised, it then builds and tests the implementation in isolation. Every completed run leaves measured evidence that makes later runs better.
+Open Eye is an **engineering intelligence system**. You give it one brief: what you want to build. It then does the rest.
+- It works out what the product requires.
+- It investigates what already exists across the relevant parts of the internet.
+- It inspects and, where authorised, runs the most promising implementations.
+- It decides what to reuse, adapt, replace or build.
+- It designs how the pieces fit together.
+- It delivers an evidence-backed engineering blueprint.
+- When authorised, it builds and tests the implementation in isolation.
 
-**Governing principle:** do not reinvent what already exists. Discover what is available, decide what is worth reusing, understand how to integrate it, identify what is missing, and build only what is necessary.
+Every mission leaves validated knowledge and measured outcomes behind, and later missions use them to do better.
 
-**Measure of value:** a team starting from an Open Eye blueprint reaches a working system faster and with fewer wrong turns than a team starting from their own search. Everything in this document serves that outcome.
+**It continuously answers five questions:**
+1. What are we trying to achieve?
+2. What already exists that can help us achieve it?
+3. What is the strongest way to combine existing solutions?
+4. What must we build or verify ourselves?
+5. What can we learn from this mission to do better next time?
 
-## 2. Users and the job they hire it for
+**Principles, in priority order:** research before building; verify before recommending; reuse before reinventing; test before claiming success; learn only from measured outcomes.
 
-| User | Situation | Job to be done |
+**Measure of value:** a team that starts from an Open Eye blueprint reaches a working system sooner, and with fewer wrong turns, than a team that starts from its own research. This must be shown by comparison, never asserted (section 12).
+
+**Where its long-term advantage comes from:** accumulated, validated knowledge; high-quality retrieval; evidence-based decisions; reliable execution; and improvement that is controlled and measured. None of these comes from the number of agents, pages or tools.
+
+## 2. Users and use cases
+
+### 2.1 Personas
+
+| Persona | Situation | What they need from Open Eye |
 |---|---|---|
-| **Primary: engineer or tech lead starting a project** | Has a brief (a paragraph to a few pages) and limited time to research | "Tell me the best-known starting point, what I can reuse, how it fits together, and what I still have to build, with proof." |
-| **Secondary: the same team on later projects** | Has run Open Eye before | "Don't make me redo research we already did; tell me what still holds and what changed." |
-| **Reviewer: manager, client, architect** | Receives the blueprint | "Can I trust this recommendation? Show me what was verified and what is assumed." |
+| **Builder** (primary): an engineer or tech lead starting a project | Has a brief, from one paragraph to a few pages, and little time to research | "Show me the best starting point, what I can reuse, how it fits, and what I still have to build, with proof." |
+| **Returning team**: the same team on later projects | Has used Open Eye before | "Don't redo research we already did. Tell me what still holds and what has changed." |
+| **Reviewer**: an architect, manager or client | Receives the deliverable | "Can I trust this? Show me what was verified, what was assumed and what was estimated." |
+| **Maintainer**: whoever operates Open Eye for a team | Governs its configuration and evolution | "Show me what it proposes to change about itself, with the evidence. Let me approve, reject or roll back." |
 
-The user never has to choose which sites to search, which repositories to inspect, which agents or tools to run, or which research strategy to follow.
+### 2.2 Core use cases
 
-## 3. What it is not (non-goals)
+| # | Use case | Starts from | Ends with |
+|---|---|---|---|
+| UC1 | Research a new product | A brief | A blueprint with a completion status |
+| UC2 | Extend an existing system | A brief plus the user's repository | A blueprint that builds on the existing code, which Open Eye inspected first |
+| UC3 | Decide between options | A brief naming candidates, or "X or Y?" | An evidence-backed comparison and a recommendation |
+| UC4 | Build an authorised slice | An approved blueprint and a chosen scope | A reviewable change set with a test report |
+| UC5 | Revisit a project | An earlier mission | What still holds, what has changed, and what was revalidated |
+| UC6 | Reuse team knowledge | Any brief in a team workspace | Findings reused from other projects, where permitted, and revalidated |
+
+### 2.3 System boundary
+
+Open Eye owns the research and engineering process: understanding, investigation, inspection, verification, comparison, design, authorised implementation, testing and learning.
+
+The user owns the goal, the constraints, approvals for consequential actions, credentials, and the decision to adopt or ship anything.
+
+External systems (code hosts, registries, documentation sites, search providers, AI models, sandboxes) are sources and tools. They are never authorities: whatever they return is untrusted data (section 11).
+
+### 2.4 What it is not
 
 - **Not a crawler.** Pages fetched, repositories cloned and agents run are costs, not results. A long report or a large crawl is not success.
-- **Not a chatbot over search results.** Answers are not summaries of whatever was found. They are decisions backed by graded evidence.
-- **Not a RAG demo.** Retrieval is one internal capability. The product is the blueprint and the verified build.
-- **Not a tool for getting around access controls.** It does not bypass logins, paywalls, CAPTCHAs, rate limits or site restrictions, including by browser fingerprint evasion.
-- **Not a self-modifying system.** It never changes its own production code or security policies on its own judgement (see section 9).
-- **No feature that does not improve the core outcome.** Anything proposed later must show how it improves discovery, verification, blueprint quality, build success or measured learning.
+- **Not a chatbot over search results.** Its answers are decisions backed by graded evidence, not summaries of whatever it found.
+- **Not a RAG application.** Retrieval is one internal capability. The products are the blueprint and the verified build.
+- **Not a generic multi-agent workflow.** Roles exist only where they produce a checked output (section 5.10).
+- **Not a way around access controls.** It never bypasses logins, paywalls, CAPTCHAs, rate limits or site restrictions, including by fingerprint evasion.
+- **Not self-modifying.** It never changes its own code, permissions or security boundaries on its own judgement (section 10).
 
-## 4. The end-state user experience
+## 3. The end-state experience
 
-### 4.1 A run, from the user's side
+### 3.1 One question
 
-1. **Brief.** The user pastes or uploads a brief. Optionally they add constraints: budget, languages, infrastructure, technologies to prefer or avoid, licence policy, deadline.
-2. **Understanding check (seconds).** Open Eye shows its reading of the brief:
-   - the objective;
-   - requirements, each marked MUST, SHOULD or NICE-TO-HAVE and as stated or inferred;
-   - constraints and assumptions;
-   - acceptance criteria for the finished product.
+The product opens on one question: **What do you want to build?**
 
-   It asks **at most three** clarifying questions, and only where the answer would change the outcome. The user can correct any line. Research does not wait for answers to non-blocking questions; it proceeds on stated assumptions.
-3. **Research plan (seconds).** A short plan: which questions it will answer, which kinds of sources it expects to use, and the budget it will spend. Within the default budget this runs without approval. Above it, the plan needs approval.
-4. **Live investigation (minutes).** A status view shows what each part of the system is doing right now. Candidates appear as they are found and move through three states: *found*, then *assessed*, then *verified* or *rejected*. Each change comes with the reason.
-5. **Blueprint (end of run).** The engineering blueprint (section 5), with every recommendation linked to its evidence.
-6. **Iterate without restarting.** The user can:
-   - change a constraint ("must be Python", "no GPL");
-   - challenge a decision ("why not X?");
-   - ask for deeper investigation of one requirement or candidate;
-   - exclude a source.
+The user writes a brief in plain language, or uploads one. They may add any of these:
+- an existing repository;
+- reference links;
+- a technology stack, or technologies to prefer or avoid;
+- a budget and a deadline;
+- deployment and infrastructure requirements;
+- performance targets;
+- a licence policy;
+- other restrictions.
 
-   Only the affected parts of the run are redone, and the blueprint shows what changed and why.
-7. **Build (optional, explicit authorisation).** The user approves the blueprint, or a subset of its roadmap, for implementation. Open Eye builds in an isolated environment and returns reviewable changes with test results (section 5.8).
-8. **Afterwards.** The project stays in history. Its findings, and its outcome when built, feed memory and evaluation.
+The user never chooses a search engine, crawler, agent, repository API, browser tool or memory mechanism. The workflow is Open Eye's job (section 5).
 
-### 4.2 Workspace surfaces
+### 3.2 Workspaces
 
-Each surface exists to answer one question for the user.
+Each workspace exists to answer specific questions. Nothing appears in one without answering a question.
 
-| Surface | The question it answers |
-|---|---|
-| Brief and constraints | What did I ask for, and what did Open Eye understand? |
-| Live status | What is it doing now, how much budget has it used, is it stuck? |
-| Discovered resources | What exists out there: repositories, packages, APIs, docs, articles? |
-| Evidence panel | Why should I believe this claim? Source, location, retrieval time, evidence grade, verified by what? |
-| Build vs reuse | For each requirement: is it available, needing integration, needing modification, partly solved, missing, or unresolved? |
-| Architecture and integration | How do the chosen parts fit, and what must I configure? |
-| Roadmap | What do I do, in what order, and how do I know each step is done? |
-| Uncertainty report | What is unverified, conflicting, stale, or waiting on a human decision? |
-| Project history | What did we decide before, and what changed since? |
-| Learning record | How well does Open Eye perform, and what has it changed about itself, with what measured effect? |
-
-### 4.3 Interaction principles
-
-- **Inspectable:** every recommendation opens to its evidence in one click.
-- **Honest about grade:** the interface never shows a README claim, an inference or an estimate with the same weight as a verified fact.
-- **Incremental:** revising a constraint re-runs only what depends on it.
-- **Interruptible:** the user can stop, redirect or narrow a run at any point. Partial results are kept and labelled partial.
-
-## 5. Deliverables
-
-### 5.1 Evidence grades (used by every deliverable)
-
-Every factual claim carries one grade. The grade shown is the highest one actually achieved, never the one hoped for.
-
-| Grade | Meaning | Example |
+| Workspace | Questions it answers | Must show |
 |---|---|---|
-| **E1: Executed** | Observed by running code in a sandbox | "satellite.js propagates the ISS TLE to within 1 km of the reference" (test output attached) |
-| **E2: Verified in code** | Located in the source at a specific file and lines at a specific commit | "`sgp4()` in `src/propagation/sgp4.js` L10–40" |
-| **E3: Officially documented** | Stated in the project's own docs, API reference or release notes | "Supports TypeScript types (docs, v5.0)" |
-| **E4: Claimed** | README, blog, forum answer or marketing; not yet checked | "README says it handles 10,000 satellites" |
-| **E5: Inferred** | Open Eye's own reasoning from other evidence | "Likely fast enough, given it runs in a web worker" |
+| **A. Mission** | What did I ask for, and what did Open Eye understand? Where is it, what has it decided, and what will it cost? | The structured specification; objectives; constraints; acceptance criteria; the active plan; stage and status; remaining work; budget used against each limit; major decisions with their reasons. Controls to change requirements, pause, resume, stop, or request deeper investigation. |
+| **B. Live research** | What is running now, what has been found, what is still open? | Running and finished tasks; sources discovered; evidence collected; open questions. Each event is labelled **actual** (it happened), **planned** (scheduled) or **example** (illustrative). Planned and example items are never shown as done. |
+| **C. Solution comparison** | Which candidates are strongest, and why this one over that one? | Candidates with graded capabilities, limitations, compatibility, maintenance, licence, security, cost and integration effort; the criteria and weights used for this brief; the trade-offs in words, not only a score; rejected candidates with the reason. |
+| **D. Architecture** | How do the chosen parts fit? | Components and their responsibilities; reuse, adapt or new for each; dependencies; data flows; interfaces; integration order; the rationale and evidence behind every major choice, one click away. |
+| **E. Deliverable** | What do I do now? | The engineering report (section 6); the roadmap; reusable components; code changes and test results when authorised; unresolved risks; the completion status; next actions. |
+| **F. Memory and evolution** | What did Open Eye learn and reuse? What became stale? What did it change about itself, and did that help? | Findings reused, with their verification dates; findings that failed revalidation; lessons recorded; proposed improvements and their evaluation results; promotions, rejections and rollbacks. |
 
-Licence status, maintenance activity and version compatibility are facts and are graded like any other claim. Recommendations and estimates are labelled as such and are never graded as facts.
+### 3.3 Interaction principles
 
-### 5.2 Executive recommendation
+- **Inspectable:** every recommendation opens to its evidence in one click, and every piece of evidence to its source location.
+- **Honest about grade:** a README claim, an inference or an estimate is never shown with the weight of a verified fact.
+- **Incremental:** changing a constraint, challenging a decision or excluding a source re-runs only what depends on it. The deliverable shows what changed and why.
+- **Interruptible:** the user can pause, resume, redirect, narrow or stop a mission at any time. Partial results are kept and labelled partial.
+- **Quiet:** the default view is results and decisions. Agent activity is available on request, never as decoration.
 
-One page covering:
-- the recommended strategy;
-- the strongest existing building blocks;
-- the main technical challenges;
-- an estimate of remaining work, labelled as an estimate;
-- the top three risks;
-- the decisions that need a human.
+## 4. Mission lifecycle and completion status
 
-### 5.3 Existing-solutions inventory
+A **mission** is one brief and everything done for it. A mission can be revised (section 3.3) and revisited later (UC5).
 
-One entry per relevant candidate: repository, package, API, service or framework. Each entry has:
+Every mission ends with exactly one **completion status**. The status is stated at the top of the deliverable, together with the stopping condition that produced it.
 
-- name, source URL, and the version or commit examined;
-- relevant capabilities, each graded;
-- the specific modules, functions or features worth reusing, with locations;
-- licence and compatibility with the project's licence policy;
-- maintenance and dependency risk (last release or commit, open critical issues, dependency health);
-- limitations and missing functionality;
-- recommended action: **reuse**, **adapt**, **investigate further** or **reject**, with the reason.
-
-Rejected candidates stay visible with the reason, so the user can see the alternatives were considered.
-
-### 5.4 Build-versus-reuse analysis
-
-Every requirement gets exactly one classification and the reason for it:
-
-| Class | Rule for using it |
+| Status | Meaning |
 |---|---|
-| 1. Available and verified | A candidate meets it with E1 or E2 evidence |
-| 2. Available, needs configuration or integration | Meets it with E1–E3 evidence, plus identified setup or glue work |
-| 3. Available, needs modification | A candidate does most of it; the needed change is identified |
-| 4. Partially solved | Candidates cover parts; the uncovered part is named |
-| 5. Missing, must be built | The research found nothing adequate, and the search done is recorded |
-| 6. Unresolved | Evidence is insufficient or conflicting; says what evidence would resolve it |
+| **Complete** | The deliverable meets its own acceptance criteria: for a research mission, the report standard of section 6; for a build, its acceptance tests. Every requirement is classified with its evidence (section 5.6). A research mission is never Complete because of tests it did not run. |
+| **Complete with gaps** | The deliverable is finished. Some requirements are unresolved (class 6), and each one states what evidence would resolve it. |
+| **Partial** | A budget or time limit, or the user, stopped the mission. The deliverable covers what was reached and lists what was not. |
+| **Blocked** | A decision only the user can make, or an unavailable external dependency, stops further progress. The deliverable says what is needed. |
+| **Failed** | The mission could not produce a usable deliverable. It states why, and keeps whatever was learned. |
 
-Classes 1–3 cannot rest on E4 or E5 evidence alone. A claim-only match goes to class 6, or to "investigate further".
+A build (UC4) has its own status inside the mission:
+- **Succeeded:** all acceptance tests pass.
+- **Needs review:** a change set exists, but some tests fail or are untested.
+- **Failed:** nothing usable was produced.
+- **Delivered:** the change set was handed over after approval.
 
-### 5.5 Recommended architecture
+Open Eye never reports a status better than the evidence supports.
 
-A component-level design covering:
-- each component's responsibility, and whether it is reused, adapted or new;
-- data flows, interfaces and data contracts;
-- storage and retrieval;
-- external dependencies;
+## 5. The autonomous workflow
+
+The workflow is adaptive. It is not a fixed pipeline. For each brief Open Eye selects **the simplest workflow that can satisfy it**. A narrow library question does not get the treatment of a new distributed system.
+
+Any stage can send work back to an earlier stage when new evidence invalidates an earlier decision, and the deliverable records each reversal. Examples:
+- a verified licence conflict;
+- a failing integration test;
+- a changed constraint;
+- a finding that failed revalidation.
+
+Each stage below states its purpose, what it must produce, and when it is finished. The autonomy rules for every stage are in [AUTONOMY_SPEC.md](AUTONOMY_SPEC.md).
+
+### 5.1 Stage 1: Understand the brief
+
+**Produces** a structured specification:
+- desired outcomes;
+- functional requirements, each marked MUST, SHOULD or NICE-TO-HAVE, and as stated or inferred;
+- non-functional requirements;
+- constraints and assumptions;
+- existing assets and infrastructure;
+- acceptance criteria for the finished product;
+- unknowns to investigate;
+- explicit exclusions and scope boundaries.
+
+**Asks the user** only when a consequential ambiguity cannot reasonably be settled by research or by a clearly stated assumption: at most three questions, each saying why it matters. Only a question marked blocking holds research back. Otherwise research proceeds on the stated assumptions, and the user can correct any line later.
+
+**Finished when** every requirement has acceptance criteria, and every assumption is either stated or confirmed.
+
+### 5.2 Stage 2: Plan the investigation
+
+**Produces** a research plan:
+- the technical questions to answer;
+- the candidate solution categories (library, framework, service, API, pattern, or a build from scratch);
+- the source types to use;
+- the evidence each decision needs;
+- an expected cost.
+
+Questions are ordered by four things:
+- expected information gain;
+- implementation impact;
+- uncertainty reduced;
+- cost.
+
+The plan starts from memory (section 9): what is already known and still current is not researched again.
+
+**Adaptive:** new findings re-plan the remaining work when that is justified. Examples: a category turns out to be dominated by one project; a candidate is abandoned; a requirement proves harder than expected. The plan in the Mission workspace always shows the current plan, and what changed in it and why.
+
+**Finished when** every MUST requirement has at least one planned line of investigation within the budget. A plan that would exceed the mission budget needs approval.
+
+### 5.3 Stage 3: Discover existing solutions
+
+**Searches** the source types the plan selected:
+- code hosts (repositories, code, issues, pull requests, releases);
+- official documentation and API references;
+- package registries with their dependency, licence and vulnerability data;
+- technical Q&A and discussions;
+- engineering articles and tutorials;
+- research papers and benchmarks;
+- other public implementations;
+- commercial services and APIs where they fit the constraints.
+
+**Rules:**
+- Authoritative sources and direct implementation evidence come before repeated secondary descriptions.
+- When the first strategy finds too little, Open Eye uses several independent strategies: different query formulations, category searches, registry search, and following dependents and alternatives.
+- Popularity, search rank and recency are signals, never conclusions. The first popular result is not presumed best.
+
+**Produces** candidates, each with the source links that found it, its retrieval time, and why it is relevant.
+
+**Finished when** further discovery is unlikely to change a decision: recent searches added nothing that ranks among the candidates worth inspecting.
+
+### 5.4 Stage 4: Inspect candidate implementations
+
+For promising candidates, Open Eye inspects the implementation itself, not only its description:
+- relevant source files and architecture;
+- public interfaces;
+- dependencies and installation requirements;
+- tests and documentation;
+- release history;
+- licence;
+- known issues.
+
+**For each candidate it determines** whether the candidate:
+- implements the required capability, or only describes it;
+- offers reusable components, or is only a reference;
+- fits the proposed architecture;
+- has acceptable maintenance and security;
+- duplicates or forks another candidate;
+- brings unnecessary dependencies or operating costs;
+- needs modification or extra infrastructure.
+
+**When the project authorises execution,** critical claims are checked by running tests or a bounded example in an isolated environment.
+
+Source inspection (E2) and successful execution (E1) are always distinguished (section 6.1).
+
+**Finished when** every candidate on the shortlist has its capabilities graded against the requirements it is meant to cover.
+
+### 5.5 Stage 5: Compare
+
+Open Eye compares candidates against the brief's own requirements and constraints:
+- functional coverage;
+- correctness evidence;
+- integration feasibility;
+- maintainability and compatibility;
+- licence;
+- security;
+- performance;
+- operating cost;
+- complexity.
+
+**Criteria and weights fit the brief.** Each comparison states the criteria and weights it used.
+
+**Trade-offs are written out,** not hidden behind a single number.
+
+**The output is the strongest viable combination.** That can be a single project, several complementary ones, a commercial API, a hybrid, or a fully custom build when the evidence supports it.
+
+### 5.6 Stage 6: Gap analysis
+
+This is the decision point between research and engineering. Every requirement gets exactly one class, with its evidence and reasoning:
+
+| Class | Meaning | Evidence it needs |
+|---|---|---|
+| 1. Available and verified | A candidate meets it as it is | E1 or E2 about that requirement, from that candidate |
+| 2. Available, needs configuration | It is met once configured | E1–E3, with the configuration identified |
+| 3. Available, needs integration | It is met once connected to other components | E1–E3, with the glue work identified |
+| 4. Partly available, needs modification | A candidate covers most of it | E1–E3 for the covered part; the change or the uncovered part is named |
+| 5. Not covered, must be built | Nothing adequate exists | The searches that were done are recorded |
+| 6. Unresolved | The evidence is insufficient or conflicting, or an external dependency is pending | States what evidence would resolve it |
+
+Classes 1 to 4 can never rest on E4 or E5 evidence alone. A claim-only match is class 6, or goes back for more investigation.
+
+### 5.7 Stage 7: Design
+
+**Produces** a concrete architecture:
+- component boundaries and responsibilities;
+- what is reused, adapted or new;
+- data flows, APIs and data contracts;
+- dependencies with verified versions;
+- storage;
+- execution environments;
 - authentication and permissions;
 - failure handling and observability;
-- deployment and scaling.
+- deployment;
+- the testing strategy.
 
-Trade-offs and rejected alternatives are stated with the reason.
-
-### 5.6 Integration guide
-
-How the chosen parts fit together:
-- prerequisites;
-- installation;
-- configuration;
-- environment variable **names** (never values);
-- API integration details, with versions where verified;
-- code examples where they help.
-
-Every step cites its evidence, and steps not yet executed are marked as unexecuted.
-
-### 5.7 Implementation roadmap
-
-Prioritised tasks. Each task has:
-- a description;
-- dependencies and order;
-- the expected output;
-- estimated complexity and uncertainty, labelled as estimates;
+**Also produces** an ordered implementation roadmap. Each task has:
+- dependencies;
+- acceptance criteria and test requirements;
 - risks and mitigations;
-- **acceptance criteria**;
-- **test requirements**.
+- complexity and uncertainty, labelled as estimates.
 
-### 5.8 Build-mode deliverable
+Every requirement in class 2 or higher has at least one task.
 
-When authorised, Open Eye produces:
-- a reviewable change set (branch or pull request) built in isolation;
+### 5.8 Stage 8: Execute (build mode, only when authorised)
+
+**Uses** the approved plan to create or modify software in an isolated environment, following these rules:
+- Inspect the existing code before changing it.
+- Keep changes reviewable.
+- Test the integration points.
+- Never replace a working component without a stated reason.
+
+**When a test fails,** Open Eye diagnoses which of five causes applies before acting:
+1. the implementation is wrong;
+2. a dependency is incompatible;
+3. the environment is at fault;
+4. the test is inadequate;
+5. an original assumption was wrong.
+
+A wrong assumption sends work back to research or design. The other causes are fixed within the iteration budget where they can be. When they cannot be fixed there (no compatible version exists, the sandbox itself is broken), the cause is reported. If it changes the plan, the work goes back to design.
+
+**Never claims completion** while required behaviour is untested or broken.
+
+### 5.9 Stage 9: Evaluate and learn
+
+**Compares** the result against the acceptance criteria and sets the completion status (section 4).
+
+**Records** in memory, according to the admission rules in section 9:
+- which decisions were right or wrong;
+- how each tool performed;
+- integration results;
+- source reliability;
+- resources spent;
+- unresolved issues.
+
+**Feeds** the evolution loop (section 10).
+
+**Ends** with an auditable deliverable.
+
+### 5.10 Roles and task contracts
+
+These are logical responsibilities. They are not a commitment to one model, agent or service per role:
+- mission planner;
+- research strategist;
+- discovery;
+- crawling and extraction;
+- repository analysis;
+- dependency and compatibility analysis;
+- technical evaluation;
+- architecture;
+- integration planning;
+- implementation;
+- testing and verification;
+- memory curation;
+- evolution evaluation.
+
+The orchestrator uses **the fewest roles a task needs**. It runs independent investigations in parallel and dependent decisions in sequence.
+
+**Every task has a contract,** set out in full in [AUTONOMY_SPEC.md](AUTONOMY_SPEC.md):
+- an objective;
+- its inputs;
+- an output schema;
+- the evidence required;
+- a bounded budget;
+- a completion condition;
+- a failure and escalation policy.
+
+**Shared state, not private copies:**
+- Roles read and write one shared project state.
+- A role checks shared state and memory before doing work that may already exist.
+- A role never accepts another role's claim above its stated grade.
+- Conflicting results are reconciled through evidence, or reported as uncertainty.
+- Delegation depth, retries and parallelism are bounded. Re-delegating without new information is not allowed.
+
+## 6. Deliverable standard
+
+### 6.1 Evidence grades
+
+Every factual claim carries one grade: the highest it actually achieved, never the one hoped for.
+
+| Grade | Meaning |
+|---|---|
+| **E1: Executed** | Observed by running code in an isolated environment; the command, output and environment are attached |
+| **E2: Verified in code** | Found in the source at a specific file, lines and commit |
+| **E3: Officially documented** | Stated in the project's own docs, API reference or release notes, with the quote and URL; or recorded by an authoritative source for that kind of fact, such as a package registry for licence and versions, or a vulnerability database for advisories |
+| **E4: Claimed** | A README, article, forum answer or marketing claim not yet checked |
+| **E5: Inferred** | Open Eye's own reasoning from other evidence |
+
+Licence, maintenance activity, vulnerabilities and version compatibility are facts and are graded like any other claim.
+
+Four kinds of statement are labelled as what they are and never graded as facts:
+- recommendations;
+- assumptions;
+- estimates;
+- unverified statements.
+
+### 6.2 The engineering report
+
+Every research mission delivers a report with these sixteen sections, whatever its completion status. A Partial, Blocked or Failed mission fills the sections it reached. A section with nothing to report says so, and says why.
+
+1. **Executive recommendation:** the strategy, the strongest building blocks, the main challenges, the top three risks, and the decisions needing a human.
+2. **Requirements and assumptions:** the specification from stage 1, with any corrections the user made.
+3. **Existing solutions and source inventory:** every candidate considered, each with:
+   - the version or commit examined;
+   - graded capabilities;
+   - reusable modules, with their locations;
+   - an action: reuse, adapt, investigate or reject, with the reason.
+
+   Rejected candidates stay listed.
+4. **Comparison of the strongest candidates:** the criteria, the weights and the written trade-offs (stage 5).
+5. **Build-versus-reuse analysis:** the six classes, one per requirement, with evidence (stage 6).
+6. **Recommended architecture:** components, responsibilities, data flows, interfaces, storage, auth, failure handling, deployment. Rejected alternatives are listed with the reason.
+7. **Component integration map:** which component connects to which, through what interface, in what order.
+8. **Dependencies, versions and compatibility:** verified findings only. Anything unverified is labelled.
+9. **Installation and configuration guidance:**
+   - prerequisites, install steps and configuration;
+   - environment variable *names*, never values;
+   - each step cites its evidence and is marked executed or not.
+10. **Implementation roadmap:** ordered tasks with dependencies, risks and estimates (stage 7).
+11. **Acceptance criteria and test plan:** for the product, and for each roadmap task.
+12. **Security, licensing and operational risks:** vulnerabilities with advisory ids, licence conflicts with the policy, maintenance and operating risks, each with a mitigation.
+13. **Evidence and source citations:** every factual claim resolves to a numbered source with its grade.
+14. **Unresolved questions and uncertainty:**
+   - conflicting evidence;
+   - stale findings;
+   - incomplete research, with what was not searched and why;
+   - unverified claims the plan depends on.
+15. **Expected costs and complexity:** estimates, with their assumptions.
+16. **Completion status and next actions:** the status (section 4), the stopping condition, and what to do next.
+
+**Also delivered:**
+- **A machine-readable form:** the architecture, the roadmap and the classifications as structured data, so other tools can consume them.
+- **Diagrams** where they clarify.
+
+**Iteration:** a revised mission shows what changed in the report since the previous version, and why.
+
+### 6.3 Build-mode deliverable
+
+When a build is authorised (UC4), Open Eye delivers:
+- a reviewable change set: a branch or pull request, never a push to a default branch;
 - integration adapters and configuration;
-- tests, plus a test report saying what passed, failed, remains untested, or needs a human;
-- an updated blueprint that marks which claims were raised to E1 by execution and which turned out wrong.
+- tests;
+- a test report that says what passed, what failed, what remains untested, and what needs a human;
+- an updated report showing which claims execution raised to E1 and which it refuted.
 
-### 5.9 Evidence and uncertainty report
+## 7. Autonomy
 
-Lists:
-- the traceability of every significant recommendation;
-- conflicting evidence;
-- stale sources;
-- incomplete research, with what was not searched and why;
-- unverified claims the plan still depends on;
-- decisions needing human review.
+Open Eye runs the whole research process on its own, within budget. It asks only where a decision is consequential and genuinely the user's to make. The full specification is in [AUTONOMY_SPEC.md](AUTONOMY_SPEC.md). These rules are the product requirements it implements:
 
-## 6. System behaviour
-
-### 6.1 The loop
-
-Receive brief → interpret requirements → plan research → discover → inspect implementations → verify evidence → compare alternatives → design architecture → identify gaps → produce blueprint → *(authorised)* implement → test → evaluate → save lessons → improve future runs.
-
-**Revisiting earlier steps:** any step can send work back to an earlier one when new evidence invalidates an earlier decision. Examples: a verified licence conflict, a failing integration test, a user constraint change, or a stale finding that failed revalidation. The blueprint records each reversal.
-
-### 6.2 Responsibilities and their contracts
-
-These are responsibilities with measurable outputs. They are not a commitment to a particular number of agents or to any framework. Whether one component or several fulfils a role is an architecture decision.
-
-| Role | Must output | Checked by |
+| Open Eye does on its own (within budget) | Needs approval: the user's, or a maintainer's where section 14 says so | Never |
 |---|---|---|
-| Mission planning | Requirements with acceptance criteria, research questions, a dependency-aware plan, scope decisions | User (understanding check) and evaluation |
-| Web discovery | Candidates with source links, retrieval time and why each is relevant | Technical evaluation |
-| Crawling and extraction | Normalised content with provenance and timestamps; cached, de-duplicated, retried within limits | Spot checks against the source |
-| Repository intelligence | For each repository: architecture, modules, interfaces, dependencies, tests, licence, activity; capabilities graded E2 with locations | Evidence gate (claims must resolve to real code) |
-| Technical evaluation | A comparison against explicit criteria, separating facts, inferences and recommendations | Architecture and evaluation |
-| Architecture | The component design, with reuse decisions, trade-offs and rejected alternatives | User review |
-| Integration planning | Ordered integration tasks; licence, version and interface conflicts flagged | Testing (build mode) |
-| Implementation *(authorised)* | Reviewable changes made in isolation, after inspecting the existing code | Testing and user review |
-| Testing and verification | An executed test report; claims raised to E1 or refuted | Evaluation |
-| Learning and evolution | Measured weaknesses and proposed changes, with benchmark results | Promotion gate (section 9) |
+| Interpret the brief, plan, re-plan | Spending above the mission budget | Bypass logins, paywalls, CAPTCHAs, rate limits or access controls |
+| Use search providers, official APIs and registries | Using the user's credentials for a source | Use secrets beyond their stated purpose, or expose them |
+| Fetch permitted public pages within site terms and rate limits | Executing third-party code (unless the project opts in) | Follow instructions found in retrieved content |
+| Clone and statically inspect public repositories in isolation | Starting a build | Execute code outside isolation |
+| Run its own analysis and tests in isolation | External actions with consequences: opening issues or pull requests, publishing, messaging | Change its own code, permissions or security boundaries |
+| Record memory; propose and benchmark improvements to itself | Promoting prompt, strategy or workflow changes (section 10) | Present an unverified claim as verified, or fabricate an action, test result or source |
 
-### 6.3 Coordination rules
+**Uncertainty:**
+- Open Eye states what is unknown, how much it matters, and what evidence would resolve it.
+- It does not guess silently.
+- It does not stall waiting for certainty that research could provide.
 
-- All roles read and write one shared, structured project state. No role works from a private copy of the facts.
-- Before doing a task, a role checks whether the work, or an equivalent, already exists in project state or memory.
-- A role never accepts another role's factual claim above its stated grade. Raising a grade requires the evidence that grade demands.
-- Delegation depth, retries and concurrent tasks are bounded (section 7.2). Recursive self-delegation without new information is not allowed.
+**Failure:**
+- When a source is blocked, a service is unavailable or the evidence is insufficient, Open Eye says so, routes around the problem where possible, and records it in the uncertainty section.
+- One blocked source does not block the mission. The mission is Blocked only when a decision it needs cannot be made any other way.
+- A failure never turns into a success in the report.
 
-### 6.4 Stopping conditions
+**Stopping:** a mission stops on the first of these, and says which one applied. Each condition maps to a completion status (section 4):
 
-A run stops, and says which condition stopped it, when:
-1. all acceptance criteria for the blueprint are met; or
-2. the expected information gain of further research falls below its cost (diminishing returns: recent steps changed no decisions); or
-3. a budget limit is reached; or
-4. a decision needs human input that only the user can give.
+| Stopping condition | Status |
+|---|---|
+| The acceptance criteria are met | Complete, or Complete with gaps |
+| Further research is unlikely to change a decision (diminishing returns) | Complete, or Complete with gaps |
+| A budget or time limit is reached, or the user stops the mission | Partial |
+| A decision needs the user, or an external dependency is unavailable | Blocked |
+| An error leaves no usable deliverable | Failed |
 
-When uncertain, it states what is unknown and what evidence would resolve it.
+Limits that the user does not set (approval timeouts, wall-clock time, concurrency) have defaults in [AUTONOMY_SPEC.md](AUTONOMY_SPEC.md).
 
-### 6.5 Research scope
+## 8. Research infrastructure
 
-**Sources.** Discovery must be able to draw on every kind of source that holds evidence about existing solutions:
-- code hosts: repositories, issues, pull requests, releases, code examples;
-- official documentation and API references;
-- technical Q&A and discussion forums;
-- package registries and their dependency, licence and vulnerability data;
-- technical articles, tutorials and research papers;
-- other public websites with relevant implementations.
+The full strategy is in [RESEARCH_STRATEGY.md](RESEARCH_STRATEGY.md). It must meet these requirements.
 
-Each source type is an interchangeable component. Adding, replacing or removing one must not require redesigning the system. Which tools fetch them is a design decision ([SYSTEM_DESIGN.md §5](SYSTEM_DESIGN.md#5-discovery-and-extraction-layer)).
+**Tool registry.**
+- Every discovery and execution tool is described by:
+  - its capabilities;
+  - its input and output contracts;
+  - the permissions it needs;
+  - its cost, rate limits and observed reliability;
+  - its failure modes;
+  - when to use it and when not to.
+- The planner selects tools for each task from the registry.
+- Adding, replacing or removing a tool never requires redesigning the system.
 
-**Strategy, not volume.** The research plan chooses sources and queries for the brief by:
-- relevance;
-- source quality, informed by source reliability memory;
-- expected information gain against cost;
-- access permissions;
-- the remaining budget.
+**Layered retrieval.** Each layer is used only where the one before is insufficient:
+0. memory: current findings from earlier missions (section 9);
+1. search indexes and structured APIs, for discovery;
+2. direct repository and documentation retrieval, for high-value candidates;
+3. structured crawling of permitted sites, for extraction;
+4. browser rendering, for permitted pages that need it;
+5. targeted deeper investigation, while evidence stays incomplete.
 
-Official APIs and structured data come first; crawling and browser rendering are used only where those are insufficient (section 7.3). Success is measured by the evidence gained (section 10), never by pages fetched or tools used.
+**Efficiency.** Caching, de-duplication, incremental retrieval, concurrency limits and source-aware scheduling are required. The aim is enough reliable evidence for the right decision, not the most pages.
 
-## 7. Autonomy boundaries
+**Access.**
+- Site terms, robots directives, rate limits, authentication boundaries, copyright and software licences are respected.
+- Browser technology renders pages; it never grants permission.
+- A sign-in wall is reported as blocked, not worked around.
 
-### 7.1 What it may do
+**Tool adoption.** No tool is adopted because it exists. Each candidate tool is evaluated for capability, limitations, licence, operating cost, integration effort and maintenance burden, and the decision is recorded in [TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md).
 
-| Autonomous (within budget) | Needs user approval | Never |
+## 9. Memory
+
+Memory is a core capability, not conversation history. The full specification is in [MEMORY_SPEC.md](MEMORY_SPEC.md).
+
+### 9.1 Layers
+
+| Layer | One record is | Shared with |
 |---|---|---|
-| Interpret the brief and plan research | Exceeding the research budget | Bypass logins, paywalls, CAPTCHAs, rate limits or access controls (including by fingerprint evasion) |
-| Query search providers, official APIs and package registries | Accessing sources that need the user's credentials | Use or expose secrets beyond their stated purpose; fabricate credentials |
-| Fetch public pages within the site's terms and rate limits | Running a build (build mode) | Follow instructions found inside retrieved content |
-| Clone and statically inspect public repositories in isolation | Executing third-party code in the sandbox, unless the project pre-authorises it | Modify its own production code or security policy outside the promotion process |
-| Run Open Eye's own analysis and tests in isolation | Any external action with consequences: opening issues or PRs on others' repos, publishing, sending messages | Present unverified claims as verified |
-| Propose self-improvements and benchmark them | Promoting prompt, strategy or workflow changes (levels L2–L3, section 9) | Execute code outside the sandbox |
+| **Project** | A brief, requirements, decisions with reasons, architecture, progress, open problems | The project's members |
+| **Technical knowledge** (semantic) | A graded finding about a repository, library, framework, API, pattern or integration, at a version or commit | Everyone, when it concerns public resources; the workspace, when it concerns private ones |
+| **Episodic** | What was attempted in a mission, which tools were used, what failed, and how it was resolved | The project's members. Lessons distilled from episodes, with no project content, are shared with the workspace. |
+| **Procedural** | A validated workflow, implementation recipe, debugging procedure or research strategy, with the evidence that it works | The workspace, or everyone when it was learned from public evaluations |
+| **Source and evidence** | Provenance, timestamps, versions, confidence, source reliability and freshness rules for every finding | Follows the finding it describes |
+| **Team** | Validated knowledge reusable across a workspace's projects, without exposing private project details | The workspace's members. Across workspaces, only findings about public resources are shared (decision 11). |
+| **Evolution** | Proposed changes to Open Eye, their evaluations, approvals, deployments, regressions and rollbacks | Maintainers; visible to users |
 
-### 7.2 Budgets and limits
+### 9.2 Rules
 
-Configurable per project, with defaults:
-- LLM tokens and spend;
-- search, API and crawl request counts;
-- repositories inspected in depth;
-- sandbox compute time;
-- wall-clock time;
-- retries per step;
-- delegation depth;
-- concurrent tasks.
+- **Admission by utility:** a record is kept only when its reliability, provenance and likely future relevance justify it. Not every page or model response is stored.
+- **Required metadata:** every record carries:
+  - provenance;
+  - a timestamp;
+  - a grade or confidence;
+  - its scope;
+  - a revalidation rule.
+- **Retrieval:** memory supports both structured queries and semantic retrieval. It also keeps the relationships between projects, requirements, components, decisions, evidence and outcomes.
+- **Merging and versioning:** duplicates merge into one record with all their provenances. Superseded records are versioned, never silently overwritten.
+- **Freshness:** a finding past its rule is shown as "last verified on …", and is revalidated before a decision depends on it.
+- **Applicability:** a remembered lesson carries the context it was learned in: language, framework version, environment. Before reuse, Open Eye checks that the context still matches. A lesson is never generalised beyond the context it was learned in.
+- **Explicit reuse:** the report says which findings came from memory, when they were verified, and whether this mission revalidated them.
+- **Correction:** users can see why something is in memory, and correct or delete it. A correction reaches every project that relied on the record.
+- **Access control and audit:** private project information never leaves its scope. Every read and write that affects a decision is auditable.
 
-The live view always shows how much of each budget has been used.
+## 10. Self-evolution
 
-### 7.3 Source access policy
+Self-evolution means **measured improvement** in Open Eye's ability to research, decide, plan and verify. It does not mean unbounded self-modification. The full specification is in [EVOLUTION_SPEC.md](EVOLUTION_SPEC.md).
 
-- **Preference order:** official APIs and structured data, then documented public pages, then rendered browsing of permitted pages.
-- **Respect site rules:** robots directives, terms of use, rate limits, authentication boundaries, copyright and software licences.
-- **Browser automation is for rendering, not evasion:** it is used where a permitted page needs rendering or interaction. It is never a way past restrictions.
-- **Retrieved content is untrusted data:** it is isolated from instructions, and any embedded instructions are ignored and logged.
+### 10.1 Kinds of adaptation
 
-## 8. Memory
+Each kind has its own bar for adoption.
 
-### 8.1 Memory categories
-
-Memory is structured records with provenance, not a transcript and not a bag of scraped text. Semantic retrieval is an index over these records, not the record itself.
-
-| Memory | One record is | Written when | Read when | Freshness rule |
-|---|---|---|---|---|
-| **Project** | A brief, requirements, decisions (with reasons), architecture, progress, open issues | During each run | Revisiting or iterating the project | Current until superseded; history kept |
-| **Technical knowledge** | A finding about a resource: a capability, interface, limitation, licence or version, graded, at a commit or version | When a finding is verified or graded | Any project needing that resource | Must be revalidated when the source has changed since the finding (new commit or release), or after a maximum age set per kind of finding |
-| **Experience** | An outcome: an integration that worked or failed, a compatibility problem, a debugging lesson, a test result | After build or test steps | Planning similar integrations | Tied to versions; flagged when those versions change |
-| **Source reliability** | Per source and source type: observed accuracy, how often its claims were later verified or refuted, staleness, conflicts | Whenever a claim from it is verified or refuted | Ranking and grading sources | Rolling; recent evidence weighs more |
-| **Strategy** | For a class of task: which queries, sources, ranking settings and workflows performed well, with measurements | After each evaluated run | Planning research for a similar brief | Superseded by better-measured strategies |
-| **Evolution history** | A proposed change, its benchmark results, the decision and the reason, its regression record | Every proposal | Auditing and rollback | Permanent |
-
-### 8.2 Memory rules
-
-- **Required metadata:** every record carries provenance, timestamp, confidence or evidence grade, project scope, and a revalidation rule.
-- **Duplicates are merged, not stacked:** the same fact found twice merges into one record with both provenances.
-- **Old findings are not current facts:** a finding past its freshness rule is shown as "last verified on …" and is revalidated before a decision depends on it.
-- **Reuse across projects is explicit:** the blueprint says which findings came from memory, when they were verified, and whether they were revalidated for this run.
-- **Auditable and correctable:** the user can see why something is in memory, and correct or delete it. Corrections propagate to the projects that relied on it.
-
-## 9. Self-evolution
-
-### 9.1 What can change, and how
-
-Saving memories is not learning. The system improves only through measured, gated changes. There are five levels of change, each with its own bar.
-
-| Level | What changes | Example | Promotion requirement |
-|---|---|---|---|
-| **L0: Memory** | Facts and experience | "satellite.js v5 needs ES modules" | Automatic, with provenance |
-| **L1: Adaptive configuration** | Weights, thresholds, source priors, learned retrieval preferences | Ranking weights, the stars floor | Automatic **if** it beats the baseline on the benchmark with no guard-metric regression; logged and reversible |
-| **L2: Prompts and strategies** | Prompts, query strategies, tool selection rules | A new query-planning prompt | Benchmark win **and** user or maintainer approval |
-| **L3: Workflow** | Stage order, roles, stopping rules | Verify before ranking | Benchmark win, approval, and a staged rollout |
-| **L4: Software and security policy** | Open Eye's own code or permissions | Anything | Never self-applied. Proposed as a reviewable change and treated like any other code change |
-
-### 9.2 The learning loop
-
-1. Record the brief, acceptance criteria, decisions, sources, tool calls and outputs of every run.
-2. Measure the run (section 10) when ground truth exists: user feedback, build results, later verification.
-3. Find recurring weaknesses. Example: "misses established libraries whose descriptions lack the query terms" (a real failure observed and fixed in the current prototype).
-4. Propose a change at the lowest level that addresses the weakness.
-5. Evaluate it on the fixed benchmark plus representative historical runs.
-6. Compare it with the current baseline on the primary metric and on every guard metric.
-7. Reject it if it does not improve, or if it regresses anything beyond tolerance.
-8. Promote it through a versioned, reviewable record (evolution history).
-9. Monitor later runs, and roll back automatically if live metrics degrade.
-
-## 10. Success criteria and measurement
-
-### 10.1 Metrics
-
-Baselines are measured **before** any improvement is claimed. Target values are proposals, to be set once baselines exist.
-
-| Metric | Definition | Measured by |
+| Level | What changes | Adopted when |
 |---|---|---|
-| Discovery recall@10 | Share of expert-labelled relevant solutions that appear in the top 10 | Benchmark briefs with labelled solutions |
-| Shortlist precision | Share of shortlisted candidates that an expert agrees are genuine starting points | Expert review of benchmark runs |
-| Lift over plain search | Recall@10 minus that of a fixed baseline (plain GitHub plus web search for the brief's main terms) | Same benchmark, same budget |
-| Evidence correctness | Share of claims shown as E1 or E2 that are actually correct | Sampled human audit |
-| Grade honesty | Share of sampled claims shown at a grade they do not meet (target near zero) | Sampled human audit |
-| Classification accuracy | Agreement of build-vs-reuse classes with expert labels | Benchmark briefs |
-| Requirement coverage | Share of requirements with a classification and a justification (target 100%) | Automatic |
-| Integration success (build mode) | Share of integration tasks whose acceptance tests pass in the sandbox | Build-mode benchmark tasks |
-| Test pass rate and regression rate | Of build outputs, and of Open Eye's own changes | Automatic |
-| Memory effectiveness | Research avoided by reusing memory, and how often reused findings failed revalidation | Paired related briefs |
-| Cost and latency | Spend and wall-clock time per brief, per stage | Automatic |
-| Measured improvement | Change in the primary metrics across promoted versions | Evolution history |
+| **L0: Memory** | Facts, episodes, procedures | Facts and episodes automatically, under the admission and validation rules of section 9. A procedure becomes active only after measured success **and** a maintainer's approval, because it changes how later missions behave. |
+| **L1: Adaptive configuration** | Ranking weights, thresholds, source priors, learned preferences | Automatically, if it beats the baseline beyond noise with no guard regression. Logged and reversible. |
+| **L2: Prompts and strategies** | Prompts, query strategies, tool-selection and routing rules | A benchmark win, then a maintainer's approval |
+| **L3: Workflow** | Stage order, roles, stopping rules, memory policies | A benchmark win, a maintainer's approval and a staged rollout |
+| **L4: Software, permissions and security** | Open Eye's own code, permissions, security boundaries | Never self-applied. Proposed as a reviewable change for humans. |
 
-### 10.2 The evaluation suite
+### 10.2 The loop
 
-- **Representative briefs:** real-world briefs across domains, including the satellite-tracker brief already in use and briefs in domains outside the team's expertise. Each has expert-labelled known solutions and build-vs-reuse labels.
-- **Verified integration tasks:** small builds with acceptance tests, for build mode.
-- **Historical failure cases:** every observed failure, kept as a regression test.
-- **Fixed and versioned:** the suite is fixed per version. New cases are added, but none are removed to make numbers look better.
+1. **Baseline.** Measure the current version on a fixed, versioned benchmark before claiming any improvement.
+2. **Observe.** Record, for each mission:
+   - which sources and searches were useful;
+   - which recommendations proved right;
+   - which integrations and tests succeeded;
+   - which spending produced value.
+3. **Diagnose** recurring weaknesses. Examples: poor retrieval, stale documentation, duplicated research, wrong dependency assumptions, weak integration plans, unnecessary tool calls.
+4. **Hypothesise.** A proposed change states:
+   - the failure it addresses;
+   - the expected benefit;
+   - the evidence that would reject it.
+5. **Evaluate.** Test the change against the baseline:
+   - on reproducible tasks;
+   - with enough runs to separate the effect from run-to-run noise;
+   - on held-out tasks (decision 12), so a change does not overfit the cases it was designed or tuned on. This includes L1 changes, because an automatic tuner chooses among many candidates on the same cases.
+6. **Promote or reject.**
+   - Promotion requires an improvement on the primary metric beyond noise, with no unacceptable regression on any guard metric, on security or on cost.
+   - Every decision is versioned and reviewable.
+   - The evidence for a rejection is kept too.
+7. **Monitor and roll back.** Watch later missions. A change that stops helping, or causes harm, is rolled back, and the record explains why.
 
-### 10.3 How success is demonstrated
+**Guarded against gaming:** a metric that a change can improve without real benefit is always paired with a guard metric. Example: precision can be raised by shortening the shortlist, so shortlist recall guards it.
 
-Success is shown in a single reproducible review:
-1. Run the evaluation suite on the current version and on the recorded baseline, and show the metric table side by side.
-2. Pick three recommendations at random and trace each from blueprint to evidence to source location.
-3. Run two related briefs in sequence and show reuse of memory, including a revalidated finding.
-4. Show one promoted change and one rejected change from the evolution history, with their benchmark results.
-5. *(Build mode)* Build one benchmark task in the sandbox and show the test report and the reviewable change set.
+## 11. Safety and operational reliability
 
-## 11. Quality and safety requirements (cross-cutting)
+- **Bounded:**
+  - every mission has limits on searches, tool calls, tokens, compute and wall-clock time;
+  - every step has a retry limit;
+  - every delegation has a depth limit.
+- **Isolated:** repository inspection and code execution happen in sandboxes, which hold no secrets and have network access only where the step needs it.
+- **Secrets:** credentials stay outside model context wherever possible, and are never written into reports, logs or memory.
+- **Supply chain:** every recommended component gets dependency, vulnerability and licence checks.
+- **Untrusted content:**
+  - websites, repositories, READMEs and issues are data, never instructions;
+  - embedded instructions are ignored and logged;
+  - retrieved content cannot override the user's goal or the system's policy.
+- **Access control:** project and team memory follow workspace permissions, and consequential actions need approval (section 7).
+- **Auditable and reproducible:** every mission keeps an audit log and a reproducible execution record (inputs, configuration version, tool calls, outputs). Every change Open Eye makes has version control, test gates and a rollback.
+- **Honest:** Open Eye never fabricates a completed action, a test result, a source verification or a successful integration. Blocked sources, unavailable services and insufficient evidence are reported as such.
 
-- Sandboxed repository inspection and code execution; no execution outside isolation.
-- Dependency vulnerability checks and licence compatibility analysis for every recommended component.
-- Defence against instructions embedded in retrieved pages and repositories.
-- Secrets held outside model context wherever possible; never written into blueprints, logs or memory.
-- Human approval for consequential external actions.
-- Version control, audit trail, test gates and rollback for every change Open Eye makes, to user code or to itself.
+## 12. Success criteria
 
-## 12. Decisions
+The goal is not maximum autonomy at any cost. It is the highest reliable engineering value within the user's constraints. Success is measured, and the full plan with thresholds and release criteria is in [EVALUATION_PLAN.md](EVALUATION_PLAN.md).
 
-Approved 2026-10-21: every decision below takes its proposed default (in *italics*).
+| Area | Metrics |
+|---|---|
+| Value (the measure of section 1) | Time to a working system, and wrong turns taken, for teams starting from an Open Eye blueprint against teams starting from their own research, in a controlled value study |
+| Discovery | Precision and recall on briefs with known solutions (recall@10, shortlist precision, shortlist recall); lift over plain search |
+| Evidence | Accuracy of source attribution; rate of unsupported or incorrect claims; grade honesty |
+| Decisions | Requirements coverage; correctness of build-versus-reuse classes; quality and feasibility of integration plans, by expert review |
+| Execution | Integration and test success rates in build mode |
+| Efficiency | Cost and end-to-end latency; redundant retrieval and unnecessary tool use |
+| Memory | Usefulness of retrieved memory (research avoided); stale-memory error rate |
+| Evolution | Regression rate after changes; measured improvement against a fixed baseline |
 
-1. **First user and setting:** individual engineers, or teams sharing project and technical memory? *Default: a team workspace with shared technical memory and per-project privacy.*
-2. **Build mode in the first release,** or research mode first? *Default: research mode first; build mode once evidence correctness and classification accuracy meet their targets.*
-3. **Default budget per brief** (spend and time). *Default: to be set from measured cost on the benchmark.*
-4. **Executing third-party code** to reach E1: allowed by default in the sandbox, or per project? *Default: per-project opt-in.*
-5. **Licence policy default:** permissive only, or copyleft allowed and flagged? *Default: allowed and flagged, overridable per project.*
-6. **Browser-based research:** *Scrapling with Camoufox renders pages that need a browser or refuse plain HTTP clients (decided 2026-10-21).* The limits in section 7.1 still hold: it never gets past logins, paywalls or CAPTCHAs; a sign-in wall is reported as blocked and not indexed.
-7. **Who approves L2–L3 self-improvements:** each user, or a maintainer? *Default: a maintainer, with results visible to users.*
+**The benchmark** contains:
+- representative real briefs across domains, with known solutions labelled independently;
+- adversarial cases: missing documentation, abandoned repositories, conflicting sources, incompatible dependencies, misleading project descriptions, and look-alike traps;
+- build tasks with acceptance tests;
+- every observed failure, kept as a regression case.
 
-## Appendix A: Where the current prototype stands against this definition
+Cases are added over time but never removed to improve the numbers.
 
-This is for orientation only; the definition above does not depend on it.
+**No superiority claim without evidence.** Open Eye is never described as better than manual research or other tools unless a comparative evaluation shows it.
 
-| Definition area | Exists today | Gap |
+## 13. Scope and decision discipline
+
+- **Every component justifies itself.** No agent, database, vector store, framework, browser, crawler, model or service is added because it is available. Each must serve a requirement in this document.
+- **Smallest coherent architecture.** Prefer the least machinery that meets the end-state requirements and still allows extension.
+- **Essential before optional.** The planner separates essential requirements from optional enhancements. Scope growth never displaces the original objective.
+- **Honest limits.** When a capability cannot be delivered reliably, Open Eye says so and proposes the strongest feasible alternative.
+
+## 14. Decisions
+
+**Carried over from v1.0** (approved 2026-10-21):
+1. **Setting:** team workspaces with shared technical memory and per-project privacy.
+2. **Release order:** research first; build mode once evidence correctness and classification accuracy meet their targets.
+3. **Default budget:** set from measured cost on the benchmark.
+4. **Third-party code execution:** per-project opt-in.
+5. **Licence policy default:** copyleft allowed and flagged, overridable per project.
+6. **Browser research:** for rendering permitted pages only, never for getting past restrictions.
+7. **L2–L3 approval:** a maintainer, with results visible to users.
+
+**New in v2.0** (proposed defaults in *italics*):
+
+8. **Requirement classes:** adopt the six classes of section 5.6. They split "configuration" from "integration" and merge "modification" with "partly available". *Default: adopt; migrate existing blueprints; have people relabel the benchmark's class labels, because the old class 2 splits into two classes and cannot be mapped automatically.*
+9. **Who governs Open Eye's configuration:** *Default: maintainers of the operator workspace. Personal workspaces never govern global configuration.*
+10. **Who may opt a project into execution:** *Default: project maintainers only.*
+11. **Sharing across a team:** *Default: findings about public resources are shared; private project content, episodes and procedures stay in the workspace unless a maintainer shares them.*
+12. **Held-out evaluation:** *Default: a held-out set, never used to design or tune changes, confirms every promotion from L1 to L3. It holds at least 5 briefs now, growing to a quarter of the benchmark as the suite grows. Until it is large enough to show a gain, it can only veto a change, never prove one.*
+13. **Commercial services in recommendations:** *Default: allowed when they fit the constraints, always alongside the best open alternative and its cost.*
+14. **Stealth browser in the scraper (conflict to resolve):** the scraper engine sends a fixed list of domains straight to the Camoufox stealth browser (linkedin.com, twitter.com, x.com, bloomberg.com, wsj.com, medium.com). It also switches any page to it when the site answers 403, 429 or a bot challenge. That uses fingerprint evasion to get past a site's bot protection and rate limits, which section 2.4 and decision 6 exclude. *Default: remove the named-site routing and the escalation on 403, 429 and challenge pages now. Treat those responses as blocked (section 7). Replace Camoufox with a standard headless browser that identifies itself, used only for rendering ([TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) TD-09).*
+
+## Appendix A: Where the built system stands (2026-10-22)
+
+For orientation only; this definition does not depend on it. The objective checklist is in [ACCEPTANCE.md](ACCEPTANCE.md).
+
+| Area | Built and measured | Main gaps to the end state |
 |---|---|---|
-| Brief understanding (4.1 steps 1–2) | Brief upload (text, Markdown, PDF, DOCX); LLM requirement breakdown with MUST/SHOULD and stated/inferred markers | No clarifying questions, acceptance criteria or understanding check before research |
-| Discovery (Web discovery role) | GitHub search with query planning, adaptive relaxation, de-duplication and ranking | GitHub only: no docs, package registries, Stack Overflow or articles |
-| Repository intelligence and E2 grade | Clone, analysis passes, evidence gate binding claims to real files and lines | No tests or vulnerability analysis; licence not checked for compatibility |
-| Grades E3–E5 | README assessments (E4) are labelled separately from verified code (E2) | No E1 (execution), no E3 (official docs) |
-| Blueprint (5.2–5.4, 5.6) | In testing: reuse/adapt/build per requirement with cited sources; unsupported decisions downgraded; licence, maintenance and verification risks | Six-class taxonomy, full architecture, roadmap with acceptance criteria, uncertainty report |
-| Memory (8) | Briefs, candidates, indexed repositories and evidence persist | No memory categories, freshness rules, cross-project reuse, or source reliability |
-| Self-evolution (9) | — | No benchmark, feedback, metrics or promotion gate. Ranking weights are hand-tuned constants (the L1 candidates) |
-| Autonomy and budgets (7) | Rate limits and job attempt limits | No per-project budgets, approval flow or build sandbox |
+| Experience (3) | Briefs page, brief workspace with run timeline, understanding, budget, candidates and blueprint; `/memory`, `/evolution`, `/evaluation`; the repository Studio at `/` (questions over indexed repositories) | No single mission workspace with pause and resume; actual, planned and example events are not labelled; excluding a source is not built; the Studio sits outside the six workspaces |
+| Brief understanding (5.1) | Structured specification, acceptance criteria, at most 3 questions with a blocking flag, research proceeds on assumptions | Existing-asset (repository) intake for UC2; exclusions as a field |
+| Planning (5.2) | Query planning by kind of tool; memory read before research; diminishing-returns stop | No explicit research plan with expected information gain; no re-planning on findings |
+| Discovery (5.3) | GitHub, npm, crates.io, deps.dev, OSV, Stack Exchange and Tavily through a gateway with budget and cache; an arXiv connector exists but no task calls it yet; the scraper escalates to a stealth browser (decision 14) | No GitHub code or issue search, no commercial-service discovery; dependents and alternatives are not followed |
+| Inspection (5.4) | Clone, analysis passes, evidence gate (E2); partial analysis of large repositories; docs evidence (E3); opt-in sandbox E1 checks | E1 only for npm and PyPI packages; duplicate and fork detection is basic |
+| Comparison (5.5) | Ranking with health, relevance and coverage; inventory actions | No brief-specific criteria and weights shown; no written comparison section |
+| Gap analysis (5.6) | Six classes enforced against evidence (v1 taxonomy) | Migrate to the v2 classes (decision 8) |
+| Design and report (5.7, 6.2) | Architecture, integration guide, roadmap, uncertainty report, executive recommendation | No integration map, test plan or cost section; no machine-readable export; 16-section structure not yet complete |
+| Build mode (5.8, 6.3) | Sandboxed bounded coding loop, test report, diff, pull request after approval | Failure diagnosis is not classified into the five causes; not run end to end on a real build |
+| Completion status (4) | Run statuses (completed, stopped, failed, awaiting input) | The five mission statuses and their rules |
+| Memory (9) | Semantic claims with revalidation; episodes; procedures with activation; source reliability; audit and correction UI | Applicability checks by context; admission policy; team sharing controls; embedding retrieval; deleting single records; one workspace's refutation changes a global claim for everyone |
+| Evolution (10) | Feedback; stored ranking features; gated L1 tuner (with a shortlist-recall guard); L2 proposals; rollback; history UI | No held-out set; the 3-run unpaired gate passed a change that did nothing (needs more runs); labels are a draft by one labeller |
+| Evaluation (12) | Suite of 15 briefs with draft labels; record and replay; baselines B0 and B1; current recall@10 0.30–0.34 | Independent labels; adversarial and build cases; evidence-correctness audit; the gate still accepts 3 runs per side; the measured cost covers only understanding and discovery (about 4 AI calls per brief), so no full mission is costed yet (decision 3); no value study |
+| Safety (11) | Budgets enforced; untrusted-content tagging; sandbox with no secrets; approvals for builds and delivery | Sign-in not enforced on the public deployment; any member can switch on execution or raise a budget (no role check on the brief update route, against decision 10); no wall-clock or compute limit per mission; no full audit log view |
+
+## Appendix B: Changes from v1.0
+
+- **The planning artifacts:** the ten artifacts A–J and their documents; autonomy, memory, evolution, research, evaluation, technology, roadmap and acceptance now each have their own specification.
+- **Personas and boundary:** a maintainer persona; use cases UC1–UC6; an explicit system boundary.
+- **Workspaces:** six workspaces, replacing ten surfaces, with actual, planned and example events always told apart.
+- **Mission statuses:** a mission lifecycle with five completion statuses, plus build statuses.
+- **Workflow:** written as nine stages, each with an output and a finish condition. It adds an adaptive research plan ordered by information gain, the simplest-workflow rule, the five causes of a failed test, and task contracts.
+- **Requirement classes:** revised as decision 8.
+- **Deliverable:** the report standard grows to sixteen sections, plus a machine-readable form.
+- **Memory:** now seven layers (adding episodic, procedural and team), with admission by utility, applicability checks and access control.
+- **Evolution:** each hypothesis must state what would reject it; held-out evaluation; metrics guarded against gaming (learned from the first tuning pass).
+- **Discipline and claims:** scope and decision discipline is its own section, and no superiority claim may be made without comparative evidence.
