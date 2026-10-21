@@ -481,8 +481,18 @@ def merge_remembered(candidates: List[Dict[str, Any]], remembered: List[Dict[str
     by_name = {c["full_name"].lower(): c for c in candidates}
     for c in candidates:
         c.setdefault("provenance", ["search"])
-    added = known = 0
+    added = known = reused = 0
     assessed_reqs = assessed_requirements(capability_requirements(requirements_json), t)
+
+    def apply_assessment(c: Dict[str, Any], assessment: Optional[Dict[str, Any]]) -> bool:
+        if not (assessment and assessment.get("coverage")):
+            return False
+        c["assessment"] = {k: assessment[k] for k in ("summary", "kind", "coverage", "reason") if assessment.get(k)}
+        if assessment.get("kind") and assessment["kind"] != "unknown":
+            c["candidate_kind"] = assessment["kind"]
+        c["coverage_score"] = ranking.coverage_score(assessment["coverage"], assessed_reqs, t)
+        return True
+
     for m in remembered:
         memory_info = {"claims": [{k: cl[k] for k in ("id", "kind", "grade", "statement", "status", "current", "observedAt", "revalidatedAt")}
                                   for cl in m["claims"]],
@@ -494,6 +504,10 @@ def merge_remembered(candidates: List[Dict[str, Any]], remembered: List[Dict[str
             if "memory" not in existing["provenance"]:
                 existing["provenance"].append("memory")
             existing["memory"] = memory_info
+            # Searched but not assessed this time (outside the README limit): memory's assessment stands in
+            if existing.get("coverage_score") is None and apply_assessment(existing, m.get("assessment")):
+                existing["final_score"] = ranking.final_score(existing, t)
+                reused += 1
             continue
         meta = m.get("meta") or {}
         c = {"full_name": m["fullName"], **meta, "matched_queries": [], "matched_requirements": list(m["matchedRequirements"]),
@@ -501,20 +515,15 @@ def merge_remembered(candidates: List[Dict[str, Any]], remembered: List[Dict[str
              "provenance": ["memory"], "memory": memory_info}
         c["health_score"] = ranking.health_score(c, now, t)
         c["relevance_score"] = ranking.relevance_score(c, requirements_json, max(1, query_count), t)
-        assessment = m.get("assessment")
-        if assessment and assessment.get("coverage"):
-            c["assessment"] = {k: assessment[k] for k in ("summary", "kind", "coverage", "reason") if assessment.get(k)}
-            if assessment.get("kind") and assessment["kind"] != "unknown":
-                c["candidate_kind"] = assessment["kind"]
-            c["coverage_score"] = ranking.coverage_score(assessment["coverage"], assessed_reqs, t)
+        apply_assessment(c, m.get("assessment"))
         c["final_score"] = ranking.final_score(c, t)
         candidates.append(c)
         by_name[c["full_name"].lower()] = c
         added += 1
-    if added:
+    if added or reused:
         candidates.sort(key=lambda c: c["final_score"], reverse=True)
         del candidates[t.get("discovery.max_stored_candidates"):]
         ranking.select_shortlist(candidates, t.get("discovery.shortlist_size"), t.get("discovery.shortlist_max_stale_days"), now)
         for rank, c in enumerate(candidates, start=1):
             c["rank"] = rank
-    return {"added": added, "alsoFound": known}
+    return {"added": added, "alsoFound": known, "assessmentsReused": reused}

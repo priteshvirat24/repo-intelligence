@@ -177,6 +177,7 @@ def run_discover(ctx: TaskContext) -> Outcome:
                                          len(metrics.get("queries") or []), ctx.tuning)
         metrics["memoryCandidates"] = merged["added"]
         metrics["memoryAlsoFound"] = merged["alsoFound"]
+        metrics["memoryAssessmentsReused"] = merged["assessmentsReused"]
         metrics["searchesAvoided"] = len(metrics.get("queriesSkipped") or [])
         if procedures and metrics.get("queryPlanner") == "llm":
             metrics["proceduresApplied"] = [p["id"] for p in procedures]

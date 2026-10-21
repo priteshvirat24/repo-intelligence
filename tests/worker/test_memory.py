@@ -144,11 +144,34 @@ def test_merge_adds_remembered_candidates_with_provenance():
         {"fullName": "found/by-search", "matchedRequirements": ["Orbit propagation"], "claims": [], "via": ["claims"]},
     ]
     counts = memory.merge_remembered(searched, remembered, REQUIREMENTS, 2, default_tuning())
-    assert counts == {"added": 1, "alsoFound": 1}
+    assert counts == {"added": 1, "alsoFound": 1, "assessmentsReused": 0}
     by_name = {c["full_name"]: c for c in searched}
     assert by_name["mem/orbit"]["provenance"] == ["memory"] and by_name["mem/orbit"]["shortlisted"]
     assert by_name["found/by-search"]["provenance"] == ["search", "memory"]
     assert [c["rank"] for c in searched] == [1, 2] and searched[0]["full_name"] == "mem/orbit"
+
+
+def test_merge_reuses_memory_assessment_for_unassessed_search_hits():
+    # Found by search but outside this run's README limit: the assessment memory holds ranks it instead of no coverage
+    unassessed = {"full_name": "found/unassessed", "source_url": "https://github.com/found/unassessed", "stars": 5000, "forks": 1,
+                  "open_issues": 0, "license": "MIT", "pushed_at": datetime.now(timezone.utc).isoformat(), "matched_queries": ["sgp4"],
+                  "matched_requirements": ["Orbit propagation"], "best_position": 3, "candidate_kind": "unknown",
+                  "relevance_score": 0.4, "health_score": 0.8, "coverage_score": None, "final_score": 0.2, "rank": 2,
+                  "shortlisted": False, "assessment": {}}
+    assessed = {**unassessed, "full_name": "found/assessed", "coverage_score": 0.2, "candidate_kind": "library", "final_score": 0.3,
+                "rank": 1, "assessment": {"coverage": {"Orbit propagation": "partial"}}}
+    searched = [assessed, unassessed]
+    remembered = [{"fullName": "found/unassessed", "matchedRequirements": ["Orbit propagation"], "claims": [], "via": ["workspace_briefs"],
+                   "assessment": {"summary": "SGP4", "kind": "library", "coverage": {"Orbit propagation": "yes"}, "fromBrief": "b0"}},
+                  {"fullName": "found/assessed", "matchedRequirements": ["Orbit propagation"], "claims": [], "via": ["workspace_briefs"],
+                   "assessment": {"kind": "library", "coverage": {"Orbit propagation": "no"}, "fromBrief": "b0"}}]
+    counts = memory.merge_remembered(searched, remembered, REQUIREMENTS, 2, default_tuning())
+    assert counts == {"added": 0, "alsoFound": 2, "assessmentsReused": 1}
+    by_name = {c["full_name"]: c for c in searched}
+    # This run's own assessment is never replaced; the unassessed hit now carries memory's and ranks first
+    assert by_name["found/assessed"]["assessment"]["coverage"] == {"Orbit propagation": "partial"}
+    assert by_name["found/unassessed"]["candidate_kind"] == "library" and by_name["found/unassessed"]["coverage_score"] is not None
+    assert searched[0]["full_name"] == "found/unassessed" and searched[0]["rank"] == 1
 
 
 class SilentLLM(BaseLLMProvider):
