@@ -75,6 +75,20 @@ def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, An
         conn.close()
 
 
+def pacing(transport: RecordingTransport, mode: str):
+    """The runner's pause between searches respects GitHub's search quota. Only live requests count
+    against it, so in replay and fill the pause is skipped when the last search came from the snapshot."""
+    if mode == "replay":
+        return lambda seconds: None
+    last = {"fetched": transport.fetched}
+
+    def sleep(seconds: float):
+        if transport.fetched != last["fetched"]:
+            time.sleep(seconds)
+        last["fetched"] = transport.fetched
+    return sleep
+
+
 def main(argv: List[str] = None) -> int:
     parser = argparse.ArgumentParser(description="Open Eye evaluation harness")
     parser.add_argument("--suite", required=True)
@@ -123,10 +137,7 @@ def main(argv: List[str] = None) -> int:
             else:
                 decomposition = json.loads((requirements_dir / f"{brief['id']}.json").read_text())
                 github = GitHubSearchClient(http=http)
-                runner = DiscoveryRunner(
-                    get_llm_provider(), github, tuning=tuning,
-                    sleep=(lambda s: None) if args.mode == "replay" else time.sleep,
-                )
+                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode))
                 with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}", tuning_version=tuning.version):
                     result = runner.run(decomposition["requirements"])
                 out = {
