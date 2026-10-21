@@ -860,8 +860,33 @@ class IngestionWorker:
                 break
             processed += 1
 
+    def _start_worker_heartbeat(self, interval: float = 20.0) -> threading.Event:
+        """Reports this worker as alive every `interval` seconds while it runs, BUSY with what it is doing.
+        The loop only beats between jobs, so an indexing pass or blueprint of several minutes made a
+        working worker look OFFLINE on /api/health."""
+        stop = threading.Event()
+
+        def beat():
+            while not stop.wait(interval) and self.running:
+                try:
+                    if self.active_job:
+                        self.db.record_heartbeat(self.worker_id, current_job_id=self.active_job["id"], status="BUSY")
+                    elif self.active_task:
+                        self.db.record_heartbeat(self.worker_id, status="BUSY",
+                                                 metadata={"briefId": str(self.active_task["brief_id"]), "task": self.active_task["type"]})
+                    elif self.active_build:
+                        self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"buildId": str(self.active_build["id"])})
+                    else:
+                        self.db.record_heartbeat(self.worker_id, status="ALIVE")
+                except Exception as beat_error:
+                    print(f"[{self.worker_id}] Worker heartbeat failed: {beat_error}", file=sys.stderr, flush=True)
+
+        threading.Thread(target=beat, name="worker-heartbeat", daemon=True).start()
+        return stop
+
     def run_loop(self):
         print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...", flush=True)
+        self._start_worker_heartbeat()
         while self.running:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
