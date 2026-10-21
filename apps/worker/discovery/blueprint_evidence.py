@@ -48,8 +48,13 @@ LICENCE_POLICIES = ("copyleft-flagged", "permissive-only", "any")
 DEFAULT_LICENCE_POLICY = "copyleft-flagged"
 
 
+# Markdown emphasis the model adds ("**taskforcesh/bullmq**"); the page shows plain text. Only pairs around a word,
+# so globs such as src/**/*.ts are left alone.
+EMPHASIS = re.compile(r"(\*\*|__)([A-Za-z0-9][^*_\n]*?)\1")
+
+
 def text(value: Any, limit: int) -> str:
-    return str(value or "").strip()[:limit]
+    return EMPHASIS.sub(r"\2", str(value or "")).strip()[:limit]
 
 
 def text_list(value: Any, limit: int, item_limit: int = 300) -> List[str]:

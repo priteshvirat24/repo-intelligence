@@ -538,3 +538,9 @@ def test_deep_copy_of_inputs_is_not_mutated_by_generation():
     before = copy.deepcopy(d)
     generate_blueprint(StagedLLM(), d, NOW)
     assert d == before
+
+
+def test_text_drops_markdown_emphasis_but_keeps_globs():
+    from apps.worker.discovery.blueprint_evidence import text
+    assert text("Reuse **taskforcesh/bullmq** with __node-resque__", 200) == "Reuse taskforcesh/bullmq with node-resque"
+    assert text("Lint src/**/*.ts and lib/**/x", 200) == "Lint src/**/*.ts and lib/**/x"
