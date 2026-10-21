@@ -73,9 +73,10 @@ def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, An
                 SELECT split_part(scope_id, ':', 2) AS brief, COUNT(*), COUNT(*) FILTER (WHERE NOT success),
                        COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
                        SUM(cost_cents), COUNT(*) FILTER (WHERE cost_cents IS NULL)
-                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s AND provider <> ALL(%s) GROUP BY 1
+                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s AND provider = ANY(%s) GROUP BY 1
                 """,
-                (f"{run_id}:%", sorted(ledger.SOURCE_PROVIDERS))
+                # AI providers only: GitHub and the connector sources are metered too, but are not AI calls
+                (f"{run_id}:%", sorted(ledger.LLM_PROVIDERS))
             )
             return {
                 row[0]: {"llmCalls": row[1], "failedCalls": row[2], "inputTokens": row[3], "outputTokens": row[4],

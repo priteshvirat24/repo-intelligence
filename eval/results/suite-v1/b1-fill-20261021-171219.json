@@ -80,7 +80,7 @@
     "trapRejectionSurfaced": 0.5,
     "errors": 0,
     "meanDurationMs": 54856,
-    "llmCalls": 354,
+    "llmCalls": 60,
     "inputTokens": 207060,
     "outputTokens": 38500,
     "costCents": null
@@ -2915,7 +2915,7 @@
       },
       "durationMs": 55024,
       "ledger": {
-        "llmCalls": 23,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 14510,
         "outputTokens": 2791,
@@ -5710,7 +5710,7 @@
       },
       "durationMs": 51853,
       "ledger": {
-        "llmCalls": 23,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 14011,
         "outputTokens": 2661,
@@ -8864,7 +8864,7 @@
       },
       "durationMs": 55386,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13637,
         "outputTokens": 2522,
@@ -11719,7 +11719,7 @@
       },
       "durationMs": 46793,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 14396,
         "outputTokens": 2245,
@@ -15167,7 +15167,7 @@
       },
       "durationMs": 56069,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13426,
         "outputTokens": 2471,
@@ -18266,7 +18266,7 @@
       },
       "durationMs": 57040,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 12505,
         "outputTokens": 2589,
@@ -21014,7 +21014,7 @@
       },
       "durationMs": 45425,
       "ledger": {
-        "llmCalls": 22,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 12875,
         "outputTokens": 2335,
@@ -24181,7 +24181,7 @@
       },
       "durationMs": 61107,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13496,
         "outputTokens": 2717,
@@ -27535,7 +27535,7 @@
       },
       "durationMs": 55784,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13234,
         "outputTokens": 2353,
@@ -31154,7 +31154,7 @@
       },
       "durationMs": 49652,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 14682,
         "outputTokens": 2536,
@@ -34400,7 +34400,7 @@
       },
       "durationMs": 53591,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 14973,
         "outputTokens": 2604,
@@ -37179,7 +37179,7 @@
       },
       "durationMs": 77674,
       "ledger": {
-        "llmCalls": 22,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 15424,
         "outputTokens": 2819,
@@ -40631,7 +40631,7 @@
       },
       "durationMs": 50441,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13760,
         "outputTokens": 2809,
@@ -44183,7 +44183,7 @@
       },
       "durationMs": 45104,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13097,
         "outputTokens": 2476,
@@ -47090,7 +47090,7 @@
       },
       "durationMs": 61905,
       "ledger": {
-        "llmCalls": 24,
+        "llmCalls": 4,
         "failedCalls": 0,
         "inputTokens": 13034,
         "outputTokens": 2572,

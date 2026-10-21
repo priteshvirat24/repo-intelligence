@@ -1,0 +1,395 @@
+{
+  "suite": "suite-v1",
+  "baseline": "cfg-66b9cecdb37a",
+  "evidenceRuns": [
+    "b1-fill-20261021-170326",
+    "b1-fill-20261021-171219",
+    "b1-fill-20261021-171952"
+  ],
+  "notes": [
+    "b1-fill-20261021-130138: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-131446: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-132533: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-133603: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-134930: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-135927: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-141020: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-142026: no stored ranking features (recorded before they were stored)",
+    "b1-fill-20261021-144931: no stored ranking features (recorded before they were stored)"
+  ],
+  "finishedAt": "2026-10-21T17:38:09.490149+00:00",
+  "decision": {
+    "version": "cfg-e9518f237e00",
+    "overrides": {
+      "ranking.coverage_value": {
+        "partial": 0.25
+      },
+      "discovery.shortlist_size": 5,
+      "ranking.final_weights": {
+        "coverage": 0.3,
+        "relevance": 0.65,
+        "health": 0.05
+      },
+      "ranking.non_implementation_factor": 0.6,
+      "discovery.shortlist_max_stale_days": 1460
+    },
+    "accepted": false,
+    "reasons": [
+      "No primary gain beyond the noise band: recall@10 +0.0037 (band \u00b10.03), shortlist precision +0.0092 (band \u00b10.0166), each required in every run."
+    ],
+    "gate": {
+      "accepted": false,
+      "target": null,
+      "reasons": [
+        "No primary gain beyond the noise band: recall@10 +0.0037 (band \u00b10.03), shortlist precision +0.0092 (band \u00b10.0166), each required in every run."
+      ],
+      "paired": true,
+      "runs": {
+        "baseline": 3,
+        "candidate": 3
+      },
+      "metrics": {
+        "recallAt10": {
+          "baseline": 0.3414,
+          "candidate": 0.3451,
+          "band": 0.03,
+          "baselineRuns": [
+            0.354,
+            0.3651,
+            0.3051
+          ],
+          "candidateRuns": [
+            0.354,
+            0.3651,
+            0.3162
+          ],
+          "perRunDelta": [
+            0.0,
+            0.0,
+            0.0111
+          ],
+          "delta": 0.0037
+        },
+        "shortlistPrecision": {
+          "baseline": 0.2553,
+          "candidate": 0.2644,
+          "band": 0.0166,
+          "baselineRuns": [
+            0.2429,
+            0.2762,
+            0.2467
+          ],
+          "candidateRuns": [
+            0.2286,
+            0.2714,
+            0.2933
+          ],
+          "perRunDelta": [
+            -0.0143,
+            -0.0048,
+            0.0466
+          ],
+          "delta": 0.0092
+        },
+        "shortlistRecall": {
+          "baseline": 0.2912,
+          "candidate": 0.2453,
+          "band": 0.0295,
+          "baselineRuns": [
+            0.2844,
+            0.324,
+            0.2651
+          ],
+          "candidateRuns": [
+            0.2178,
+            0.264,
+            0.254
+          ],
+          "perRunDelta": [
+            -0.0666,
+            -0.06,
+            -0.0111
+          ],
+          "delta": -0.0459
+        },
+        "trapRejectionSurfaced": {
+          "baseline": 0.5333,
+          "candidate": 0.3,
+          "band": 0.05,
+          "baselineRuns": [
+            0.5,
+            0.5,
+            0.6
+          ],
+          "candidateRuns": [
+            0.25,
+            0.25,
+            0.4
+          ],
+          "perRunDelta": [
+            -0.25,
+            -0.25,
+            -0.2
+          ],
+          "delta": -0.2333
+        },
+        "recallAll": {
+          "baseline": 0.415,
+          "candidate": 0.415,
+          "band": 0.0144,
+          "baselineRuns": [
+            0.4157,
+            0.429,
+            0.4002
+          ],
+          "candidateRuns": [
+            0.4157,
+            0.429,
+            0.4002
+          ],
+          "perRunDelta": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "delta": 0.0
+        }
+      },
+      "trapsShortlisted": {
+        "baseline": 6,
+        "candidate": 9
+      },
+      "changedKeys": [
+        "discovery.shortlist_max_stale_days",
+        "discovery.shortlist_size",
+        "ranking.coverage_value",
+        "ranking.final_weights",
+        "ranking.non_implementation_factor"
+      ]
+    }
+  },
+  "baselineMetrics": [
+    {
+      "briefs": 15,
+      "recallAt10": 0.354,
+      "recallAll": 0.4157,
+      "shortlistPrecision": 0.2429,
+      "shortlistRecall": 0.2844,
+      "trapRejection": 0.8125,
+      "trapsSurfaced": 4,
+      "trapsShortlisted": 2,
+      "trapRejectionSurfaced": 0.5
+    },
+    {
+      "briefs": 15,
+      "recallAt10": 0.3651,
+      "recallAll": 0.429,
+      "shortlistPrecision": 0.2762,
+      "shortlistRecall": 0.324,
+      "trapRejection": 0.8125,
+      "trapsSurfaced": 4,
+      "trapsShortlisted": 2,
+      "trapRejectionSurfaced": 0.5
+    },
+    {
+      "briefs": 15,
+      "recallAt10": 0.3051,
+      "recallAll": 0.4002,
+      "shortlistPrecision": 0.2467,
+      "shortlistRecall": 0.2651,
+      "trapRejection": 0.75,
+      "trapsSurfaced": 5,
+      "trapsShortlisted": 2,
+      "trapRejectionSurfaced": 0.6
+    }
+  ],
+  "evaluated": 298,
+  "top": [
+    {
+      "version": "cfg-e9518f237e00",
+      "overrides": {
+        "ranking.coverage_value": {
+          "partial": 0.25
+        },
+        "discovery.shortlist_size": 5,
+        "ranking.final_weights": {
+          "coverage": 0.3,
+          "relevance": 0.65,
+          "health": 0.05
+        },
+        "ranking.non_implementation_factor": 0.6,
+        "discovery.shortlist_max_stale_days": 1460
+      },
+      "accepted": false,
+      "recallAt10": 0.0037,
+      "shortlistPrecision": 0.0092
+    },
+    {
+      "version": "cfg-361ba8dabc7b",
+      "overrides": {
+        "ranking.coverage_value": {
+          "partial": 0.25
+        },
+        "ranking.final_weights": {
+          "coverage": 0.6,
+          "relevance": 0.3,
+          "health": 0.1
+        },
+        "discovery.shortlist_size": 8
+      },
+      "accepted": false,
+      "recallAt10": 0.0037,
+      "shortlistPrecision": -0.0142
+    },
+    {
+      "version": "cfg-1ea6f405e882",
+      "overrides": {
+        "ranking.final_weights": {
+          "coverage": 0.3,
+          "relevance": 0.55,
+          "health": 0.15
+        },
+        "ranking.non_implementation_factor": 0.4,
+        "discovery.shortlist_size": 4,
+        "ranking.duplicate_factor": 0.3,
+        "discovery.shortlist_max_stale_days": 548,
+        "ranking.coverage_value": {
+          "partial": 0.75
+        }
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0816
+    },
+    {
+      "version": "cfg-e0edc1fc892b",
+      "overrides": {
+        "ranking.duplicate_factor": 0.1,
+        "discovery.shortlist_size": 4,
+        "ranking.non_implementation_factor": 0.7,
+        "ranking.coverage_value": {
+          "partial": 0.25
+        },
+        "ranking.final_weights": {
+          "coverage": 0.45,
+          "relevance": 0.45,
+          "health": 0.1
+        },
+        "ranking.unassessed_factor": 0.5
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0642
+    },
+    {
+      "version": "cfg-920faa6e45d3",
+      "overrides": {
+        "ranking.non_implementation_factor": 0.6,
+        "ranking.final_weights": {
+          "coverage": 0.2,
+          "relevance": 0.4,
+          "health": 0.4
+        },
+        "ranking.coverage_value": {
+          "partial": 0.75
+        },
+        "discovery.shortlist_size": 4,
+        "ranking.unassessed_factor": 0.5
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0582
+    },
+    {
+      "version": "cfg-34a19e9744e7",
+      "overrides": {
+        "ranking.final_weights": {
+          "coverage": 0.6,
+          "relevance": 0.1,
+          "health": 0.3
+        },
+        "ranking.unassessed_factor": 0.5,
+        "ranking.duplicate_factor": 0.1,
+        "ranking.non_implementation_factor": 0.7,
+        "discovery.shortlist_size": 4,
+        "ranking.coverage_value": {
+          "partial": 0.25
+        },
+        "discovery.shortlist_max_stale_days": 730
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0531
+    },
+    {
+      "version": "cfg-f232a2ce4c3c",
+      "overrides": {
+        "discovery.shortlist_size": 4,
+        "ranking.final_weights": {
+          "coverage": 0.3,
+          "relevance": 0.3,
+          "health": 0.4
+        },
+        "ranking.duplicate_factor": 0.1,
+        "ranking.coverage_value": {
+          "partial": 0.75
+        },
+        "ranking.non_implementation_factor": 0.4
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0523
+    },
+    {
+      "version": "cfg-3c1569d11996",
+      "overrides": {
+        "ranking.coverage_value": {
+          "partial": 0.75
+        },
+        "ranking.duplicate_factor": 0.4,
+        "discovery.shortlist_max_stale_days": 730,
+        "discovery.shortlist_size": 4,
+        "ranking.non_implementation_factor": 0.3,
+        "ranking.final_weights": {
+          "coverage": 0.35,
+          "relevance": 0.35,
+          "health": 0.3
+        },
+        "ranking.unassessed_factor": 0.7
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0523
+    },
+    {
+      "version": "cfg-20a5c2e8d44e",
+      "overrides": {
+        "ranking.non_implementation_factor": 0.3,
+        "discovery.shortlist_size": 4,
+        "ranking.duplicate_factor": 0.1,
+        "ranking.coverage_value": {
+          "partial": 0.25
+        },
+        "ranking.unassessed_factor": 0.6,
+        "ranking.final_weights": {
+          "coverage": 0.25,
+          "relevance": 0.55,
+          "health": 0.2
+        },
+        "discovery.shortlist_max_stale_days": 1095
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0519
+    },
+    {
+      "version": "cfg-df2508029b53",
+      "overrides": {
+        "discovery.shortlist_size": 4
+      },
+      "accepted": false,
+      "recallAt10": 0.0,
+      "shortlistPrecision": 0.0467
+    }
+  ]
+}

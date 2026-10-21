@@ -27,6 +27,9 @@ def fmt(values: List[float], digits: int = 3) -> str:
 def variant(run: Dict[str, Any]) -> str:
     """b0, b0s, or b1:<tuning name>: runs of one system with different tunings are compared, not averaged."""
     name = run.get("tuningName")
+    # "default" names whatever the defaults were when the run was made, so it is told apart by version
+    if name == "default" and run.get("tuningVersion"):
+        name = f"default {run['tuningVersion']}"
     return f"{run['system']}:{name}" if name else run["system"]
 
 

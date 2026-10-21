@@ -7,7 +7,8 @@ accepted only if
 - its primary metric improves by more than the baseline's run-to-run noise: recall@10 first, shortlist
   precision when recall@10 does not move;
 - no guard metric regresses beyond tolerance: shortlist precision (when recall@10 is the target), recall@10
-  (when precision is), and trap rejection among the traps it surfaced;
+  (when precision is), shortlist recall (the essential solutions it recommends: a shorter shortlist raises
+  precision without recommending anything better), and trap rejection among the traps it surfaced;
 - cost and latency do not regress beyond COST_TOLERANCE.
 
 Two kinds of evidence:
@@ -28,7 +29,7 @@ MIN_RUNS = 3
 # Even identical baseline runs leave a band: a gain must be worth a version
 MIN_BAND = 0.005
 # Allowed regression of a guard metric (absolute, macro average over briefs)
-TOLERANCE = {"shortlistPrecision": 0.01, "recallAt10": 0.0, "trapRejectionSurfaced": 0.0}
+TOLERANCE = {"shortlistPrecision": 0.01, "recallAt10": 0.0, "shortlistRecall": 0.0, "trapRejectionSurfaced": 0.0}
 # Cost and latency must not regress beyond 10% (SYSTEM_DESIGN 10.4)
 COST_TOLERANCE = 0.10
 COST_KEYS = ("llmCalls", "inputTokens", "outputTokens", "meanDurationMs")
@@ -69,7 +70,7 @@ def gate(baseline: List[Dict[str, Any]], candidate: List[Dict[str, Any]], change
         raise ValueError("A paired comparison scores both configurations on the same runs")
     reasons: List[str] = []
     metrics = {key: _compare(baseline, candidate, key, paired)
-               for key in ("recallAt10", "shortlistPrecision", "trapRejectionSurfaced", "recallAll")}
+               for key in ("recallAt10", "shortlistPrecision", "shortlistRecall", "trapRejectionSurfaced", "recallAll")}
     traps_base = sum(b.get("trapsShortlisted", 0) for b in baseline)
     traps_cand = sum(c.get("trapsShortlisted", 0) for c in candidate)
     result: Dict[str, Any] = {
@@ -106,6 +107,10 @@ def gate(baseline: List[Dict[str, Any]], candidate: List[Dict[str, Any]], change
     def no_run_loses(m: Dict[str, Any]) -> bool:
         return not paired or all(d >= 0 for d in m["perRunDelta"])
 
+    def no_run_loses_defined(m: Dict[str, Any]) -> bool:
+        # Runs recorded before a metric existed carry None for it and are not held against the candidate
+        return m["delta"] is None or no_run_loses(m)
+
     if beats(recall):
         result["target"] = "recallAt10"
         if not holds(precision, "shortlistPrecision"):
@@ -119,6 +124,10 @@ def gate(baseline: List[Dict[str, Any]], candidate: List[Dict[str, Any]], change
             + (", each required in every run." if paired else ".")
         )
         return result
+
+    shortlist_recall = metrics["shortlistRecall"]
+    if not holds(shortlist_recall, "shortlistRecall") or not no_run_loses_defined(shortlist_recall):
+        reasons.append(f"Guard regressed: essential solutions on the shortlist {fmt(shortlist_recall['delta'])}.")
 
     if paired:
         traps = metrics["trapRejectionSurfaced"]

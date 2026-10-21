@@ -141,6 +141,16 @@ def test_gate_uses_precision_when_recall_does_not_move():
     assert result["accepted"] and result["target"] == "shortlistPrecision"
 
 
+def test_gate_rejects_precision_bought_with_a_shorter_shortlist():
+    # Dropping one of two essential solutions from the shortlist raises precision; it is not an improvement
+    base = [agg(0.30, 0.25, shortlistRecall=0.5), agg(0.28, 0.24, shortlistRecall=0.48), agg(0.32, 0.26, shortlistRecall=0.52)]
+    shorter = [agg(0.30, 0.30, shortlistRecall=0.4), agg(0.28, 0.29, shortlistRecall=0.44), agg(0.32, 0.31, shortlistRecall=0.5)]
+    result = gate_rules.gate(base, shorter, KEYS, offline.OFFLINE_EXACT_KEYS)
+    assert not result["accepted"] and any("essential solutions on the shortlist" in r for r in result["reasons"])
+    kept = [agg(0.30, 0.30, shortlistRecall=0.5), agg(0.28, 0.29, shortlistRecall=0.48), agg(0.32, 0.31, shortlistRecall=0.53)]
+    assert gate_rules.gate(base, kept, KEYS, offline.OFFLINE_EXACT_KEYS)["accepted"]
+
+
 def test_gate_refuses_what_it_cannot_decide():
     gain = [agg(0.5, 0.3)] * 3
     assert "replay" in gate_rules.gate(BASE_RUNS, gain, ["discovery.min_stars"], offline.OFFLINE_EXACT_KEYS)["reasons"][0]
