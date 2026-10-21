@@ -233,6 +233,27 @@ A run stops, and says which condition stopped it, when:
 
 When uncertain, it states what is unknown and what evidence would resolve it.
 
+### 6.5 Research scope
+
+**Sources.** Discovery must be able to draw on every kind of source that holds evidence about existing solutions:
+- code hosts: repositories, issues, pull requests, releases, code examples;
+- official documentation and API references;
+- technical Q&A and discussion forums;
+- package registries and their dependency, licence and vulnerability data;
+- technical articles, tutorials and research papers;
+- other public websites with relevant implementations.
+
+Each source type is an interchangeable component. Adding, replacing or removing one must not require redesigning the system. Which tools fetch them is a design decision ([SYSTEM_DESIGN.md §5](SYSTEM_DESIGN.md#5-discovery-and-extraction-layer)).
+
+**Strategy, not volume.** The research plan chooses sources and queries for the brief by:
+- relevance;
+- source quality, informed by source reliability memory;
+- expected information gain against cost;
+- access permissions;
+- the remaining budget.
+
+Official APIs and structured data come first; crawling and browser rendering are used only where those are insufficient (section 7.3). Success is measured by the evidence gained (section 10), never by pages fetched or tools used.
+
 ## 7. Autonomy boundaries
 
 ### 7.1 What it may do
