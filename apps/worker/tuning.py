@@ -59,7 +59,8 @@ def default_tuning() -> Tuning:
     import this one)."""
     global _DEFAULT
     if _DEFAULT is None:
-        from .discovery import assess, blueprint, planner, ranking, runner
+        from .discovery import assess, blueprint, planner, ranking, registry_search, runner
+        from . import docs_evidence
         _DEFAULT = Tuning({
             "discovery.max_queries": planner.MAX_QUERIES,
             "discovery.max_query_words": planner.MAX_QUERY_WORDS,
@@ -88,6 +89,16 @@ def default_tuning() -> Tuning:
             # None: the provider's configured model (LLM_MODEL)
             "models.discovery": None,
             "models.blueprint": None,
+            # Phase 2: discovery breadth (registries, diminishing returns) and evidence depth (docs task)
+            "discovery.stop_after_unproductive": runner.STOP_AFTER_UNPRODUCTIVE,
+            "discovery.novelty_min_health": runner.NOVELTY_MIN_HEALTH,
+            "discovery.registry_results_per_query": registry_search.RESULTS_PER_QUERY,
+            "discovery.registry_max_new_repos": registry_search.MAX_NEW_REPOS,
+            "docs.max_pages": docs_evidence.MAX_PAGES,
+            "docs.passages_per_requirement": docs_evidence.PASSAGES_PER_REQUIREMENT,
+            "docs.max_packages": docs_evidence.MAX_PACKAGES,
+            "docs.max_known_issues": docs_evidence.MAX_KNOWN_ISSUES,
+            "prompts.docs_evidence": docs_evidence.SYSTEM_PROMPT,
         })
     return _DEFAULT
 

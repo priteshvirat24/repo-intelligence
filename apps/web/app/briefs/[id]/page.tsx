@@ -11,6 +11,7 @@ import { LoadError } from '@/components/IndexingState';
 import { BlueprintSection } from '@/components/briefs/BlueprintSection';
 import { BuildPanel } from '@/components/briefs/BuildPanel';
 import { BudgetPanel, ConstraintsEditor, TaskTimeline, UnderstandingPanel } from '@/components/briefs/RunPanel';
+import { CandidateEvidence, CandidateSources } from '@/components/briefs/CandidateEvidence';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { KIND_LABELS, compactNumber, discoveryProgress, discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
 
@@ -290,6 +291,9 @@ export default function BriefDetailPage() {
                   {brief.discovery?.durationMs ? ` in ${Math.round(brief.discovery.durationMs / 1000)}s` : ''}.
                   {brief.discovery?.queryPlanner === 'heuristic' && ' Queries were built from requirement keywords because the AI planner was unavailable.'}
                   {brief.discovery?.githubAuthenticated === false && ' GitHub was searched without a token, at lower rate limits.'}
+                  {brief.discovery?.registries && Object.keys(brief.discovery.registries.repositoriesFound).length > 0 &&
+                    ` Package registries pointed at ${Object.entries(brief.discovery.registries.repositoriesFound).map(([r, n]) => `${n} via ${r === 'crates' ? 'crates.io' : r}`).join(', ')}.`}
+                  {brief.discovery?.diminishingReturns && ` ${brief.discovery.diminishingReturns.skippedQueries.length} later queries were skipped: the previous ${brief.discovery.diminishingReturns.afterUnproductive} found nothing new.`}
                   {brief.discoveredAt && ` Last run ${shortDate(brief.discoveredAt)}.`}
                 </div>
                 <div className="row wrap gap-2">
@@ -376,6 +380,7 @@ const CandidateCard: React.FC<{
           </a>
           <span className="tag">{KIND_LABELS[c.candidateKind] || c.candidateKind}</span>
           {c.duplicateOf && <span className="tag">Copy of {c.duplicateOf}</span>}
+          <CandidateSources candidate={c} />
           {c.provenance?.includes('memory') && (
             <Link href={`/memory`} className="tag" title={c.memory?.lastVerifiedAt ? `Remembered from earlier research, last verified ${shortDate(c.memory.lastVerifiedAt)}` : 'Remembered from earlier research'}>
               {c.provenance.includes('search') ? 'also in memory' : 'from memory'}
@@ -407,6 +412,8 @@ const CandidateCard: React.FC<{
       )}
 
       {!compact && c.assessment?.reason && <p className="small muted">{c.assessment.reason}</p>}
+
+      {!compact && <CandidateEvidence candidate={c} />}
 
       <div className="row wrap between gap-3">
         <span className="xsmall faint mono">

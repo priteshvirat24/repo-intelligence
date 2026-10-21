@@ -26,19 +26,23 @@ class BudgetExceeded(RuntimeError):
 
 
 LLM_PROVIDERS = {"mistral", "openai", "anthropic"}
+# External sources reached through the connector gateway (apps/worker/connectors). Each request counts
+# against the run's sourceRequests budget (PRODUCT_DEFINITION 7.2: search, API and crawl request counts).
+SOURCE_PROVIDERS = {"depsdev", "osv", "npm", "crates", "stackexchange", "tavily", "arxiv", "docs"}
 
 
 class Budget:
     """Limits for one run, with usage so far. Checked before each metered call and charged after it.
 
-    limits: llmCalls, tokens, githubRequests (absent or None means unlimited)."""
+    limits: llmCalls, tokens, githubRequests, sourceRequests (absent or None means unlimited)."""
 
     def __init__(self, limits: Dict[str, Optional[int]], used: Optional[Dict[str, int]] = None):
         self.limits = {k: v for k, v in (limits or {}).items() if v is not None}
         self.used = {"llmCalls": 0, "tokens": 0, "githubRequests": 0, **(used or {})}
 
     def check(self, provider: str):
-        keys = ["llmCalls", "tokens"] if provider in LLM_PROVIDERS else ["githubRequests"] if provider == "github" else []
+        keys = (["llmCalls", "tokens"] if provider in LLM_PROVIDERS else ["githubRequests"] if provider == "github"
+                else ["sourceRequests"] if provider in SOURCE_PROVIDERS else [])
         for key in keys:
             limit = self.limits.get(key)
             if limit is not None and self.used.get(key, 0) >= limit:
@@ -51,6 +55,8 @@ class Budget:
             self.used["tokens"] += (entry.get("input_tokens") or 0) + (entry.get("output_tokens") or 0)
         if entry["provider"] == "github":
             self.used["githubRequests"] += 1
+        if entry["provider"] in SOURCE_PROVIDERS:
+            self.used["sourceRequests"] = self.used.get("sourceRequests", 0) + 1
 
 
 _budget: ContextVar[Optional[Budget]] = ContextVar("ledger_budget", default=None)

@@ -52,6 +52,19 @@ class GitHubSearchClient:
         resp.raise_for_status()
         return resp.text[:max_chars]
 
+    def fetch_repository(self, full_name: str) -> Optional[Dict[str, Any]]:
+        """Search-result fields for one repository (a candidate a package registry pointed at), under its
+        current name (renamed repositories redirect). None when it is missing, private, archived or a fork."""
+        resp = self._get("repository", f"https://api.github.com/repos/{full_name}", headers=self.headers, follow_redirects=True)
+        self._raise_for_rate_limit(resp)
+        if resp.status_code in (301, 403, 404, 451):
+            return None
+        resp.raise_for_status()
+        item = resp.json()
+        if item.get("private") or item.get("archived") or item.get("fork"):
+            return None
+        return _repo_fields(item)
+
     def _get(self, operation: str, url: str, **kwargs) -> httpx.Response:
         """A metered GitHub request: counted against the run's budget and recorded in the ledger."""
         import time
@@ -84,4 +97,5 @@ def _repo_fields(item: Dict[str, Any]) -> Dict[str, Any]:
         "open_issues": int(item.get("open_issues_count") or 0),
         "license": (item.get("license") or {}).get("spdx_id"),
         "pushed_at": item.get("pushed_at"),
+        "homepage": item.get("homepage") or None,
     }

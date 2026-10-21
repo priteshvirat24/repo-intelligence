@@ -514,6 +514,7 @@ export type DiscoveryStep =
   | 'SEARCHING_GITHUB'
   | 'READING_READMES'
   | 'RANKING'
+  | 'READING_DOCS'
   | 'VERIFYING'
   | 'EXECUTING'
   | 'DESIGNING'
@@ -677,7 +678,7 @@ export interface BriefUsage {
 export type TaskStatus = 'pending' | 'running' | 'waiting' | 'awaiting_input' | 'done' | 'failed' | 'stale' | 'cancelled';
 
 export interface BriefTask {
-  type: 'understand' | 'recall' | 'discover' | 'verify' | 'execute' | 'blueprint';
+  type: 'understand' | 'recall' | 'discover' | 'verify' | 'docs' | 'execute' | 'blueprint';
   status: TaskStatus;
   errorMessage?: string | null;
   startedAt?: string | null;
@@ -699,8 +700,8 @@ export interface BriefUnderstanding {
 }
 
 export interface BriefBudget {
-  limits: { llmCalls: number; tokens: number; githubRequests: number };
-  used: { llmCalls: number; tokens: number; githubRequests: number };
+  limits: { llmCalls: number; tokens: number; githubRequests: number; sourceRequests: number };
+  used: { llmCalls: number; tokens: number; githubRequests: number; sourceRequests: number };
 }
 
 export interface BriefDetail extends BriefSummary {
@@ -1141,4 +1142,58 @@ export interface BuildDetail extends BuildSummary {
   report: BuildTestReport | null;
   diff: string | null;
   files: string[];
+}
+
+// Phase 2: discovery breadth and verification depth (package registries, advisories, official docs, forums)
+
+/** Where a candidate was found: GitHub search, or a package registry whose package names the repository */
+export type CandidateSource = 'github' | 'npm' | 'crates';
+
+export interface CandidatePackage {
+  system: string; // NPM, CARGO, PYPI, GO, ...
+  name: string;
+  version?: string | null;
+  url?: string;
+}
+
+export type Phase2ClaimKind = 'licence' | 'licence_conflict' | 'maintenance' | 'vulnerability' | 'capability' | 'known_issue';
+
+/** A graded claim about a candidate from the docs task, as shown on the brief page */
+export interface CandidateClaim {
+  id: string;
+  kind: Phase2ClaimKind;
+  statement: string;
+  grade: 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
+  status: 'current' | 'needs_revalidation' | 'refuted';
+  sourceUrl?: string | null;
+  /** The quoted passage (docs evidence) */
+  excerpt?: string | null;
+  section?: string | null;
+  advisoryIds?: string[];
+  severity?: string | null;
+}
+
+// Declaration merging: these fields are added to the interfaces declared above
+export interface BriefCandidate {
+  sources?: CandidateSource[];
+  packages?: CandidatePackage[];
+  homepage?: string | null;
+  /** Registry, advisory, docs and forum claims from the docs task (shortlisted candidates) */
+  evidence?: CandidateClaim[];
+}
+
+export interface DiscoveryQuery {
+  /** Not run: diminishing returns */
+  skipped?: boolean;
+}
+
+export interface DiscoveryMetrics {
+  /** Queries not run because the previous ones stopped finding new candidates */
+  diminishingReturns?: { skippedQueries: string[]; afterUnproductive: number } | null;
+  registries?: {
+    searches: Array<{ registry: string; query: string; results: number; resolved: number }>;
+    repositoriesFound: Record<string, number>;
+    newRepositoriesFetched: number;
+    unavailable: string[];
+  } | null;
 }

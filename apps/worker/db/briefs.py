@@ -21,8 +21,8 @@ class BriefStore:
                     brief_id, full_name, source_url, description, primary_language, topics, stars, forks,
                     open_issues, license, pushed_at, candidate_kind, matched_queries, matched_requirements,
                     relevance_score, health_score, coverage_score, final_score, rank, shortlisted,
-                    duplicate_of, assessment_json
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    duplicate_of, assessment_json, sources, packages_json, homepage
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     brief_id,
@@ -47,6 +47,9 @@ class BriefStore:
                     bool(c.get("shortlisted")),
                     _opt_text(c.get("duplicate_of"), 300),
                     Json(c.get("assessment") or {}),
+                    [_text(x, 30) for x in (c.get("sources") or ["github"])],
+                    Json(c.get("packages") or []),
+                    _opt_text(c.get("homepage"), 500),
                 )
             )
             if c.get("memory") or (c.get("provenance") and c["provenance"] != ["search"]):
@@ -60,6 +63,19 @@ class BriefStore:
             "UPDATE briefs SET discovery_json = %s, discovered_at = NOW(), updated_at = NOW() WHERE id = %s",
             (Json(metrics), brief_id)
         )
+
+    @staticmethod
+    def load_shortlist_sources(conn, brief_id: str) -> List[Dict[str, Any]]:
+        """The shortlisted candidates with what the docs task needs: licence, homepage and registry packages."""
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT full_name, license, homepage, packages_json AS packages, sources FROM brief_candidates
+                WHERE brief_id = %s AND shortlisted ORDER BY rank
+                """,
+                (brief_id,)
+            )
+            return [dict(r) for r in cur.fetchall()]
 
     @staticmethod
     def queue_verification(cur, target: Dict[str, Any]) -> Dict[str, Any]:
@@ -149,11 +165,14 @@ class BriefStore:
             )
         repo_id = str(cur.fetchone()[0])
         cur.execute("SELECT id FROM repositories WHERE id = %s FOR UPDATE", (repo_id,))
+        # A repository over the size limit gets a partial analysis (scope_json, migration 010) instead of being skipped
+        scope = target.get("scope")
         cur.execute(
-            "INSERT INTO ingestion_jobs (repository_id, resource_id, status, step) VALUES (%s, %s, 'QUEUED', 'QUEUED')",
-            (repo_id, resource_id)
+            "INSERT INTO ingestion_jobs (repository_id, resource_id, status, step, scope_json) VALUES (%s, %s, 'QUEUED', 'QUEUED', %s)",
+            (repo_id, resource_id, Json(scope) if scope else None)
         )
-        return {**entry, "state": "queued", "repositoryId": repo_id, "resourceId": resource_id}
+        queued = {**entry, "state": "queued", "repositoryId": repo_id, "resourceId": resource_id}
+        return {**queued, "partial": scope["reason"]} if scope else queued
 
 
     @staticmethod

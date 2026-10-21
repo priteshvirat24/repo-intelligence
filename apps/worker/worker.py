@@ -37,7 +37,7 @@ from .builder.runner import BuildStore, process_build
 
 # The progress step shown while each task runs (discovery refines it as it goes)
 TASK_STEP = {"understand": "UNDERSTANDING", "recall": "RECALLING_MEMORY", "discover": "PLANNING_QUERIES", "verify": "VERIFYING",
-             "execute": "EXECUTING", "blueprint": "DESIGNING"}
+             "docs": "READING_DOCS", "execute": "EXECUTING", "blueprint": "DESIGNING"}
 from .providers import ledger
 from . import tuning as tuning_registry
 
@@ -235,7 +235,15 @@ class IngestionWorker:
             print(f"[{self.worker_id}] Starting Stage: CLONING...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING", self.worker_id)
-            scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
+            # Phase 2: a repository over the size limit is analysed partially (scope set by the brief's verify task)
+            scope = self._job_scope(job_id)
+            partial: Optional[Dict[str, Any]] = None
+            if scope.get("mode") == "partial":
+                scratch_dir, commit_sha, partial = GitCloner.partial_clone(
+                    repo_url, default_branch or "main", scope.get("focusTerms") or [],
+                    config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024, config.MAX_FILES)
+            else:
+                scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
             # Safety net for disk usage (submission checks the same limit via the GitHub API)
             checkout_bytes = GitCloner.checkout_size_bytes(scratch_dir)
             if checkout_bytes > config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024:
@@ -667,6 +675,9 @@ class IngestionWorker:
                 reasons.append(f"Indexed {len(selected_chunks)} of {len(all_chunks)} text excerpts for search")
             if subsystems_found > len(subsystems):
                 reasons.append(f"Studied {len(subsystems)} of {subsystems_found} subsystems in depth")
+            if partial is not None:
+                shown = ", ".join(partial["paths"]) or "root files only"
+                reasons.insert(0, f"{scope.get('reason') or 'Repository exceeds the size limit'}; checked out: {shown}")
             if files_included < 5:
                 completeness_level = "limited"
                 reasons.insert(0, f"Repository has only {files_included} analyzable file{'s' if files_included != 1 else ''}")
@@ -681,6 +692,9 @@ class IngestionWorker:
                 "subsystemsAnalyzed": len(subsystems),
                 "reason": reason
             }
+            if partial is not None:
+                analysis_completeness["analysedPaths"] = partial["paths"]
+                analysis_completeness["skippedPaths"] = partial["skipped"]
 
             self.db.persist_ingestion_atomic(
                 job_id=job_id,
@@ -729,6 +743,17 @@ class IngestionWorker:
             if scratch_dir:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
+
+    def _job_scope(self, job_id: str) -> Dict[str, Any]:
+        """The job's analysis scope (ingestion_jobs.scope_json, migration 010); {} means the whole repository."""
+        conn = self.db.get_connection()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT scope_json FROM ingestion_jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        return (row[0] if row else None) or {}
 
     def process_task(self, task: Dict[str, Any]):
         """Runs one task of a brief's run graph inside the brief's budget and ledger scope."""

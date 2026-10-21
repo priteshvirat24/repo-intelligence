@@ -5,8 +5,9 @@ Task handlers for the brief run graph. Each returns an Outcome; the runner appli
   recall      requirements + memory                   -> remembered candidates, similar past runs, procedures
   discover    requirements + constraints + recall     -> ranked candidates and shortlist
   verify      shortlist                               -> shortlisted repositories indexed (waits for the indexer)
+  docs        shortlist + requirements                -> registry, advisory, official-docs and forum claims (Phase 2)
   execute     verified claims (opt-in, sandboxed)     -> claims raised to E1 or refuted by running them (Phase 6)
-  blueprint   verification outcome + candidates       -> the engineering blueprint
+  blueprint   verification + docs + execution + candidates -> the engineering blueprint
 """
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
@@ -19,11 +20,15 @@ from ..db.briefs import BriefStore
 from ..discovery.blueprint import generate_blueprint
 from ..discovery.github_search import GitHubSearchClient
 from ..discovery.runner import DiscoveryRunner
-from ..discovery.verification import select_verification_targets
+from ..discovery.verification import focus_terms, select_verification_targets
 from ..github.client import GitHubWorkerClient
 from ..tuning import Tuning
 from ..understanding import understand
 from .graph import digest
+# Phase 2: connectors, registry candidates and evidence depth
+from ..connectors import build_connectors
+from ..discovery.registry_search import RegistrySearch
+from ..docs_evidence import EvidenceCollector
 
 VERIFY_POLL_SECONDS = 30
 TERMINAL_REPO_STATUSES = ("READY", "FAILED")
@@ -65,13 +70,16 @@ def fingerprint(ctx: TaskContext) -> str:
             parts["focus"] = focus_requirements(b)
     elif t == "verify":
         parts = {"shortlist": o.get("discover", {}).get("shortlist"), "count": config.BRIEF_VERIFY_COUNT}
+    elif t == "docs":
+        parts = {"shortlist": o.get("discover", {}).get("shortlist"), "requirements": o.get("understand", {}).get("requirements"),
+                 "tuning": ctx.tuning.version, "evidence": "docs-v1"}
     elif t == "execute":
         parts = {"allowed": execution.allowed(b["constraints_json"]), "statuses": o.get("verify", {}).get("statuses"),
                  "shortlist": o.get("discover", {}).get("shortlist"), "prompt": execution.PROMPT_VERSION,
                  "caps": [config.EXECUTE_MAX_CANDIDATES, config.EXECUTE_MAX_CLAIMS]}
     else:
         parts = {"verification": o.get("verify", {}).get("verification"), "candidates": o.get("discover", {}).get("shortlist"),
-                 "tuning": ctx.tuning.version}
+                 "tuning": ctx.tuning.version, "docs": digest(o.get("docs") or {})}
         # Phase 3: the user's challenges and the licence policy change the blueprint
         if b.get("challenges_json"):
             parts["challenges"] = b["challenges_json"]
@@ -150,12 +158,18 @@ def run_discover(ctx: TaskContext) -> Outcome:
         # A requirement the user asked to investigate deeper is searched even when memory covers it
         skip -= set(focus_requirements(ctx.brief))
     github = GitHubSearchClient()
+    # --- Phase 2: package-registry candidates (npm, crates.io) through the connector gateway ---
+    connectors = build_connectors(ctx.db)
+    registries = RegistrySearch(connectors, github, requirements, ctx.tuning)
+    # --- end Phase 2 ---
     try:
         runner = DiscoveryRunner(ctx.llm_for("models.discovery"), github, on_step=_step(ctx), tuning=ctx.tuning,
-                                 skip_query=(lambda q: q["requirement"] in skip) if skip else None, procedures=procedures)
+                                 skip_query=(lambda q: q["requirement"] in skip) if skip else None, procedures=procedures,
+                                 registry_search=registries)
         result = runner.run(requirements)
     finally:
         github.close()
+        connectors.close()
     candidates, metrics = result["candidates"], result["metrics"]
     # Phase 4 memory: remembered candidates join the result with provenance "memory"
     if recall:
@@ -188,7 +202,9 @@ def run_verify(ctx: TaskContext) -> Outcome:
         waited = previous.get("waitedSeconds", 0) + VERIFY_POLL_SECONDS
     else:
         shortlist = ctx.outputs.get("discover", {}).get("shortlist") or []
-        targets = select_verification_targets([{"full_name": n, "shortlisted": True} for n in shortlist], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT)
+        requirements = ctx.outputs.get("understand", {}).get("requirements") or ctx.brief.get("requirements_json") or {}
+        targets = select_verification_targets([{"full_name": n, "shortlisted": True} for n in shortlist], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT,
+                                              focus_terms=focus_terms(requirements))
         conn = ctx.db.get_connection()
         try:
             with conn.cursor() as cur:
@@ -230,6 +246,42 @@ def run_execute(ctx: TaskContext) -> Outcome:
     return Outcome("done", output, persist=persist)
 
 
+# --- Phase 2: evidence depth ---
+
+def run_docs(ctx: TaskContext) -> Outcome:
+    """For each shortlisted candidate: deps.dev licence and Scorecard, OSV advisories, quoted passages of its own
+    docs that support a requirement (E3) and Stack Exchange questions (E4). Unavailable sources are reported
+    per candidate; the task still completes with whatever the others established."""
+    requirements = ctx.outputs.get("understand", {}).get("requirements") or ctx.brief.get("requirements_json") or {}
+    conn = ctx.db.get_connection()
+    try:
+        candidates = BriefStore.load_shortlist_sources(conn, ctx.brief["id"])
+    finally:
+        conn.close()
+    ctx.set_step("READING_DOCS")
+    connectors = build_connectors(ctx.db)
+    try:
+        collector = EvidenceCollector(connectors, ctx.llm_for("models.discovery"), requirements, ctx.tuning, heartbeat=ctx.heartbeat)
+        reports = [collector.collect(c) for c in candidates]
+        print(f"[Docs] brief {ctx.brief['id']}: source requests {connectors.gateway.stats}", flush=True)
+    finally:
+        connectors.close()
+
+    def persist(cur):
+        for report in reports:
+            claim_writer.claims_from_evidence(cur, str(ctx.brief["id"]), _ws(ctx), report)
+
+    summary = []
+    for r in reports:
+        kinds: Dict[str, int] = {}
+        for spec in r["claims"]:
+            kinds[spec["kind"]] = kinds.get(spec["kind"], 0) + 1
+        summary.append({**{k: v for k, v in r.items() if k != "claims"}, "claims": kinds})
+    return Outcome("done", {"candidates": summary}, persist=persist)
+
+# --- end Phase 2 ---
+
+
 def run_blueprint(ctx: TaskContext) -> Outcome:
     verification = ctx.outputs.get("verify", {}).get("verification") or []
     conn = ctx.db.get_connection()
@@ -253,8 +305,8 @@ def run_blueprint(ctx: TaskContext) -> Outcome:
                             "stages": blueprint.get("stages"), "sources": len(blueprint["sources"])}, persist=persist)
 
 
-HANDLERS = {"understand": run_understand, "recall": run_recall, "discover": run_discover, "verify": run_verify, "execute": run_execute,
-            "blueprint": run_blueprint}
+HANDLERS = {"understand": run_understand, "recall": run_recall, "discover": run_discover, "verify": run_verify, "docs": run_docs,
+            "execute": run_execute, "blueprint": run_blueprint}
 
 
 def _ws(ctx: TaskContext) -> Optional[str]:

@@ -27,7 +27,10 @@ import httpx
 from ..config import config
 from ..db.repository import DatabaseRepository
 from ..discovery.github_search import GitHubSearchClient
+from ..discovery.registry_search import RegistrySearch
 from ..discovery.runner import DiscoveryRunner
+from ..connectors.gateway import Gateway, MemoryCache
+from ..connectors.registry import Connectors
 from ..providers import ledger
 from ..providers.llm import get_llm_provider
 from ..tuning import default_tuning, load_tuning_file
@@ -69,9 +72,9 @@ def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, An
                 SELECT split_part(scope_id, ':', 2) AS brief, COUNT(*), COUNT(*) FILTER (WHERE NOT success),
                        COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
                        SUM(cost_cents), COUNT(*) FILTER (WHERE cost_cents IS NULL)
-                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s GROUP BY 1
+                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s AND provider <> ALL(%s) GROUP BY 1
                 """,
-                (f"{run_id}:%",)
+                (f"{run_id}:%", sorted(ledger.SOURCE_PROVIDERS))
             )
             return {
                 row[0]: {"llmCalls": row[1], "failedCalls": row[2], "inputTokens": row[3], "outputTokens": row[4],
@@ -105,6 +108,8 @@ def main(argv: List[str] = None) -> int:
     parser.add_argument("--requirements-from", help="Reuse the decomposition of an earlier B1 run instead of decomposing again")
     parser.add_argument("--briefs", help="Comma-separated brief ids (default: all)")
     parser.add_argument("--note", default="")
+    parser.add_argument("--registries", action="store_true",
+                        help="B1: also search npm and crates.io through the connector gateway (recorded and replayed like GitHub)")
     args = parser.parse_args(argv)
 
     suite = load_suite(args.suite)
@@ -144,7 +149,10 @@ def main(argv: List[str] = None) -> int:
             else:
                 decomposition = json.loads((requirements_dir / f"{brief['id']}.json").read_text())
                 github = GitHubSearchClient(http=http)
-                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode))
+                # Registry requests share the recording client; the cache is per run, so replay sees every request
+                registries = (RegistrySearch(Connectors(Gateway(http=http, cache=MemoryCache(), sleep=pacing(transport, args.mode))), github,
+                                             decomposition["requirements"], tuning) if args.registries else None)
+                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode), registry_search=registries)
                 with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}", tuning_version=tuning.version):
                     result = runner.run(decomposition["requirements"])
                 out = {
@@ -192,6 +200,7 @@ def main(argv: List[str] = None) -> int:
         "model": config.LLM_MODEL or None,
         "githubAuthenticated": bool(config.GITHUB_TOKEN),
         "note": args.note,
+        "registries": bool(args.registries),
         "finishedAt": datetime.now(timezone.utc).isoformat(),
         "aggregate": {
             **aggregate(scored),
