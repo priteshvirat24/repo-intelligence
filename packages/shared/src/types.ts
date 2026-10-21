@@ -501,3 +501,91 @@ export interface ChatSession {
   updatedAt: string;
   messages?: ChatMessage[];
 }
+
+// Briefs and GitHub discovery
+
+export type BriefSourceType = 'text' | 'markdown' | 'pdf' | 'docx';
+export type BriefStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type DiscoveryStep =
+  | 'QUEUED'
+  | 'PLANNING_QUERIES'
+  | 'SEARCHING_GITHUB'
+  | 'READING_READMES'
+  | 'RANKING'
+  | 'DONE'
+  | 'FAILED';
+export type CandidateKind = 'implementation' | 'library' | 'framework' | 'curated_list' | 'tutorial' | 'unknown';
+export type RequirementCoverage = 'yes' | 'partial' | 'no' | 'unknown';
+
+export interface BriefSummary {
+  id: string;
+  title: string;
+  sourceType: BriefSourceType;
+  sourceFilename?: string | null;
+  status: BriefStatus;
+  step: DiscoveryStep;
+  errorMessage?: string | null;
+  requirementCount: number;
+  candidateCount: number;
+  shortlistedCount: number;
+  createdAt: string;
+  discoveredAt?: string | null;
+}
+
+export interface DiscoveryQuery {
+  query: string;
+  requirement: string;
+  results: number;
+  /** The GitHub searches actually run for this query, strictest first */
+  searchedAs?: string[];
+}
+
+export interface DiscoveryMetrics {
+  queryPlanner?: 'llm' | 'heuristic';
+  queries?: DiscoveryQuery[];
+  candidatesFound?: number;
+  duplicatesRemoved?: number;
+  readmesAssessed?: number;
+  githubAuthenticated?: boolean;
+  durationMs?: number;
+}
+
+export interface CandidateAssessment {
+  summary?: string;
+  kind?: CandidateKind;
+  coverage?: Record<string, RequirementCoverage>;
+  reason?: string;
+}
+
+export interface BriefCandidate {
+  id: string;
+  fullName: string;
+  sourceUrl: string;
+  description?: string | null;
+  primaryLanguage?: string | null;
+  topics: string[];
+  stars: number;
+  forks: number;
+  openIssues: number;
+  license?: string | null;
+  pushedAt?: string | null;
+  candidateKind: CandidateKind;
+  matchedQueries: string[];
+  matchedRequirements: string[];
+  relevanceScore: number;
+  healthScore: number;
+  coverageScore: number | null;
+  finalScore: number;
+  rank: number;
+  shortlisted: boolean;
+  duplicateOf?: string | null;
+  assessment: CandidateAssessment;
+}
+
+export interface BriefDetail extends BriefSummary {
+  briefText: string;
+  decompositionMode: 'llm' | 'heuristic';
+  requirements: OpenQueryRequirements;
+  discovery: DiscoveryMetrics;
+  candidates: BriefCandidate[];
+}

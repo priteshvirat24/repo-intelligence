@@ -9,13 +9,19 @@ import {
 import { LLMProvider } from './providers';
 import {
   ProblemDecompositionSchema,
-  ValidatedProblemDecomposition
+  ValidatedProblemDecomposition,
+  dropInvalidDecompositionItems
 } from './validation/schema';
 
 export class OpenProblemDecomposer {
   constructor(private llm: LLMProvider) {}
 
   async decompose(query: string): Promise<OpenQueryRequirements> {
+    return (await this.decomposeDetailed(query)).requirements;
+  }
+
+  /** Same as decompose(), but also reports whether the LLM or the keyword heuristic produced it. */
+  async decomposeDetailed(query: string): Promise<{ requirements: OpenQueryRequirements; mode: 'llm' | 'heuristic' }> {
     const qLower = query.toLowerCase().trim();
 
     // Check for collection-level questions
@@ -83,7 +89,7 @@ Return JSON matching:
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const rawJson = JSON.parse(jsonMatch[0]);
-        const parseResult = ProblemDecompositionSchema.safeParse(rawJson);
+        const parseResult = ProblemDecompositionSchema.safeParse(dropInvalidDecompositionItems(rawJson));
 
         if (parseResult.success) {
           const valid = parseResult.data;
@@ -100,14 +106,17 @@ Return JSON matching:
           }));
 
           return {
-            problemSummary: valid.problemSummary,
-            domains: valid.domains,
-            intents: valid.intents as QueryIntent[],
-            requirements,
-            ambiguities: valid.ambiguities,
-            constraints: valid.constraints,
-            desiredOutputs: valid.desiredOutputs,
-            queryExpansions: valid.queryExpansions
+            mode: 'llm',
+            requirements: {
+              problemSummary: valid.problemSummary,
+              domains: valid.domains,
+              intents: valid.intents as QueryIntent[],
+              requirements,
+              ambiguities: valid.ambiguities,
+              constraints: valid.constraints,
+              desiredOutputs: valid.desiredOutputs,
+              queryExpansions: valid.queryExpansions
+            }
           };
         } else {
           console.warn('[OpenProblemDecomposer] Schema validation warning, attempting partial recovery:', parseResult.error.format());
@@ -117,7 +126,7 @@ Return JSON matching:
       console.warn('[OpenProblemDecomposer] LLM problem decomposition fallback engaged:', err);
     }
 
-    return this.fallbackDecompose(query);
+    return { mode: 'heuristic', requirements: this.fallbackDecompose(query) };
   }
 
   private fallbackDecompose(query: string): OpenQueryRequirements {

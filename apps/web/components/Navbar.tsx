@@ -9,6 +9,7 @@ import { useLibrary } from '@/components/LibraryProvider';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Studio' },
+  { href: '/briefs', label: 'Briefs' },
   { href: '/resources', label: 'Library' },
   { href: '/capabilities', label: 'Capabilities' }
 ];

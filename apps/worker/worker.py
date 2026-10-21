@@ -29,6 +29,9 @@ from .analyzer.repo_digest import (
 from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
 from .db.repository import DatabaseRepository, JobLostError
+from .db.briefs import BriefRepository
+from .discovery.github_search import GitHubSearchClient, GitHubRateLimited
+from .discovery.runner import DiscoveryRunner
 
 # Error messages that mean "try again later" rather than "this repository cannot be indexed"
 _TRANSIENT_MARKERS = (
@@ -122,7 +125,9 @@ class IngestionWorker:
         self.worker_id = worker_id
         self.running = True
         self.active_job: Optional[Dict[str, Any]] = None
+        self.active_brief: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
+        self.briefs = BriefRepository(self.db)
         self.llm = get_llm_provider()
         self.embedding_provider = get_embedding_provider()
         if self.embedding_provider.get_dimensions() != config.EMBEDDING_DIMENSIONS:
@@ -154,6 +159,12 @@ class IngestionWorker:
                 self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"], self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
+        if self.active_brief:
+            try:
+                print(f"[{self.worker_id}] Releasing brief {self.active_brief['id']} back to queue...", flush=True)
+                self.briefs.release_on_shutdown(self.active_brief["id"], self.worker_id)
+            except Exception as e:
+                print(f"[{self.worker_id}] Error releasing brief: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
@@ -700,32 +711,71 @@ class IngestionWorker:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
 
+    def process_brief(self, brief: Dict[str, Any]):
+        """Runs GitHub discovery for one brief and stores its ranked candidates."""
+        brief_id = str(brief["id"])
+        self.active_brief = brief
+        github = GitHubSearchClient()
+        try:
+            runner = DiscoveryRunner(
+                llm=self.llm,
+                github=github,
+                on_step=lambda step: self.briefs.update_step(brief_id, step, self.worker_id),
+            )
+            result = runner.run(brief["requirements_json"] or {})
+            self.briefs.persist_discovery(brief_id, result["candidates"], result["metrics"], self.worker_id)
+            shortlisted = sum(1 for c in result["candidates"] if c.get("shortlisted"))
+            print(f"[{self.worker_id}] Discovery for brief {brief_id} done: {len(result['candidates'])} candidates, {shortlisted} shortlisted, {result['metrics']['durationMs']}ms", flush=True)
+        except JobLostError as e:
+            print(f"[{self.worker_id}] Abandoning brief {brief_id}: {e}", file=sys.stderr)
+        except Exception as e:
+            err_msg = str(e)
+            attempts = int(brief.get("attempts") or 1)
+            if (isinstance(e, GitHubRateLimited) or is_transient_error(e)) and attempts < config.MAX_JOB_ATTEMPTS:
+                delay = 60 * (2 ** (attempts - 1))
+                print(f"[{self.worker_id}] Transient discovery failure for brief {brief_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                if not self.briefs.requeue_for_retry(brief_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay):
+                    print(f"[{self.worker_id}] Brief {brief_id} changed while failing; leaving it as is", file=sys.stderr)
+            else:
+                print(f"[{self.worker_id}] Discovery failed for brief {brief_id}: {err_msg}", file=sys.stderr)
+                self.briefs.mark_failed(brief_id, err_msg, self.worker_id)
+        finally:
+            github.close()
+            self.active_brief = None
+
+    def run_next(self) -> bool:
+        """Processes one unit of work. Repository indexing goes first; briefs run when no repository is waiting.
+        Returns False when both queues are empty."""
+        job = self.db.claim_next_job(worker_id=self.worker_id)
+        if job:
+            self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
+            self.process_job(job)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        brief = self.briefs.claim_next_brief(self.worker_id)
+        if brief:
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(brief["id"])})
+            self.process_brief(brief)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        return False
+
     def run_batch(self):
         print(f"[{self.worker_id}] Batch mode: Processing all queued jobs...", flush=True)
         processed = 0
         while self.running:
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
-            job = self.db.claim_next_job(worker_id=self.worker_id)
-            if not job:
+            if not self.run_next():
                 print(f"[{self.worker_id}] No more queued jobs found. Batch completed. Total processed: {processed}", flush=True)
                 break
             processed += 1
-            print(f"[{self.worker_id}] === Processing Batch Job #{processed} ({job['id']}) ===", flush=True)
-            self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
-            self.process_job(job)
-            self.db.record_heartbeat(self.worker_id, status="ALIVE")
 
     def run_loop(self):
         print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...", flush=True)
         while self.running:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
-                job = self.db.claim_next_job(worker_id=self.worker_id)
-                if job:
-                    self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
-                    self.process_job(job)
-                    self.db.record_heartbeat(self.worker_id, status="ALIVE")
-                else:
+                if not self.run_next():
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)

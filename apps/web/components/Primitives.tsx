@@ -28,7 +28,7 @@ type Tone = 'verified' | 'inferred' | 'danger' | 'neutral' | 'outline';
 
 export function statusTone(status?: string): Tone {
   const s = (status || '').toUpperCase();
-  if (s === 'READY' || s === 'DONE') return 'verified';
+  if (s === 'READY' || s === 'DONE' || s === 'COMPLETED') return 'verified';
   if (s === 'FAILED' || s === 'BLOCKED') return 'danger';
   if (s === 'PARTIAL') return 'inferred';
   if (s === 'CANCELLED') return 'outline';
