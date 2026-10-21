@@ -14,7 +14,9 @@ class GitHubWorkerClient:
         if self.token:
             self.headers["Authorization"] = f"token {self.token}"
 
-    def fetch_repo_info(self, owner: str, repo: str) -> Dict[str, Any]:
+    def fetch_repo_info(self, owner: str, repo: str, allow_large: bool = False) -> Dict[str, Any]:
+        """Repository metadata for indexing. A repository over MAX_REPOSITORY_SIZE_MB raises REPOSITORY_TOO_LARGE,
+        unless allow_large: then it is returned with too_large set, for a partial analysis."""
         url = f"https://api.github.com/repos/{owner}/{repo}"
         with httpx.Client(timeout=30.0) as client:
             resp = client.get(url, headers=self.headers)
@@ -29,7 +31,8 @@ class GitHubWorkerClient:
                 raise ValueError("PRIVATE_REPOSITORY: Only public GitHub repositories are supported.")
 
             size_kb = data.get("size", 0)
-            if size_kb > config.MAX_REPOSITORY_SIZE_MB * 1024:
+            too_large = size_kb > config.MAX_REPOSITORY_SIZE_MB * 1024
+            if too_large and not allow_large:
                 raise ValueError(f"REPOSITORY_TOO_LARGE: Size {size_kb // 1024}MB exceeds limit of {config.MAX_REPOSITORY_SIZE_MB}MB.")
 
             return {
@@ -40,5 +43,6 @@ class GitHubWorkerClient:
                 "stars": data.get("stargazers_count", 0),
                 "license": (data.get("license") or {}).get("spdx_id"),
                 "primary_language": data.get("language"),
-                "size_kb": size_kb
+                "size_kb": size_kb,
+                "too_large": too_large
             }

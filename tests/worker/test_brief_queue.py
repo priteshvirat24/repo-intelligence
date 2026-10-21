@@ -135,11 +135,13 @@ def test_budget_stop_is_reported_on_the_brief(run):
 
 
 def test_downstream_order():
-    assert downstream("understand") == ["discover", "verify", "blueprint"]
+    assert downstream("understand") == ["discover", "verify", "docs", "blueprint"]
     assert downstream("verify") == ["blueprint"]
+    assert downstream("docs") == ["blueprint"]
     assert downstream("blueprint") == []
     from apps.worker.orchestrator.graph import ancestors
-    assert ancestors("blueprint") == ["understand", "discover", "verify"]
+    assert ancestors("blueprint") == ["understand", "discover", "verify", "docs"]
+    assert ancestors("docs") == ["understand", "discover"]
 
 
 # Understanding task

@@ -4,11 +4,16 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..providers.llm import BaseLLMProvider
 from .assess import assess_candidates, assessed_requirements
 from .github_search import GitHubSearchClient
-from .planner import capability_requirements, plan_queries, sorted_requirements
+from .planner import OVERALL, capability_requirements, plan_queries, sorted_requirements
 from ..tuning import Tuning, resolve
 from . import ranking
 
 SEARCH_RESULTS_PER_QUERY = 15
+# Diminishing returns (PRODUCT_DEFINITION 6.4): after this many consecutive queries that found no new
+# candidate of at least NOVELTY_MIN_HEALTH, further queries are skipped, except the first query for a
+# requirement not searched yet. 0 disables the rule.
+STOP_AFTER_UNPRODUCTIVE = 3
+NOVELTY_MIN_HEALTH = 0.5
 # Searches start with an adoption floor (removes most empty and abandoned repositories) and relax
 # step by step while a query returns fewer than ENOUGH_RESULTS distinct repositories
 MIN_STARS = 10
@@ -42,10 +47,13 @@ class DiscoveryRunner:
         on_step: Optional[Callable[[str], None]] = None,
         sleep: Callable[[float], None] = time.sleep,
         tuning: Optional[Tuning] = None,
+        registry_search=None,
     ):
         self.tuning = resolve(tuning)
         self.llm = llm
         self.github = github
+        # Optional package-registry search (discovery/registry_search.py), run with every planned query
+        self.registry_search = registry_search
         self.on_step = on_step or (lambda step: None)
         self.sleep = sleep
         # Search API quota: 30 requests/min with a token, 10/min without
@@ -62,8 +70,15 @@ class DiscoveryRunner:
         planned, planner_mode = plan_queries(self.llm, requirements_json, t)
 
         self.on_step("SEARCHING_GITHUB")
-        results, searched_as, calls = [], {}, 0
+        results, registry_results, searched_as, calls = [], [], {}, 0
+        known: Dict[str, Dict[str, Any]] = {}  # every repository found so far (lower full name)
+        stop_after, min_health = t.get("discovery.stop_after_unproductive"), t.get("discovery.novelty_min_health")
+        unproductive, searched_requirements, skipped = 0, set(), []
+        now = ranking.utc_now()
         for query in planned:
+            if stop_after and unproductive >= stop_after and (query["requirement"] == OVERALL or query["requirement"] in searched_requirements):
+                skipped.append(query["query"])
+                continue
             items, seen, attempts = [], set(), []
             for text, min_stars in search_attempts(query["query"], t.get("discovery.min_stars")):
                 if calls:
@@ -79,9 +94,28 @@ class DiscoveryRunner:
             results.append((query, items))
             searched_as[query["query"]] = attempts
 
-        merged = list(ranking.merge_search_results(results).values())
+            before = set(known)
+            for item in items:
+                known.setdefault(item["full_name"].lower(), item)
+            found = list(items)
+            if self.registry_search is not None:
+                registry_items = self.registry_search.search(query["query"], known)
+                registry_results.append((query, registry_items))
+                for item in registry_items:
+                    known.setdefault(item["full_name"].lower(), item)
+                found += registry_items
+            novel = [i for i in found if i["full_name"].lower() not in before and ranking.health_score(i, now, t) >= min_health]
+            unproductive = 0 if novel else unproductive + 1
+            searched_requirements.add(query["requirement"])
+
+        merged = list(ranking.merge_search_results(results + registry_results).values())
+        github_found = {i["full_name"].lower() for _, items in results for i in items}
+        if self.registry_search is not None:
+            self.registry_search.annotate(merged, github_found)
+        else:
+            for c in merged:
+                c["sources"], c["packages"] = ["github"], []
         duplicates = ranking.mark_mirrors(merged)
-        now = ranking.utc_now()
         for c in merged:
             c["candidate_kind"] = "curated_list" if ranking.looks_like_curated_list(c) else "unknown"
             c["health_score"] = ranking.health_score(c, now, t)
@@ -119,8 +153,13 @@ class DiscoveryRunner:
             "tuningVersion": t.version,
             "queries": [
                 {"query": q["query"], "requirement": q["requirement"], "results": query_counts[q["query"]], "searchedAs": searched_as[q["query"]]}
+                if q["query"] in query_counts else
+                {"query": q["query"], "requirement": q["requirement"], "results": 0, "searchedAs": [], "skipped": True}
                 for q in planned
             ],
+            # Queries not run because the previous ones stopped finding new candidates
+            "diminishingReturns": {"skippedQueries": skipped, "afterUnproductive": stop_after} if skipped else None,
+            "registries": self.registry_search.metrics() if self.registry_search is not None else None,
             "candidatesFound": len(merged),
             "duplicatesRemoved": duplicates,
             "readmesAssessed": len(assessments),

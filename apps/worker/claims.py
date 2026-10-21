@@ -19,7 +19,9 @@ from psycopg2.extras import Json
 
 GRADES = ("E1", "E2", "E3", "E4", "E5")
 # How long a finding stays current before it must be revalidated (PRODUCT_DEFINITION 8.2)
-REVALIDATE_DAYS = {"capability": 90, "limitation": 90, "licence": 30, "maintenance": 7, "readme_summary": 30, "coverage": 30}
+REVALIDATE_DAYS = {"capability": 90, "limitation": 90, "licence": 30, "maintenance": 7, "readme_summary": 30, "coverage": 30,
+                   # Phase 2: advisories are published continuously; forum answers age more slowly
+                   "vulnerability": 7, "known_issue": 30, "licence_conflict": 30}
 
 
 def statement_key(statement: str) -> str:
@@ -134,14 +136,27 @@ def claims_from_repository(cur, repository_id: str) -> int:
         upsert_claim(cur, subject, "licence", f"Licensed under {licence}", "E3", {"method": "platform_api", "sourceUrl": url})
         written += 1
     if commit:
+        # Only claims located in the code are tied to a commit; documented (E3 docs) claims are not
         cur.execute(
             """
             UPDATE claims SET status = 'needs_revalidation', updated_at = NOW()
             WHERE subject = %s AND kind IN ('capability', 'limitation') AND subject_version IS DISTINCT FROM %s AND status = 'current'
+              AND NOT evidence_json @> '[{"method": "docs_quote"}]'::jsonb
             """,
             (subject, commit)
         )
     return written
+
+
+def claims_from_evidence(cur, brief_id: str, workspace_id: Optional[str], report: Dict[str, Any]) -> int:
+    """Writes the claim specs the docs task collected for one candidate (docs_evidence.EvidenceCollector)."""
+    subject = github_subject(report["fullName"])
+    for spec in report.get("claims") or []:
+        scoped = spec.get("briefScoped")
+        upsert_claim(cur, subject, spec["kind"], spec["statement"], spec["grade"], spec["evidence"],
+                     subject_version=spec.get("subjectVersion"), brief_id=brief_id if scoped else None,
+                     workspace_id=workspace_id if scoped else None)
+    return len(report.get("claims") or [])
 
 
 def claim_ids_for(cur, subjects: List[str]) -> Dict[tuple, Dict[str, Any]]:
