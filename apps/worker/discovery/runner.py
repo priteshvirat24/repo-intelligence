@@ -109,7 +109,7 @@ class DiscoveryRunner:
             c["final_score"] = ranking.final_score(c, t)
         merged.sort(key=lambda c: c["final_score"], reverse=True)
         stored = merged[:t.get("discovery.max_stored_candidates")]
-        ranking.select_shortlist(stored, t.get("discovery.shortlist_size"))
+        ranking.select_shortlist(stored, t.get("discovery.shortlist_size"), t.get("discovery.shortlist_max_stale_days"), now)
         for rank, c in enumerate(stored, start=1):
             c["rank"] = rank
 

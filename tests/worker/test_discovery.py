@@ -400,3 +400,15 @@ def test_category_queries_candidate_is_a_valid_tuning():
     assert candidate.get("discovery.planner_lists_constraints") is True
     assert "KIND OF TOOL" in candidate.get("prompts.discovery_planner")
     assert candidate.version != default_tuning().version
+
+
+
+def test_stale_repositories_are_listed_but_not_shortlisted():
+    fresh = {"full_name": "a/fresh", "coverage_score": 0.5, "candidate_kind": "library", "assessment": {"coverage": {"x": "yes"}},
+             "pushed_at": "2026-09-01T00:00:00Z"}
+    stale = {**fresh, "full_name": "a/stale", "pushed_at": "2024-02-12T00:00:00Z"}
+    candidates = [stale, fresh]
+    ranking.select_shortlist(candidates, size=6, max_stale_days=730, now=NOW)
+    assert [c["full_name"] for c in candidates if c["shortlisted"]] == ["a/fresh"]
+    ranking.select_shortlist(candidates, size=6, max_stale_days=None, now=NOW)
+    assert all(c["shortlisted"] for c in candidates)

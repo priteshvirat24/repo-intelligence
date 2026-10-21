@@ -70,6 +70,7 @@ def default_tuning() -> Tuning:
             "discovery.readme_assess_limit": runner.README_ASSESS_LIMIT,
             "discovery.max_stored_candidates": runner.MAX_STORED_CANDIDATES,
             "discovery.shortlist_size": runner.SHORTLIST_SIZE,
+            "discovery.shortlist_max_stale_days": ranking.SHORTLIST_MAX_STALE_DAYS,
             "assess.batch_size": assess.BATCH_SIZE,
             "assess.max_requirements": assess.MAX_ASSESSED_REQUIREMENTS,
             "ranking.criticality_weight": dict(ranking.CRITICALITY_WEIGHT),
