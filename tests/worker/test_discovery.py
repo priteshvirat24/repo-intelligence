@@ -382,3 +382,21 @@ def test_constraints_do_not_make_a_repository_a_starting_point():
     assert candidate["coverage_score"] == 0
     assert "Backend in Python" not in candidate["assessment"]["coverage"]
     assert not candidate["shortlisted"]
+
+
+
+def test_constraints_reach_the_planner_only_when_tuned_to():
+    from apps.worker.discovery.planner import _user_prompt
+    req = {**REQUIREMENTS, "requirements": REQUIREMENTS["requirements"] + [
+        {"name": "Backend in Python", "description": "Python service", "criticality": "MUST", "type": "deployment"}]}
+    assert "Backend in Python" not in _user_prompt(req, 8)
+    with_constraints = _user_prompt(req, 8, list_constraints=True)
+    assert with_constraints.index("Constraints") < with_constraints.index("Backend in Python") < with_constraints.index("Requirements:")
+
+
+def test_category_queries_candidate_is_a_valid_tuning():
+    from apps.worker.tuning import load_tuning_file, default_tuning
+    candidate = load_tuning_file("eval/candidates/category-queries.json")
+    assert candidate.get("discovery.planner_lists_constraints") is True
+    assert "KIND OF TOOL" in candidate.get("prompts.discovery_planner")
+    assert candidate.version != default_tuning().version

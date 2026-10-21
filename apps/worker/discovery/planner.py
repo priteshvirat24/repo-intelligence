@@ -9,6 +9,9 @@ from .output import list_from_output
 MAX_QUERIES = 8
 # GitHub ANDs every keyword: long queries return almost nothing
 MAX_QUERY_WORDS = 4
+# Show the planner the brief's constraints so it can name the ecosystem (node, python, postgres). Off by
+# default until the evaluation shows it helps (eval/candidates/category-queries.json).
+PLANNER_LISTS_CONSTRAINTS = False
 OVERALL = "(overall)"
 
 _STOPWORDS = {
@@ -43,7 +46,7 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     names = [r["name"] for r in capability_requirements(requirements_json)]
     constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
-        prompt = _user_prompt(requirements_json, max_queries)
+        prompt = _user_prompt(requirements_json, max_queries, t.get("discovery.planner_lists_constraints"))
         with ledger_scope(purpose="discovery_planner"):
             raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
         planned = validate_queries(raw, names, max_queries, max_words, constraint_names)
@@ -55,11 +58,15 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     return heuristic_queries(requirements_json, max_queries, max_words), "heuristic"
 
 
-def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES) -> str:
+def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES, list_constraints: bool = PLANNER_LISTS_CONSTRAINTS) -> str:
     lines = [f"Problem: {requirements_json.get('problemSummary', '')}"]
     domains = requirements_json.get("domains") or []
     if domains:
         lines.append(f"Domains: {', '.join(domains[:5])}")
+    constraints = [r for r in sorted_requirements(requirements_json) if r.get("type") in CONSTRAINT_TYPES]
+    if list_constraints and constraints:
+        lines.append("Constraints (use only to choose ecosystem words; never search for them on their own):")
+        lines += [f"- {r['name']}: {r.get('description', '')}" for r in constraints[:8]]
     lines.append("Requirements:")
     for r in capability_requirements(requirements_json)[:12]:
         lines.append(f"- [{r.get('criticality', 'SHOULD')}] {r.get('name')}: {r.get('description', '')}")

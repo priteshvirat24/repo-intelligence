@@ -63,6 +63,7 @@ def default_tuning() -> Tuning:
         _DEFAULT = Tuning({
             "discovery.max_queries": planner.MAX_QUERIES,
             "discovery.max_query_words": planner.MAX_QUERY_WORDS,
+            "discovery.planner_lists_constraints": planner.PLANNER_LISTS_CONSTRAINTS,
             "discovery.results_per_query": runner.SEARCH_RESULTS_PER_QUERY,
             "discovery.min_stars": runner.MIN_STARS,
             "discovery.enough_results": runner.ENOUGH_RESULTS,
