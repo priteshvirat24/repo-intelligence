@@ -1,0 +1,94 @@
+{
+  "id": "web-saas-auth",
+  "domain": "web-backends-auth",
+  "outsideTeamExpertise": false,
+  "title": "Multi-tenant SaaS authentication",
+  "brief": "Our B2B SaaS needs sign-up and login with email and password and Google, organisations with member roles, SAML single sign-on for enterprise customers, and an audit log of security events. The app is Next.js with a Postgres database.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "login",
+        "name": "Email/password and Google login for Next.js",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "better-auth/better-auth",
+            "rating": "essential"
+          },
+          {
+            "repo": "nextauthjs/next-auth",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "orgs",
+        "name": "Organisations with member roles",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "better-auth/better-auth",
+            "rating": "essential"
+          },
+          {
+            "repo": "zitadel/zitadel",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "keycloak/keycloak",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "saml",
+        "name": "SAML single sign-on for enterprise customers",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "ory/polis",
+            "rating": "essential"
+          },
+          {
+            "repo": "keycloak/keycloak",
+            "rating": "essential"
+          },
+          {
+            "repo": "zitadel/zitadel",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "audit",
+        "name": "Audit log of security events",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 4,
+        "solutions": [
+          {
+            "repo": "zitadel/zitadel",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "keycloak/keycloak",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": []
+  }
+}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { FirecrawlProvider } from '@/lib/providers/firecrawl';
+import { ScraplingProvider } from '@/lib/providers/scrapling';
 import { TavilyProvider } from '@/lib/providers/tavily';
 
 export const dynamic = 'force-dynamic';
@@ -74,10 +75,12 @@ export async function GET() {
 
     // 4. Check Provider Connectivity (without exposing keys)
     const firecrawl = new FirecrawlProvider();
+    const scrapling = new ScraplingProvider();
     const tavily = new TavilyProvider();
 
     const providers = {
       firecrawl: firecrawl.isAvailable() ? 'Connected' : 'Not configured',
+      scrapling: scrapling.isAvailable() ? 'Available' : 'Not configured',
       tavily: tavily.isAvailable() ? 'Connected' : 'Not configured',
       llm: Boolean(process.env.LLM_API_KEY) ? 'Connected' : 'Not configured',
       database: 'Healthy'

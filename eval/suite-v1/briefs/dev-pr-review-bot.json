@@ -1,0 +1,103 @@
+{
+  "id": "dev-pr-review-bot",
+  "domain": "developer-tooling",
+  "outsideTeamExpertise": false,
+  "title": "Pull request review bot",
+  "brief": "We want a bot that reviews pull requests on GitHub: it runs linters and static analysis for Python, TypeScript and Go, and posts the findings as inline review comments only on the lines changed in the pull request. It should run as a GitHub App or in GitHub Actions and be configurable per repository.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "inline-comments",
+        "name": "Post findings as inline comments on changed lines",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "reviewdog/reviewdog",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "github-app",
+        "name": "Run as a GitHub App or Action",
+        "criticality": "MUST",
+        "type": "integration",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "probot/probot",
+            "rating": "essential"
+          },
+          {
+            "repo": "octokit/octokit.js",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "actions/toolkit",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "linters",
+        "name": "Linters for Python, TypeScript and Go",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "super-linter/super-linter",
+            "rating": "essential"
+          },
+          {
+            "repo": "astral-sh/ruff",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "golangci/golangci-lint",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "eslint/eslint",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "static-analysis",
+        "name": "Static analysis for security and bugs",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "semgrep/semgrep",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "config",
+        "name": "Per-repository configuration",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 5,
+        "solutions": []
+      }
+    ],
+    "products": [
+      {
+        "repo": "reviewdog/reviewdog",
+        "rating": "essential"
+      }
+    ],
+    "traps": []
+  }
+}

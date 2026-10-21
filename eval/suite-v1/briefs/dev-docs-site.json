@@ -1,0 +1,104 @@
+{
+  "id": "dev-docs-site",
+  "domain": "developer-tooling",
+  "outsideTeamExpertise": false,
+  "title": "API documentation site for two SDKs",
+  "brief": "We ship a TypeScript SDK and a Python SDK. We want one documentation website generated from the code comments of both, with guides written in Markdown, full-text search, and versioned docs per release. It should be a static site we can host ourselves.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "ts-api",
+        "name": "API reference from TypeScript comments",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "TypeStrong/typedoc",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "py-api",
+        "name": "API reference from Python docstrings",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "mkdocstrings/mkdocstrings",
+            "rating": "essential"
+          },
+          {
+            "repo": "sphinx-doc/sphinx",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "site",
+        "name": "Static documentation site with Markdown guides",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "facebook/docusaurus",
+            "rating": "essential"
+          },
+          {
+            "repo": "squidfunk/mkdocs-material",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "search",
+        "name": "Full-text search on a static site",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "Pagefind/pagefind",
+            "rating": "essential"
+          },
+          {
+            "repo": "algolia/docsearch",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "versioning",
+        "name": "Versioned docs per release",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "facebook/docusaurus",
+            "rating": "essential"
+          },
+          {
+            "repo": "jimporter/mike",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": [
+      {
+        "repo": "esdoc/esdoc",
+        "reason": "No push since 2024-08 (over two years)."
+      }
+    ]
+  }
+}

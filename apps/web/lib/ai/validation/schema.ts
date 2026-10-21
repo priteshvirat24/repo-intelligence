@@ -92,6 +92,28 @@ export const ProblemDecompositionSchema = z.object({
 
 export type ValidatedProblemDecomposition = z.infer<typeof ProblemDecompositionSchema>;
 
+/**
+ * Drops the individual array items that would fail ProblemDecompositionSchema (an intent outside the
+ * enum, an over-long expansion, a requirement without a description), so one bad item does not discard
+ * an otherwise valid decomposition. Required fields are left alone: if they are missing, parsing still fails.
+ */
+export function dropInvalidDecompositionItems(raw: any): any {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const keep = (value: any, schema: z.ZodTypeAny) =>
+    Array.isArray(value) ? value.filter((item) => schema.safeParse(item).success) : value;
+  return {
+    ...raw,
+    problemSummary: typeof raw.problemSummary === 'string' ? raw.problemSummary.slice(0, 500) : raw.problemSummary,
+    domains: keep(raw.domains, z.string().min(2).max(80)),
+    intents: keep(raw.intents, QueryIntentEnum),
+    requirements: keep(raw.requirements, OpenRequirementSchema),
+    ambiguities: keep(raw.ambiguities, AmbiguityItemSchema),
+    constraints: keep(raw.constraints, z.string().min(2).max(200)),
+    desiredOutputs: keep(raw.desiredOutputs, z.string().min(2).max(200)),
+    queryExpansions: keep(raw.queryExpansions, z.string().min(2).max(80))
+  };
+}
+
 // Trivial capability blacklist and anti-bloat filters
 export const TRIVIAL_CAPABILITY_TERMS = new Set([
   'file reading',

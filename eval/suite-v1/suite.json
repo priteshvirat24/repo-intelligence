@@ -1,0 +1,29 @@
+{
+  "version": "suite-v1",
+  "created": "2026-10-21",
+  "labelsStatus": "draft: one AI-drafted label set, not yet independently labelled or reviewed (see eval/README.md)",
+  "domains": [
+    "geospatial-visualisation",
+    "developer-tooling",
+    "data-pipelines",
+    "llm-applications",
+    "web-backends-auth"
+  ],
+  "briefs": [
+    "geo-satellite-tracker",
+    "geo-vector-tiles",
+    "geo-gps-routes",
+    "dev-pr-review-bot",
+    "dev-dependency-updates",
+    "dev-docs-site",
+    "data-postgres-cdc",
+    "data-etl-quality",
+    "data-log-pipeline",
+    "llm-rag-citations",
+    "llm-prompt-evals",
+    "llm-voice-agent",
+    "web-saas-auth",
+    "web-public-api",
+    "web-job-queue"
+  ]
+}

@@ -1,0 +1,150 @@
+import { query } from '@repo/database';
+import { BlueprintVerification, BriefBlueprint, BriefCandidate, BriefDetail, BriefSummary, BriefUsage } from '@repo/shared';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
+const SUMMARY_COLUMNS = `
+  b.id,
+  b.title,
+  b.source_type as "sourceType",
+  b.source_filename as "sourceFilename",
+  b.status,
+  b.step,
+  b.error_message as "errorMessage",
+  COALESCE(jsonb_array_length(b.requirements_json->'requirements'), 0)::int as "requirementCount",
+  (SELECT COUNT(*) FROM brief_candidates c WHERE c.brief_id = b.id)::int as "candidateCount",
+  (SELECT COUNT(*) FROM brief_candidates c WHERE c.brief_id = b.id AND c.shortlisted)::int as "shortlistedCount",
+  b.created_at as "createdAt",
+  b.discovered_at as "discoveredAt"
+`;
+
+export async function listBriefs(limit = 50): Promise<BriefSummary[]> {
+  const res = await query<BriefSummary>(
+    `SELECT ${SUMMARY_COLUMNS} FROM briefs b ORDER BY b.created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
+export async function getBrief(id: string): Promise<BriefDetail | null> {
+  const briefRes = await query(
+    `SELECT ${SUMMARY_COLUMNS},
+       b.brief_text as "briefText",
+       b.decomposition_mode as "decompositionMode",
+       b.requirements_json as "requirements",
+       b.discovery_json as "discovery",
+       b.content_hash as "contentHash"
+     FROM briefs b WHERE b.id = $1`,
+    [id]
+  );
+  const brief = briefRes.rows[0];
+  if (!brief) return null;
+
+  const candidatesRes = await query(
+    `SELECT
+       id,
+       full_name as "fullName",
+       source_url as "sourceUrl",
+       description,
+       primary_language as "primaryLanguage",
+       topics,
+       stars,
+       forks,
+       open_issues as "openIssues",
+       license,
+       pushed_at as "pushedAt",
+       candidate_kind as "candidateKind",
+       matched_queries as "matchedQueries",
+       matched_requirements as "matchedRequirements",
+       relevance_score::float as "relevanceScore",
+       health_score::float as "healthScore",
+       coverage_score::float as "coverageScore",
+       final_score::float as "finalScore",
+       rank,
+       shortlisted,
+       duplicate_of as "duplicateOf",
+       assessment_json as "assessment"
+     FROM brief_candidates
+     WHERE brief_id = $1
+     ORDER BY rank ASC`,
+    [id]
+  );
+
+  const { contentHash, ...rest } = brief;
+  return { ...rest, candidates: candidatesRes.rows as BriefCandidate[], blueprint: await getBlueprint(id), usage: await getUsage(id, contentHash) };
+}
+
+/** Ledger totals for everything spent on a brief: understanding the upload, discovery, indexing the
+ * verification repositories (jobs queued by this brief's blueprint) and writing the blueprint. */
+async function getUsage(briefId: string, contentHash: string): Promise<BriefUsage> {
+  const res = await query(
+    `WITH bp AS (SELECT id, created_at, verification_json FROM brief_blueprints WHERE brief_id = $1),
+          jobs AS (
+            SELECT j.id::text AS id FROM ingestion_jobs j, bp, jsonb_array_elements(bp.verification_json) v
+            WHERE v->>'state' = 'queued' AND j.repository_id::text = v->>'repositoryId' AND j.created_at >= bp.created_at - INTERVAL '1 minute'
+          )
+     SELECT CASE
+              WHEN u.scope_type = 'brief_upload' THEN 'understanding'
+              WHEN u.scope_type = 'brief' THEN 'discovery'
+              WHEN u.scope_type = 'repository_job' THEN 'verification'
+              ELSE 'blueprint'
+            END AS stage,
+            COUNT(*)::int AS calls,
+            COUNT(*) FILTER (WHERE NOT u.success)::int AS failed,
+            COALESCE(SUM(u.input_tokens), 0)::int AS input,
+            COALESCE(SUM(u.output_tokens), 0)::int AS output,
+            SUM(u.cost_cents)::float AS cost,
+            COUNT(*) FILTER (WHERE u.cost_cents IS NULL)::int AS unpriced
+     FROM provider_usage u
+     WHERE (u.scope_type = 'brief_upload' AND u.scope_id = left($2, 16))
+        OR (u.scope_type = 'brief' AND u.scope_id = $1::text)
+        OR (u.scope_type = 'blueprint' AND u.scope_id IN (SELECT id::text FROM bp))
+        OR (u.scope_type = 'repository_job' AND u.scope_id IN (SELECT id FROM jobs))
+     GROUP BY 1`,
+    [briefId, contentHash]
+  );
+  const order = ['understanding', 'discovery', 'verification', 'blueprint'];
+  const rows = [...res.rows].sort((a: any, b: any) => order.indexOf(a.stage) - order.indexOf(b.stage));
+  const unpriced = rows.some((r: any) => r.unpriced > 0);
+  return {
+    calls: rows.reduce((n: number, r: any) => n + r.calls, 0),
+    failedCalls: rows.reduce((n: number, r: any) => n + r.failed, 0),
+    inputTokens: rows.reduce((n: number, r: any) => n + r.input, 0),
+    outputTokens: rows.reduce((n: number, r: any) => n + r.output, 0),
+    costCents: rows.length === 0 ? 0 : unpriced ? null : rows.reduce((n: number, r: any) => n + (r.cost || 0), 0),
+    byStage: rows.map((r: any) => ({ stage: r.stage, calls: r.calls, inputTokens: r.input, outputTokens: r.output }))
+  };
+}
+
+async function getBlueprint(briefId: string): Promise<BriefBlueprint | null> {
+  const res = await query(
+    `SELECT status, step, error_message as "errorMessage", verification_json as "verification",
+            NULLIF(blueprint_json, '{}'::jsonb) as "blueprint", completed_at as "completedAt"
+     FROM brief_blueprints WHERE brief_id = $1`,
+    [briefId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+
+  const verification: BlueprintVerification[] = row.verification || [];
+  const repoIds = verification.map((v) => v.repositoryId).filter((v): v is string => Boolean(v && isUuid(v)));
+  if (repoIds.length > 0) {
+    const repos = await query(
+      `SELECT r.id, r.status,
+              (SELECT j.step FROM ingestion_jobs j WHERE j.repository_id = r.id ORDER BY j.created_at DESC LIMIT 1) as step
+       FROM repositories r WHERE r.id = ANY($1::uuid[])`,
+      [repoIds]
+    );
+    const byId = new Map(repos.rows.map((r: any) => [r.id, r]));
+    for (const v of verification) {
+      const repo: any = v.repositoryId ? byId.get(v.repositoryId) : undefined;
+      v.repositoryStatus = repo?.status ?? null;
+      v.jobStep = repo?.step ?? null;
+    }
+  }
+  return { ...row, verification };
+}

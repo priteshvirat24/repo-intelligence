@@ -1,0 +1,100 @@
+{
+  "id": "data-postgres-cdc",
+  "domain": "data-pipelines",
+  "outsideTeamExpertise": true,
+  "title": "Postgres change data capture into a warehouse",
+  "brief": "We need to replicate changes from our production PostgreSQL database into ClickHouse in near real time for analytics, handling inserts, updates, deletes and schema changes, without heavy load on the primary.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "capture",
+        "name": "Capture changes from PostgreSQL logical replication",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "debezium/debezium",
+            "rating": "essential"
+          },
+          {
+            "repo": "PeerDB-io/peerdb",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "deliver",
+        "name": "Deliver changes into ClickHouse",
+        "criticality": "MUST",
+        "type": "integration",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "PeerDB-io/peerdb",
+            "rating": "essential"
+          },
+          {
+            "repo": "ClickHouse/ClickHouse",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "airbytehq/airbyte",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "schema",
+        "name": "Handle schema changes",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 4,
+        "solutions": [
+          {
+            "repo": "debezium/debezium",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "streaming",
+        "name": "Streaming transport between capture and sink",
+        "criticality": "SHOULD",
+        "type": "technical",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "apache/kafka",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "redpanda-data/redpanda",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "ConduitIO/conduit",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [
+      {
+        "repo": "PeerDB-io/peerdb",
+        "rating": "essential"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "zendesk/maxwell",
+        "reason": "Reads the MySQL binlog only; not applicable to PostgreSQL."
+      }
+    ]
+  }
+}

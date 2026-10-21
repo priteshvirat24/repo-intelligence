@@ -5,6 +5,32 @@ import re
 from typing import Dict, Any, Optional
 import httpx
 from ..config import config
+from . import ledger
+
+
+def _metered_post(client: httpx.Client, provider: str, model: str, url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> httpx.Response:
+    """POST a chat completion and record it in the cost ledger: tokens when the provider reports usage,
+    failures (rate limits, errors, output cut off at the length limit) as unsuccessful calls."""
+    started = time.time()
+    try:
+        resp = client.post(url, headers=headers, json=payload)
+    except Exception as e:
+        ledger.record(provider, "chat_completion", model, int((time.time() - started) * 1000), False, error=str(e))
+        raise
+    duration = int((time.time() - started) * 1000)
+    if resp.status_code != 200:
+        ledger.record(provider, "chat_completion", model, duration, False, error=f"HTTP {resp.status_code}")
+        return resp
+    try:
+        data = resp.json()
+        input_tokens, output_tokens = ledger.usage_tokens(data)
+        truncated = (data.get("choices") or [{}])[0].get("finish_reason") == "length"
+    except Exception:
+        input_tokens = output_tokens = None
+        truncated = False
+    ledger.record(provider, "chat_completion", model, duration, not truncated, input_tokens, output_tokens,
+                  error="output truncated at length limit" if truncated else None)
+    return resp
 
 class BaseLLMProvider:
     def complete(self, prompt: str, system: Optional[str] = None) -> str:
@@ -78,7 +104,7 @@ class MistralLLMProvider(BaseLLMProvider):
         for attempt in range(3):
             try:
                 with httpx.Client(timeout=120.0) as client:
-                    resp = client.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload)
+                    resp = _metered_post(client, "mistral", self.model, "https://api.mistral.ai/v1/chat/completions", headers, payload)
                     if resp.status_code == 429:
                         time.sleep(2.0 * (attempt + 1))
                         continue
@@ -125,7 +151,7 @@ class OpenAILLMProvider(BaseLLMProvider):
         }
 
         with httpx.Client(timeout=60.0) as client:
-            resp = client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            resp = _metered_post(client, "openai", self.model, "https://api.openai.com/v1/chat/completions", headers, payload)
             resp.raise_for_status()
             return _completion_text(resp.json())
 
@@ -138,15 +164,16 @@ def _completion_text(data: Dict[str, Any]) -> str:
     return choice["message"]["content"]
 
 
-def get_llm_provider() -> BaseLLMProvider:
-    """Returns the configured real LLM provider. There is deliberately no mock fallback."""
+def get_llm_provider(model: Optional[str] = None) -> BaseLLMProvider:
+    """Returns the configured real LLM provider. There is deliberately no mock fallback.
+    model overrides LLM_MODEL (model routing from the active tuning)."""
     provider = config.LLM_PROVIDER.strip()
     api_key = config.LLM_API_KEY.strip()
 
     if not api_key:
         raise RuntimeError("LLM_API_KEY is not set; refusing to analyze repositories without a real LLM provider.")
     if provider == "mistral":
-        return MistralLLMProvider(api_key=api_key, model=config.LLM_MODEL or "mistral-small-latest")
+        return MistralLLMProvider(api_key=api_key, model=model or config.LLM_MODEL or "mistral-small-latest")
     if provider == "openai":
-        return OpenAILLMProvider(api_key=api_key, model=config.LLM_MODEL or "gpt-4o-mini")
+        return OpenAILLMProvider(api_key=api_key, model=model or config.LLM_MODEL or "gpt-4o-mini")
     raise RuntimeError(f"Unsupported LLM_PROVIDER={provider!r}; expected 'mistral' or 'openai'.")

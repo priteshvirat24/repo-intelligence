@@ -1,0 +1,140 @@
+{
+  "id": "geo-satellite-tracker",
+  "domain": "geospatial-visualisation",
+  "outsideTeamExpertise": true,
+  "title": "Satellite tracker web app",
+  "brief": "We want a web app that shows the live position of satellites on an interactive 3D globe. It must download current TLE orbital elements from CelesTrak, propagate orbits with the SGP4 model to compute positions every second, and convert them to latitude, longitude and altitude. The globe should be rendered in the browser with WebGL and show ground tracks for a selected satellite. Backend in Python or TypeScript. It should handle around 10,000 satellites.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "propagation",
+        "name": "Orbit propagation from TLEs with SGP4",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "shashwatak/satellite-js",
+            "rating": "essential"
+          },
+          {
+            "repo": "brandon-rhodes/python-sgp4",
+            "rating": "essential"
+          },
+          {
+            "repo": "skyfielders/python-skyfield",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "dnwrnr/sgp4",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "esa/dSGP4",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "coordinates",
+        "name": "Convert positions to geodetic latitude, longitude, altitude",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "shashwatak/satellite-js",
+            "rating": "essential"
+          },
+          {
+            "repo": "skyfielders/python-skyfield",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "geospace-code/pymap3d",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "globe",
+        "name": "Interactive 3D globe in the browser (WebGL)",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "CesiumGS/cesium",
+            "rating": "essential"
+          },
+          {
+            "repo": "vasturiano/globe.gl",
+            "rating": "essential"
+          },
+          {
+            "repo": "vasturiano/three-globe",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "ground-tracks",
+        "name": "Ground track of a selected satellite",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 3,
+        "solutions": [
+          {
+            "repo": "Flowm/satvis",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "thkruz/keeptrack.space",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "tle-feed",
+        "name": "Fetch and refresh TLEs from CelesTrak",
+        "criticality": "SHOULD",
+        "type": "integration",
+        "expectedClass": 5,
+        "solutions": []
+      },
+      {
+        "id": "scale",
+        "name": "Handle about 10,000 satellites",
+        "criticality": "MUST",
+        "type": "performance",
+        "expectedClass": 6,
+        "solutions": []
+      }
+    ],
+    "products": [
+      {
+        "repo": "thkruz/keeptrack.space",
+        "rating": "essential"
+      },
+      {
+        "repo": "Flowm/satvis",
+        "rating": "acceptable"
+      },
+      {
+        "repo": "csete/gpredict",
+        "rating": "acceptable"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "brandon-rhodes/pyephem",
+        "reason": "Legacy library; its README points new projects to Skyfield (reviewer to confirm). Licence reported as NOASSERTION."
+      }
+    ]
+  }
+}

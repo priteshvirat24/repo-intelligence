@@ -29,6 +29,13 @@ from .analyzer.repo_digest import (
 from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
 from .db.repository import DatabaseRepository, JobLostError
+from .db.briefs import BriefRepository
+from .discovery.github_search import GitHubSearchClient, GitHubRateLimited
+from .discovery.runner import DiscoveryRunner
+from .discovery.verification import select_verification_targets
+from .discovery.blueprint import generate_blueprint
+from .providers import ledger
+from . import tuning as tuning_registry
 
 # Error messages that mean "try again later" rather than "this repository cannot be indexed"
 _TRANSIENT_MARKERS = (
@@ -122,7 +129,12 @@ class IngestionWorker:
         self.worker_id = worker_id
         self.running = True
         self.active_job: Optional[Dict[str, Any]] = None
+        self.active_brief: Optional[Dict[str, Any]] = None
+        self.active_blueprint: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
+        self.briefs = BriefRepository(self.db)
+        # Every LLM and embedding call is recorded in provider_usage
+        ledger.add_sink(ledger.DatabaseSink(self.db))
         self.llm = get_llm_provider()
         self.embedding_provider = get_embedding_provider()
         if self.embedding_provider.get_dimensions() != config.EMBEDDING_DIMENSIONS:
@@ -154,6 +166,17 @@ class IngestionWorker:
                 self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"], self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
+        if self.active_brief:
+            try:
+                print(f"[{self.worker_id}] Releasing brief {self.active_brief['id']} back to queue...", flush=True)
+                self.briefs.release_on_shutdown(self.active_brief["id"], self.worker_id)
+            except Exception as e:
+                print(f"[{self.worker_id}] Error releasing brief: {e}", file=sys.stderr, flush=True)
+        if self.active_blueprint:
+            try:
+                self.briefs.release_on_shutdown(self.active_blueprint["id"], self.worker_id, table="brief_blueprints")
+            except Exception as e:
+                print(f"[{self.worker_id}] Error releasing blueprint: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
@@ -700,41 +723,151 @@ class IngestionWorker:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
 
+    def process_brief(self, brief: Dict[str, Any]):
+        """Runs GitHub discovery for one brief and stores its ranked candidates."""
+        brief_id = str(brief["id"])
+        self.active_brief = brief
+        github = GitHubSearchClient()
+        try:
+            active = tuning_registry.load_active(self.db)
+            runner = DiscoveryRunner(
+                llm=self._llm_for(active, "models.discovery"),
+                github=github,
+                tuning=active,
+                on_step=lambda step: self.briefs.update_step(brief_id, step, self.worker_id),
+            )
+            with ledger.ledger_scope(tuning_version=active.version):
+                result = runner.run(brief["requirements_json"] or {})
+            # The strongest shortlisted repositories go through the normal indexer so the blueprint can rest
+            # on code evidence; they are queued in the same transaction that stores the candidates
+            targets = select_verification_targets(result["candidates"], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT)
+            self.briefs.persist_discovery(brief_id, result["candidates"], result["metrics"], self.worker_id, targets)
+            shortlisted = sum(1 for c in result["candidates"] if c.get("shortlisted"))
+            queued = sum(1 for t in targets if t.get("state") != "skipped")
+            print(f"[{self.worker_id}] Discovery for brief {brief_id} done: {len(result['candidates'])} candidates, {shortlisted} shortlisted, {queued} queued for verification, {result['metrics']['durationMs']}ms", flush=True)
+        except JobLostError as e:
+            print(f"[{self.worker_id}] Abandoning brief {brief_id}: {e}", file=sys.stderr)
+        except Exception as e:
+            err_msg = str(e)
+            attempts = int(brief.get("attempts") or 1)
+            if (isinstance(e, GitHubRateLimited) or is_transient_error(e)) and attempts < config.MAX_JOB_ATTEMPTS:
+                delay = 60 * (2 ** (attempts - 1))
+                print(f"[{self.worker_id}] Transient discovery failure for brief {brief_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                if not self.briefs.requeue_for_retry(brief_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay):
+                    print(f"[{self.worker_id}] Brief {brief_id} changed while failing; leaving it as is", file=sys.stderr)
+            else:
+                print(f"[{self.worker_id}] Discovery failed for brief {brief_id}: {err_msg}", file=sys.stderr)
+                self.briefs.mark_failed(brief_id, err_msg, self.worker_id)
+        finally:
+            github.close()
+            self.active_brief = None
+
+    def process_blueprint(self, blueprint: Dict[str, Any]):
+        """Writes the engineering blueprint for a brief once its verification repositories are indexed."""
+        blueprint_id = str(blueprint["id"])
+        self.active_blueprint = blueprint
+        try:
+            inputs = self.briefs.load_blueprint_inputs(blueprint)
+            self.briefs.update_blueprint_step(blueprint_id, "DESIGNING", self.worker_id)
+            active = tuning_registry.load_active(self.db)
+            with ledger.ledger_scope(tuning_version=active.version):
+                result = generate_blueprint(self._llm_for(active, "models.blueprint"), inputs, tuning=active)
+            self.briefs.persist_blueprint(blueprint_id, result, self.worker_id)
+            decisions = [c["decision"] for c in result["components"]]
+            print(f"[{self.worker_id}] Blueprint {blueprint_id} done: {decisions.count('reuse')} reuse, {decisions.count('adapt')} adapt, {decisions.count('build')} build, {len(result['sources'])} sources", flush=True)
+        except JobLostError as e:
+            print(f"[{self.worker_id}] Abandoning blueprint {blueprint_id}: {e}", file=sys.stderr)
+        except Exception as e:
+            err_msg = str(e)
+            attempts = int(blueprint.get("attempts") or 1)
+            if is_transient_error(e) and attempts < config.MAX_JOB_ATTEMPTS:
+                delay = 60 * (2 ** (attempts - 1))
+                print(f"[{self.worker_id}] Transient blueprint failure {blueprint_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                self.briefs.requeue_for_retry(blueprint_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay, table="brief_blueprints")
+            else:
+                print(f"[{self.worker_id}] Blueprint failed {blueprint_id}: {err_msg}", file=sys.stderr)
+                self.briefs.mark_failed(blueprint_id, err_msg, self.worker_id, table="brief_blueprints")
+        finally:
+            self.active_blueprint = None
+
+    def _llm_for(self, active: "tuning_registry.Tuning", key: str):
+        """The model the active tuning routes this task to, or the worker's default provider."""
+        model = active.get(key)
+        return get_llm_provider(model=model) if model else self.llm
+
+    def run_next(self) -> bool:
+        """Processes one unit of work: repository indexing first (it is what blueprints wait for), then
+        blueprints whose repositories are done, then brief discovery. Returns False when nothing is waiting."""
+        job = self.db.claim_next_job(worker_id=self.worker_id)
+        if job:
+            self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
+            with ledger.ledger_scope(scope_type="repository_job", scope_id=str(job["id"])):
+                self.process_job(job)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        blueprint = self.briefs.claim_next_blueprint(self.worker_id)
+        if blueprint:
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"blueprintId": str(blueprint["id"])})
+            with ledger.ledger_scope(scope_type="blueprint", scope_id=str(blueprint["id"])):
+                self.process_blueprint(blueprint)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        brief = self.briefs.claim_next_brief(self.worker_id)
+        if brief:
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(brief["id"])})
+            with ledger.ledger_scope(scope_type="brief", scope_id=str(brief["id"])):
+                self.process_brief(brief)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        return False
+
     def run_batch(self):
         print(f"[{self.worker_id}] Batch mode: Processing all queued jobs...", flush=True)
         processed = 0
         while self.running:
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
-            job = self.db.claim_next_job(worker_id=self.worker_id)
-            if not job:
+            if not self.run_next():
                 print(f"[{self.worker_id}] No more queued jobs found. Batch completed. Total processed: {processed}", flush=True)
                 break
             processed += 1
-            print(f"[{self.worker_id}] === Processing Batch Job #{processed} ({job['id']}) ===", flush=True)
-            self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
-            self.process_job(job)
-            self.db.record_heartbeat(self.worker_id, status="ALIVE")
 
     def run_loop(self):
         print(f"[{self.worker_id}] Polling PostgreSQL-native queue for ingestion jobs...", flush=True)
         while self.running:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
-                job = self.db.claim_next_job(worker_id=self.worker_id)
-                if job:
-                    self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
-                    self.process_job(job)
-                    self.db.record_heartbeat(self.worker_id, status="ALIVE")
-                else:
+                if not self.run_next():
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)
                 time.sleep(3)
 
+
+def start_scraper_daemon(port: int = 8001):
+    """Starts the Scrapling & Camoufox HTTP extraction service in a background thread.
+
+    It listens on SCRAPER_HOST (default 127.0.0.1). To serve the web app over a private network, set
+    SCRAPER_HOST (e.g. "::" on Railway) together with SCRAPER_SECRET; without the secret it will not
+    listen beyond loopback. The socket is bound here, before the thread starts, so a failure is reported
+    at startup instead of killing the thread silently."""
+    try:
+        from .scraper.api import make_server
+        host = os.getenv("SCRAPER_HOST", "127.0.0.1")
+        server = make_server(port, host, os.getenv("SCRAPER_SECRET"))
+        threading.Thread(target=server.serve_forever, name="scraper-service", daemon=True).start()
+        print(f"[Worker] Scraper service listening on {host}:{port}", flush=True)
+    except Exception as e:
+        print(f"[Worker] Could not start the scraper service: {e}", file=sys.stderr, flush=True)
+
+
 if __name__ == "__main__":
+    # Start the Scrapling/Camoufox scraper daemon on the configured port
+    start_scraper_daemon(port=int(os.getenv("SCRAPER_PORT", 8001)))
+
     # Unique per replica: job ownership checks compare locked_by, so replicas must not share an id
     worker = IngestionWorker(worker_id=os.getenv("WORKER_ID") or os.getenv("RAILWAY_REPLICA_ID") or f"worker-{socket.gethostname()}")
     if "--batch" in sys.argv:
         worker.run_batch()
     else:
         worker.run_loop()
+

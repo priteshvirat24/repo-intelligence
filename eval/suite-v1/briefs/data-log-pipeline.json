@@ -1,0 +1,81 @@
+{
+  "id": "data-log-pipeline",
+  "domain": "data-pipelines",
+  "outsideTeamExpertise": false,
+  "title": "Container log collection and search",
+  "brief": "We run about 200 containers. We want to collect their logs, ship them to a store where we can search them for 30 days, and get alerted when error rates spike. Self-hosted, and cheap to run at a few hundred GB per month.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "collect",
+        "name": "Collect and ship container logs",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "vectordotdev/vector",
+            "rating": "essential"
+          },
+          {
+            "repo": "fluent/fluent-bit",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "store",
+        "name": "Searchable log store with retention",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "grafana/loki",
+            "rating": "essential"
+          },
+          {
+            "repo": "quickwit-oss/quickwit",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "opensearch-project/OpenSearch",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "alerting",
+        "name": "Alert on error spikes",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "grafana/grafana",
+            "rating": "essential"
+          },
+          {
+            "repo": "prometheus/alertmanager",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "cost",
+        "name": "Cheap at a few hundred GB per month",
+        "criticality": "MUST",
+        "type": "performance",
+        "expectedClass": 6,
+        "solutions": []
+      }
+    ],
+    "products": [],
+    "traps": []
+  }
+}

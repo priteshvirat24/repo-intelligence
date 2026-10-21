@@ -501,3 +501,176 @@ export interface ChatSession {
   updatedAt: string;
   messages?: ChatMessage[];
 }
+
+// Briefs and GitHub discovery
+
+export type BriefSourceType = 'text' | 'markdown' | 'pdf' | 'docx';
+export type BriefStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type DiscoveryStep =
+  | 'QUEUED'
+  | 'PLANNING_QUERIES'
+  | 'SEARCHING_GITHUB'
+  | 'READING_READMES'
+  | 'RANKING'
+  | 'DONE'
+  | 'FAILED';
+export type CandidateKind = 'implementation' | 'library' | 'framework' | 'curated_list' | 'tutorial' | 'unknown';
+export type RequirementCoverage = 'yes' | 'partial' | 'no' | 'unknown';
+
+export interface BriefSummary {
+  id: string;
+  title: string;
+  sourceType: BriefSourceType;
+  sourceFilename?: string | null;
+  status: BriefStatus;
+  step: DiscoveryStep;
+  errorMessage?: string | null;
+  requirementCount: number;
+  candidateCount: number;
+  shortlistedCount: number;
+  createdAt: string;
+  discoveredAt?: string | null;
+}
+
+export interface DiscoveryQuery {
+  query: string;
+  requirement: string;
+  results: number;
+  /** The GitHub searches actually run for this query, strictest first */
+  searchedAs?: string[];
+}
+
+export interface DiscoveryMetrics {
+  queryPlanner?: 'llm' | 'heuristic';
+  queries?: DiscoveryQuery[];
+  candidatesFound?: number;
+  duplicatesRemoved?: number;
+  readmesAssessed?: number;
+  githubAuthenticated?: boolean;
+  durationMs?: number;
+  /** Version of the tuning (weights, thresholds, prompts) discovery ran with */
+  tuningVersion?: string;
+}
+
+export interface CandidateAssessment {
+  summary?: string;
+  kind?: CandidateKind;
+  coverage?: Record<string, RequirementCoverage>;
+  reason?: string;
+}
+
+export interface BriefCandidate {
+  id: string;
+  fullName: string;
+  sourceUrl: string;
+  description?: string | null;
+  primaryLanguage?: string | null;
+  topics: string[];
+  stars: number;
+  forks: number;
+  openIssues: number;
+  license?: string | null;
+  pushedAt?: string | null;
+  candidateKind: CandidateKind;
+  matchedQueries: string[];
+  matchedRequirements: string[];
+  relevanceScore: number;
+  healthScore: number;
+  coverageScore: number | null;
+  finalScore: number;
+  rank: number;
+  shortlisted: boolean;
+  duplicateOf?: string | null;
+  assessment: CandidateAssessment;
+}
+
+export type BlueprintStatus = 'WAITING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type BlueprintDecision = 'reuse' | 'adapt' | 'investigate' | 'build';
+
+export interface BlueprintVerification {
+  fullName: string;
+  state: 'queued' | 'reused' | 'skipped';
+  reason?: string | null;
+  repositoryId?: string | null;
+  resourceId?: string | null;
+  /** Live indexing state of the repository (from the repositories table and its latest job) */
+  repositoryStatus?: string | null;
+  jobStep?: string | null;
+}
+
+export interface BlueprintSource {
+  id: string; // C1 (verified code), R1 (README assessment), L1 (known limitation)
+  kind: 'code' | 'readme' | 'limitation';
+  repo: string;
+  title: string;
+  text: string;
+  filePath?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  symbol?: string | null;
+  quote?: string;
+  url: string;
+}
+
+export interface BlueprintComponent {
+  requirement: string;
+  criticality: RequirementCriticality;
+  isConstraint: boolean;
+  decision: BlueprintDecision;
+  repo: string | null;
+  how: string;
+  sources: string[];
+  /** verified: code evidence about this requirement; unconfirmed: README claims or code about something else */
+  evidence: 'verified' | 'unconfirmed' | 'none';
+}
+
+export interface BlueprintItem {
+  title: string;
+  detail: string;
+  sources?: string[];
+  requirements?: string[];
+  /** Added from repository data or coverage gaps, not written by the model */
+  generated?: boolean;
+}
+
+export interface EngineeringBlueprint {
+  summary: string;
+  components: BlueprintComponent[];
+  integrationSteps: BlueprintItem[];
+  toBuild: BlueprintItem[];
+  risks: BlueprintItem[];
+  sources: BlueprintSource[];
+  verification: Array<{ fullName: string; status: 'verified' | 'failed' | 'skipped' | 'pending'; capabilities: number; reason?: string | null; repositoryId?: string | null }>;
+  generatedAt: string;
+  tuningVersion?: string;
+}
+
+export interface BriefBlueprint {
+  status: BlueprintStatus;
+  step: string;
+  errorMessage?: string | null;
+  verification: BlueprintVerification[];
+  blueprint: EngineeringBlueprint | null;
+  completedAt?: string | null;
+}
+
+/** What a brief's run spent, from the cost ledger (provider_usage) */
+export interface BriefUsage {
+  calls: number;
+  failedCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** null when any call's model has no price in LLM_PRICES_JSON */
+  costCents: number | null;
+  byStage: Array<{ stage: 'understanding' | 'discovery' | 'verification' | 'blueprint'; calls: number; inputTokens: number; outputTokens: number }>;
+}
+
+export interface BriefDetail extends BriefSummary {
+  briefText: string;
+  decompositionMode: 'llm' | 'heuristic';
+  requirements: OpenQueryRequirements;
+  discovery: DiscoveryMetrics;
+  candidates: BriefCandidate[];
+  blueprint: BriefBlueprint | null;
+  usage: BriefUsage;
+}

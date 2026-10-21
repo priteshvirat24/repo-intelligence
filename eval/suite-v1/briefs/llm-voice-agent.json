@@ -1,0 +1,108 @@
+{
+  "id": "llm-voice-agent",
+  "domain": "llm-applications",
+  "outsideTeamExpertise": true,
+  "title": "Real-time voice assistant",
+  "brief": "We want a voice assistant for phone calls: real-time speech-to-text, an LLM response, and text-to-speech, with barge-in (the caller can interrupt) and under one second of response latency. Components should be self-hostable where possible.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "pipeline",
+        "name": "Real-time voice agent pipeline with interruption handling",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "pipecat-ai/pipecat",
+            "rating": "essential"
+          },
+          {
+            "repo": "livekit/agents",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "stt",
+        "name": "Streaming speech-to-text",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "SYSTRAN/faster-whisper",
+            "rating": "essential"
+          },
+          {
+            "repo": "openai/whisper",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "k2-fsa/sherpa-onnx",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "tts",
+        "name": "Low-latency text-to-speech",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "OHF-Voice/piper1-gpl",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "k2-fsa/sherpa-onnx",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "vad",
+        "name": "Voice activity detection for barge-in",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "snakers4/silero-vad",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "latency",
+        "name": "Under one second response latency",
+        "criticality": "MUST",
+        "type": "performance",
+        "expectedClass": 6,
+        "solutions": []
+      }
+    ],
+    "products": [
+      {
+        "repo": "pipecat-ai/pipecat",
+        "rating": "essential"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "coqui-ai/TTS",
+        "reason": "No push since 2024-08 (over two years); the company behind it closed (reviewer to confirm)."
+      },
+      {
+        "repo": "rhasspy/piper",
+        "reason": "Archived; development continues in OHF-Voice/piper1-gpl."
+      }
+    ]
+  }
+}

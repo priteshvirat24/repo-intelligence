@@ -1,0 +1,102 @@
+{
+  "id": "web-public-api",
+  "domain": "web-backends-auth",
+  "outsideTeamExpertise": false,
+  "title": "Public API with keys, rate limits and metering",
+  "brief": "We are opening a public REST API. Customers get API keys, each key has its own rate limit, we meter usage per key for billing, and we publish OpenAPI documentation.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "keys",
+        "name": "API key issuing and verification",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "unkeyed/unkey",
+            "rating": "essential"
+          },
+          {
+            "repo": "Kong/kong",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "apache/apisix",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "rate-limits",
+        "name": "Per-key rate limiting",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "unkeyed/unkey",
+            "rating": "essential"
+          },
+          {
+            "repo": "Kong/kong",
+            "rating": "essential"
+          },
+          {
+            "repo": "apache/apisix",
+            "rating": "essential"
+          },
+          {
+            "repo": "express-rate-limit/express-rate-limit",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "metering",
+        "name": "Usage metering per key for billing",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "openmeterio/openmeter",
+            "rating": "essential"
+          },
+          {
+            "repo": "unkeyed/unkey",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "docs",
+        "name": "OpenAPI documentation",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "swagger-api/swagger-ui",
+            "rating": "essential"
+          },
+          {
+            "repo": "scalar/scalar",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "Redocly/redoc",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": []
+  }
+}

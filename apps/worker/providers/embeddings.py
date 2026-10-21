@@ -5,6 +5,27 @@ import hashlib
 from typing import List, Dict, Any, Optional
 import httpx
 from ..config import config
+from . import ledger
+
+
+def _metered_embed(client: httpx.Client, provider: str, model: str, url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> httpx.Response:
+    """POST an embeddings request and record it in the cost ledger."""
+    started = time.time()
+    try:
+        resp = client.post(url, headers=headers, json=payload)
+    except Exception as e:
+        ledger.record(provider, "embedding", model, int((time.time() - started) * 1000), False, error=str(e))
+        raise
+    duration = int((time.time() - started) * 1000)
+    input_tokens = None
+    if resp.status_code == 200:
+        try:
+            input_tokens = (resp.json().get("usage") or {}).get("prompt_tokens")
+        except Exception:
+            pass
+    ledger.record(provider, "embedding", model, duration, resp.status_code == 200, input_tokens, 0 if input_tokens is not None else None,
+                  error=None if resp.status_code == 200 else f"HTTP {resp.status_code}")
+    return resp
 
 class BaseEmbeddingProvider:
     def get_dimensions(self) -> int:
@@ -45,7 +66,7 @@ class MistralEmbeddingProvider(BaseEmbeddingProvider):
                 batch_success = False
                 for attempt in range(5):
                     try:
-                        resp = client.post("https://api.mistral.ai/v1/embeddings", headers=headers, json=payload)
+                        resp = _metered_embed(client, "mistral", self.model, "https://api.mistral.ai/v1/embeddings", headers, payload)
                         if resp.status_code == 429:
                             time.sleep(2 ** attempt + 0.5)
                             continue
@@ -104,7 +125,7 @@ class OpenAIEmbeddingProvider(BaseEmbeddingProvider):
                     # text-embedding-3 models can shorten vectors to match the pgvector column
                     "dimensions": self.dimensions
                 }
-                resp = client.post("https://api.openai.com/v1/embeddings", headers=headers, json=payload)
+                resp = _metered_embed(client, "openai", self.model, "https://api.openai.com/v1/embeddings", headers, payload)
                 resp.raise_for_status()
                 data = resp.json()
                 for item in data.get("data", []):

@@ -1,0 +1,99 @@
+{
+  "id": "llm-rag-citations",
+  "domain": "llm-applications",
+  "outsideTeamExpertise": false,
+  "title": "Internal document Q&A with citations",
+  "brief": "Employees should be able to ask questions about our internal documents (PDFs, a Confluence export and Markdown files) and get answers that cite the exact passage they came from. The vector store must be self-hosted. Access control per document set is required.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "parsing",
+        "name": "Parse PDFs and exported documents",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "Unstructured-IO/unstructured",
+            "rating": "essential"
+          },
+          {
+            "repo": "docling-project/docling",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "retrieval",
+        "name": "Retrieval-augmented answering framework",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "run-llama/llama_index",
+            "rating": "essential"
+          },
+          {
+            "repo": "langchain-ai/langchain",
+            "rating": "essential"
+          },
+          {
+            "repo": "deepset-ai/haystack",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "vector-store",
+        "name": "Self-hosted vector store",
+        "criticality": "MUST",
+        "type": "deployment",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "pgvector/pgvector",
+            "rating": "essential"
+          },
+          {
+            "repo": "qdrant/qdrant",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "citations",
+        "name": "Answers cite the exact source passage",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 3,
+        "solutions": [
+          {
+            "repo": "infiniflow/ragflow",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "access",
+        "name": "Access control per document set",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 5,
+        "solutions": []
+      }
+    ],
+    "products": [
+      {
+        "repo": "infiniflow/ragflow",
+        "rating": "acceptable"
+      }
+    ],
+    "traps": []
+  }
+}

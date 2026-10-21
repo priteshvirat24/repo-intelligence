@@ -37,6 +37,10 @@ class Config:
     MAX_CHUNKS: int = int(os.getenv("MAX_CHUNKS", "1500"))
     MAX_SUBSYSTEMS: int = int(os.getenv("MAX_SUBSYSTEMS", "8"))
 
+    # Briefs: shortlisted repositories indexed to verify the blueprint, and how long it waits for them
+    BRIEF_VERIFY_COUNT: int = int(os.getenv("BRIEF_VERIFY_COUNT", "3"))
+    BLUEPRINT_MAX_WAIT_MINUTES: int = int(os.getenv("BLUEPRINT_MAX_WAIT_MINUTES", "60"))
+
     # Worker Tuning
     WORKER_POLL_INTERVAL_SECONDS: float = float(os.getenv("WORKER_POLL_INTERVAL_SECONDS", "2"))
     JOB_LOCK_TIMEOUT_MINUTES: int = int(os.getenv("JOB_LOCK_TIMEOUT_MINUTES", "10"))

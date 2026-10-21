@@ -1,14 +1,17 @@
 import crypto from 'crypto';
 import { FirecrawlProvider } from '../providers/firecrawl';
+import { ScraplingProvider } from '../providers/scrapling';
 import { ResourceAdapter, ResourceDescriptor, IngestResult, ContentSegment } from './types';
 import { ResourceTypeDetector } from './detector';
 
 export class WebResourceAdapter implements ResourceAdapter {
   name = 'WebResourceAdapter';
   private firecrawl: FirecrawlProvider;
+  private scrapling: ScraplingProvider;
 
   constructor() {
     this.firecrawl = new FirecrawlProvider();
+    this.scrapling = new ScraplingProvider();
   }
 
   canHandle(url: string): boolean {
@@ -22,20 +25,56 @@ export class WebResourceAdapter implements ResourceAdapter {
 
   async ingest(url: string): Promise<IngestResult> {
     const desc = this.detect(url);
-    let scraped;
+    let scraped: any = null;
 
     if (desc.resourceType === 'documentation_site') {
-      // Crawl top 3 pages for documentation sites
-      const pages = await this.firecrawl.crawl(desc.canonicalUrl, { limit: 3 });
-      scraped = pages[0] || { success: false, title: '', markdown: '' };
-      // Combine pages if multiple
-      if (pages.length > 1) {
-        scraped.markdown = pages
-          .map(p => `## Page: ${p.title}\nSource: ${p.url}\n\n${p.markdown}`)
-          .join('\n\n---\n\n');
+      // 1. Try Firecrawl crawl if API key is configured
+      if (this.firecrawl.isAvailable()) {
+        const pages = await this.firecrawl.crawl(desc.canonicalUrl, { limit: 3 });
+        scraped = pages[0] || null;
+        if (pages.length > 1) {
+          scraped.markdown = pages
+            .map(p => `## Page: ${p.title}\nSource: ${p.url}\n\n${p.markdown}`)
+            .join('\n\n---\n\n');
+        }
+      }
+
+      // 2. Scrapling + Camoufox crawl fallback
+      if ((!scraped || !scraped.success) && this.scrapling.isAvailable()) {
+        const pages = await this.scrapling.crawl(desc.canonicalUrl, { limit: 3 });
+        if (pages.length > 0 && pages[0].success) {
+          scraped = pages[0];
+          if (pages.length > 1) {
+            scraped.markdown = pages
+              .map(p => `## Page: ${p.title}\nSource: ${p.url}\n\n${p.markdown}`)
+              .join('\n\n---\n\n');
+          }
+        }
+      }
+
+      // 3. Fallback to standard scrape
+      if (!scraped || !scraped.success) {
+        scraped = await this.firecrawl.scrape(desc.canonicalUrl);
       }
     } else {
-      scraped = await this.firecrawl.scrape(desc.canonicalUrl);
+      // Single page extraction:
+      // Tier 1: Firecrawl (if configured)
+      if (this.firecrawl.isAvailable()) {
+        scraped = await this.firecrawl.scrape(desc.canonicalUrl);
+      }
+
+      // Tier 2: Scrapling + Camoufox (StealthyFetcher for anti-bot & SPAs)
+      if ((!scraped || !scraped.success) && this.scrapling.isAvailable()) {
+        const scraplingRes = await this.scrapling.scrape(desc.canonicalUrl);
+        if (scraplingRes.success) {
+          scraped = scraplingRes;
+        }
+      }
+
+      // Tier 3: Native fetch fallback
+      if (!scraped || !scraped.success) {
+        scraped = await this.firecrawl.scrape(desc.canonicalUrl);
+      }
     }
 
     if (!scraped.success || !scraped.markdown.trim()) {

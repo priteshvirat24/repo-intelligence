@@ -14,3 +14,9 @@ tree-sitter-rust==0.24.2
 tree-sitter-c==0.24.2
 tree-sitter-cpp==0.23.4
 tree-sitter-java==0.23.5
+# Scraper service (apps/worker/scraper). The fetchers extra brings the HTTP and browser engines; the base
+# package cannot fetch at all. Pinned to the 0.5 API the engine is written against (0.3 removed css_first).
+scrapling[fetchers]>=0.5,<0.6
+camoufox[geoip]>=0.4.0
+markdownify>=0.11.6
+beautifulsoup4>=4.12.0

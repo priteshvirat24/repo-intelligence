@@ -39,3 +39,7 @@ packages/*/src/**/*.d.ts
 
 # Turborepo cache
 .turbo/
+
+# Evaluation: recorded responses and per-run work files (see eval/README.md)
+eval/snapshots/
+eval/work/
