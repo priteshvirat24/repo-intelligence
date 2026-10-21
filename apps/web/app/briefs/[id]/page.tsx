@@ -8,6 +8,7 @@ import { BriefCandidate, BriefDetail, OpenRequirement, RequirementCoverage } fro
 import { Navbar } from '@/components/Navbar';
 import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
+import { BlueprintSection } from '@/components/briefs/BlueprintSection';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { KIND_LABELS, compactNumber, discoveryProgress, discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
 
@@ -50,7 +51,9 @@ export default function BriefDetailPage() {
   }, [fetchBrief]);
 
   useEffect(() => {
-    if (!brief || !isBriefActive(brief.status)) return;
+    // Keep polling while discovery runs, and while the blueprint waits for verification or is being written
+    const blueprintActive = brief?.blueprint && (brief.blueprint.status === 'WAITING' || brief.blueprint.status === 'RUNNING');
+    if (!brief || (!isBriefActive(brief.status) && !blueprintActive)) return;
     const timer = setInterval(fetchBrief, 3000);
     return () => clearInterval(timer);
   }, [brief, fetchBrief]);
@@ -200,6 +203,8 @@ export default function BriefDetailPage() {
 
         {brief.status === 'COMPLETED' && (
           <>
+            {brief.blueprint && <BlueprintSection blueprint={brief.blueprint} />}
+
             <section style={{ marginBottom: 'var(--s-7)' }}>
               <div className="rule-head">
                 <h2 className="label">Best starting points</h2>

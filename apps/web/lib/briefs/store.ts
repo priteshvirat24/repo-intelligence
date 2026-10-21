@@ -1,5 +1,5 @@
 import { query } from '@repo/database';
-import { BriefCandidate, BriefDetail, BriefSummary } from '@repo/shared';
+import { BlueprintVerification, BriefBlueprint, BriefCandidate, BriefDetail, BriefSummary } from '@repo/shared';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -73,5 +73,34 @@ export async function getBrief(id: string): Promise<BriefDetail | null> {
     [id]
   );
 
-  return { ...brief, candidates: candidatesRes.rows as BriefCandidate[] };
+  return { ...brief, candidates: candidatesRes.rows as BriefCandidate[], blueprint: await getBlueprint(id) };
+}
+
+async function getBlueprint(briefId: string): Promise<BriefBlueprint | null> {
+  const res = await query(
+    `SELECT status, step, error_message as "errorMessage", verification_json as "verification",
+            NULLIF(blueprint_json, '{}'::jsonb) as "blueprint", completed_at as "completedAt"
+     FROM brief_blueprints WHERE brief_id = $1`,
+    [briefId]
+  );
+  const row = res.rows[0];
+  if (!row) return null;
+
+  const verification: BlueprintVerification[] = row.verification || [];
+  const repoIds = verification.map((v) => v.repositoryId).filter((v): v is string => Boolean(v && isUuid(v)));
+  if (repoIds.length > 0) {
+    const repos = await query(
+      `SELECT r.id, r.status,
+              (SELECT j.step FROM ingestion_jobs j WHERE j.repository_id = r.id ORDER BY j.created_at DESC LIMIT 1) as step
+       FROM repositories r WHERE r.id = ANY($1::uuid[])`,
+      [repoIds]
+    );
+    const byId = new Map(repos.rows.map((r: any) => [r.id, r]));
+    for (const v of verification) {
+      const repo: any = v.repositoryId ? byId.get(v.repositoryId) : undefined;
+      v.repositoryStatus = repo?.status ?? null;
+      v.jobStep = repo?.step ?? null;
+    }
+  }
+  return { ...row, verification };
 }

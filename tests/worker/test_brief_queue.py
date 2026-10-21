@@ -112,3 +112,97 @@ def test_deleted_brief_is_abandoned(briefs):
         repo.update_step(brief_id, "RANKING", "worker-a")
     with pytest.raises(JobLostError):
         repo.persist_discovery(brief_id, [candidate("a/b", 1)], {}, "worker-a")
+
+
+# Verification queueing and the blueprint gate
+
+TARGET = {
+    "fullName": "Test-Owner/BP-Verify",
+    "url": "https://github.com/test-owner/bp-verify",
+    "meta": {"owner": "Test-Owner", "name": "BP-Verify", "description": "d", "default_branch": "develop",
+             "stars": 42, "license": "MIT", "primary_language": "Python", "size_kb": 100},
+}
+
+
+@pytest.fixture
+def clean_target(briefs):
+    repo, _ = briefs
+    def wipe():
+        conn = repo.db.get_connection()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
+            cur.execute("DELETE FROM resources WHERE lower(source_url) = %s", (TARGET["url"],))
+            cur.execute("UPDATE brief_blueprints SET status = 'COMPLETED' WHERE status IN ('WAITING', 'RUNNING')")
+            conn.commit()
+        conn.close()
+    wipe()
+    yield
+    wipe()
+
+
+def run_sql(repo, sql, params=()):
+    conn = repo.db.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() if cur.description else None
+            conn.commit()
+            return rows
+    finally:
+        conn.close()
+
+
+def discover(repo, brief_id, targets):
+    repo.claim_next_brief("worker-a")
+    repo.persist_discovery(brief_id, [candidate("a/one", 1)], {}, "worker-a", targets)
+
+
+def test_discovery_queues_verification_and_blueprint_waits_for_it(briefs, clean_target):
+    repo, brief_id = briefs
+    discover(repo, brief_id, [TARGET, {"fullName": "x/too-big", "url": "https://github.com/x/too-big", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"}])
+
+    [(repo_id, status, branch, stars)] = run_sql(repo, "SELECT id, status, default_branch, stars FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
+    assert (status, branch, stars) == ("PENDING", "develop", 42)
+    assert run_sql(repo, "SELECT status FROM ingestion_jobs WHERE repository_id = %s", (repo_id,)) == [("QUEUED",)]
+    [(verification,)] = run_sql(repo, "SELECT verification_json FROM brief_blueprints WHERE brief_id = %s", (brief_id,))
+    assert [v["state"] for v in verification] == ["queued", "skipped"]
+    assert verification[0]["repositoryId"] == str(repo_id)
+
+    # Still indexing: not claimable
+    assert repo.claim_next_blueprint("worker-a") is None
+    run_sql(repo, "UPDATE repositories SET status = 'READY' WHERE id = %s", (repo_id,))
+    claimed = repo.claim_next_blueprint("worker-a")
+    assert claimed and str(claimed["brief_id"]) == brief_id
+
+    inputs = repo.load_blueprint_inputs(claimed)
+    assert inputs["requirements"]["problemSummary"] == "Queue test brief"
+    assert [v["repository"]["status"] if v["repository"] else None for v in inputs["verification"]] == ["READY", None]
+
+    with pytest.raises(JobLostError):
+        repo.persist_blueprint(str(claimed["id"]), {"summary": "x"}, "worker-b")
+    repo.persist_blueprint(str(claimed["id"]), {"summary": "x"}, "worker-a")
+    assert run_sql(repo, "SELECT status, blueprint_json->>'summary' FROM brief_blueprints WHERE id = %s", (claimed["id"],)) == [("COMPLETED", "x")]
+
+
+def test_indexed_repository_is_reused_not_reindexed(briefs, clean_target):
+    repo, brief_id = briefs
+    discover(repo, brief_id, [TARGET])
+    [(repo_id,)] = run_sql(repo, "SELECT id FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
+    run_sql(repo, "UPDATE repositories SET status = 'READY' WHERE id = %s", (repo_id,))
+    run_sql(repo, "UPDATE ingestion_jobs SET status = 'COMPLETED' WHERE repository_id = %s", (repo_id,))
+    run_sql(repo, "UPDATE briefs SET status = 'QUEUED', attempts = 0 WHERE id = %s", (brief_id,))
+
+    discover(repo, brief_id, [TARGET])
+    [(verification,)] = run_sql(repo, "SELECT verification_json FROM brief_blueprints WHERE brief_id = %s", (brief_id,))
+    assert verification[0]["state"] == "reused"
+    assert run_sql(repo, "SELECT COUNT(*) FROM ingestion_jobs WHERE repository_id = %s", (repo_id,)) == [(1,)]
+    # One blueprint per brief: rediscovery replaced it
+    assert run_sql(repo, "SELECT COUNT(*) FROM brief_blueprints WHERE brief_id = %s", (brief_id,)) == [(1,)]
+
+
+def test_blueprint_stops_waiting_after_the_maximum_wait(briefs, clean_target):
+    repo, brief_id = briefs
+    discover(repo, brief_id, [TARGET])
+    assert repo.claim_next_blueprint("worker-a") is None
+    run_sql(repo, "UPDATE brief_blueprints SET created_at = NOW() - INTERVAL '2 days' WHERE brief_id = %s", (brief_id,))
+    assert repo.claim_next_blueprint("worker-a") is not None

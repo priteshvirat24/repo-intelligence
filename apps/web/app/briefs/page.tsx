@@ -201,7 +201,7 @@ export default function BriefsPage() {
           <div className="empty">
             <span className="eyebrow plain">Nothing here yet</span>
             <h3>No briefs yet.</h3>
-            <p>Paste or upload a brief above. Discovery takes about a minute.</p>
+            <p>Paste or upload a brief above. Discovery takes about a minute; verifying the best repositories against their code and writing the blueprint takes a few more.</p>
           </div>
         ) : (
           <div className="grid-cards">

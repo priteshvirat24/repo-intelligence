@@ -32,6 +32,8 @@ from .db.repository import DatabaseRepository, JobLostError
 from .db.briefs import BriefRepository
 from .discovery.github_search import GitHubSearchClient, GitHubRateLimited
 from .discovery.runner import DiscoveryRunner
+from .discovery.verification import select_verification_targets
+from .discovery.blueprint import generate_blueprint
 
 # Error messages that mean "try again later" rather than "this repository cannot be indexed"
 _TRANSIENT_MARKERS = (
@@ -126,6 +128,7 @@ class IngestionWorker:
         self.running = True
         self.active_job: Optional[Dict[str, Any]] = None
         self.active_brief: Optional[Dict[str, Any]] = None
+        self.active_blueprint: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
         self.briefs = BriefRepository(self.db)
         self.llm = get_llm_provider()
@@ -165,6 +168,11 @@ class IngestionWorker:
                 self.briefs.release_on_shutdown(self.active_brief["id"], self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing brief: {e}", file=sys.stderr, flush=True)
+        if self.active_blueprint:
+            try:
+                self.briefs.release_on_shutdown(self.active_blueprint["id"], self.worker_id, table="brief_blueprints")
+            except Exception as e:
+                print(f"[{self.worker_id}] Error releasing blueprint: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
@@ -723,9 +731,13 @@ class IngestionWorker:
                 on_step=lambda step: self.briefs.update_step(brief_id, step, self.worker_id),
             )
             result = runner.run(brief["requirements_json"] or {})
-            self.briefs.persist_discovery(brief_id, result["candidates"], result["metrics"], self.worker_id)
+            # The strongest shortlisted repositories go through the normal indexer so the blueprint can rest
+            # on code evidence; they are queued in the same transaction that stores the candidates
+            targets = select_verification_targets(result["candidates"], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT)
+            self.briefs.persist_discovery(brief_id, result["candidates"], result["metrics"], self.worker_id, targets)
             shortlisted = sum(1 for c in result["candidates"] if c.get("shortlisted"))
-            print(f"[{self.worker_id}] Discovery for brief {brief_id} done: {len(result['candidates'])} candidates, {shortlisted} shortlisted, {result['metrics']['durationMs']}ms", flush=True)
+            queued = sum(1 for t in targets if t.get("state") != "skipped")
+            print(f"[{self.worker_id}] Discovery for brief {brief_id} done: {len(result['candidates'])} candidates, {shortlisted} shortlisted, {queued} queued for verification, {result['metrics']['durationMs']}ms", flush=True)
         except JobLostError as e:
             print(f"[{self.worker_id}] Abandoning brief {brief_id}: {e}", file=sys.stderr)
         except Exception as e:
@@ -743,13 +755,45 @@ class IngestionWorker:
             github.close()
             self.active_brief = None
 
+    def process_blueprint(self, blueprint: Dict[str, Any]):
+        """Writes the engineering blueprint for a brief once its verification repositories are indexed."""
+        blueprint_id = str(blueprint["id"])
+        self.active_blueprint = blueprint
+        try:
+            inputs = self.briefs.load_blueprint_inputs(blueprint)
+            self.briefs.update_blueprint_step(blueprint_id, "DESIGNING", self.worker_id)
+            result = generate_blueprint(self.llm, inputs)
+            self.briefs.persist_blueprint(blueprint_id, result, self.worker_id)
+            decisions = [c["decision"] for c in result["components"]]
+            print(f"[{self.worker_id}] Blueprint {blueprint_id} done: {decisions.count('reuse')} reuse, {decisions.count('adapt')} adapt, {decisions.count('build')} build, {len(result['sources'])} sources", flush=True)
+        except JobLostError as e:
+            print(f"[{self.worker_id}] Abandoning blueprint {blueprint_id}: {e}", file=sys.stderr)
+        except Exception as e:
+            err_msg = str(e)
+            attempts = int(blueprint.get("attempts") or 1)
+            if is_transient_error(e) and attempts < config.MAX_JOB_ATTEMPTS:
+                delay = 60 * (2 ** (attempts - 1))
+                print(f"[{self.worker_id}] Transient blueprint failure {blueprint_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                self.briefs.requeue_for_retry(blueprint_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay, table="brief_blueprints")
+            else:
+                print(f"[{self.worker_id}] Blueprint failed {blueprint_id}: {err_msg}", file=sys.stderr)
+                self.briefs.mark_failed(blueprint_id, err_msg, self.worker_id, table="brief_blueprints")
+        finally:
+            self.active_blueprint = None
+
     def run_next(self) -> bool:
-        """Processes one unit of work. Repository indexing goes first; briefs run when no repository is waiting.
-        Returns False when both queues are empty."""
+        """Processes one unit of work: repository indexing first (it is what blueprints wait for), then
+        blueprints whose repositories are done, then brief discovery. Returns False when nothing is waiting."""
         job = self.db.claim_next_job(worker_id=self.worker_id)
         if job:
             self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
             self.process_job(job)
+            self.db.record_heartbeat(self.worker_id, status="ALIVE")
+            return True
+        blueprint = self.briefs.claim_next_blueprint(self.worker_id)
+        if blueprint:
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"blueprintId": str(blueprint["id"])})
+            self.process_blueprint(blueprint)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         brief = self.briefs.claim_next_brief(self.worker_id)

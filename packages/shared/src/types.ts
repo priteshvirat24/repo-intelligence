@@ -582,10 +582,80 @@ export interface BriefCandidate {
   assessment: CandidateAssessment;
 }
 
+export type BlueprintStatus = 'WAITING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type BlueprintDecision = 'reuse' | 'adapt' | 'investigate' | 'build';
+
+export interface BlueprintVerification {
+  fullName: string;
+  state: 'queued' | 'reused' | 'skipped';
+  reason?: string | null;
+  repositoryId?: string | null;
+  resourceId?: string | null;
+  /** Live indexing state of the repository (from the repositories table and its latest job) */
+  repositoryStatus?: string | null;
+  jobStep?: string | null;
+}
+
+export interface BlueprintSource {
+  id: string; // C1 (verified code), R1 (README assessment), L1 (known limitation)
+  kind: 'code' | 'readme' | 'limitation';
+  repo: string;
+  title: string;
+  text: string;
+  filePath?: string | null;
+  startLine?: number | null;
+  endLine?: number | null;
+  symbol?: string | null;
+  quote?: string;
+  url: string;
+}
+
+export interface BlueprintComponent {
+  requirement: string;
+  criticality: RequirementCriticality;
+  isConstraint: boolean;
+  decision: BlueprintDecision;
+  repo: string | null;
+  how: string;
+  sources: string[];
+  /** verified: code evidence about this requirement; unconfirmed: README claims or code about something else */
+  evidence: 'verified' | 'unconfirmed' | 'none';
+}
+
+export interface BlueprintItem {
+  title: string;
+  detail: string;
+  sources?: string[];
+  requirements?: string[];
+  /** Added from repository data or coverage gaps, not written by the model */
+  generated?: boolean;
+}
+
+export interface EngineeringBlueprint {
+  summary: string;
+  components: BlueprintComponent[];
+  integrationSteps: BlueprintItem[];
+  toBuild: BlueprintItem[];
+  risks: BlueprintItem[];
+  sources: BlueprintSource[];
+  verification: Array<{ fullName: string; status: 'verified' | 'failed' | 'skipped' | 'pending'; capabilities: number; reason?: string | null; repositoryId?: string | null }>;
+  generatedAt: string;
+}
+
+export interface BriefBlueprint {
+  status: BlueprintStatus;
+  step: string;
+  errorMessage?: string | null;
+  verification: BlueprintVerification[];
+  blueprint: EngineeringBlueprint | null;
+  completedAt?: string | null;
+}
+
 export interface BriefDetail extends BriefSummary {
   briefText: string;
   decompositionMode: 'llm' | 'heuristic';
   requirements: OpenQueryRequirements;
   discovery: DiscoveryMetrics;
   candidates: BriefCandidate[];
+  blueprint: BriefBlueprint | null;
 }
