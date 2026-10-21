@@ -1872,3 +1872,11 @@ a.shelf-item:hover .shelf-item-title > .truncate { text-decoration: underline; t
     transform: translateX(-50%);
   }
 }
+
+/* Data tables (evaluation results) */
+.table-wrap { width: 100%; overflow-x: auto; }
+.data-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.data-table th,
+.data-table td { text-align: left; padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--line); vertical-align: top; }
+.data-table th { font-family: var(--font-mono); font-size: var(--fs-2xs); font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); white-space: nowrap; }
+.data-table td.num, .data-table th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }

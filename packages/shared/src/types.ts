@@ -548,6 +548,8 @@ export interface DiscoveryMetrics {
   readmesAssessed?: number;
   githubAuthenticated?: boolean;
   durationMs?: number;
+  /** Version of the tuning (weights, thresholds, prompts) discovery ran with */
+  tuningVersion?: string;
 }
 
 export interface CandidateAssessment {
@@ -640,6 +642,7 @@ export interface EngineeringBlueprint {
   sources: BlueprintSource[];
   verification: Array<{ fullName: string; status: 'verified' | 'failed' | 'skipped' | 'pending'; capabilities: number; reason?: string | null; repositoryId?: string | null }>;
   generatedAt: string;
+  tuningVersion?: string;
 }
 
 export interface BriefBlueprint {
@@ -651,6 +654,17 @@ export interface BriefBlueprint {
   completedAt?: string | null;
 }
 
+/** What a brief's run spent, from the cost ledger (provider_usage) */
+export interface BriefUsage {
+  calls: number;
+  failedCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** null when any call's model has no price in LLM_PRICES_JSON */
+  costCents: number | null;
+  byStage: Array<{ stage: 'understanding' | 'discovery' | 'verification' | 'blueprint'; calls: number; inputTokens: number; outputTokens: number }>;
+}
+
 export interface BriefDetail extends BriefSummary {
   briefText: string;
   decompositionMode: 'llm' | 'heuristic';
@@ -658,4 +672,5 @@ export interface BriefDetail extends BriefSummary {
   discovery: DiscoveryMetrics;
   candidates: BriefCandidate[];
   blueprint: BriefBlueprint | null;
+  usage: BriefUsage;
 }

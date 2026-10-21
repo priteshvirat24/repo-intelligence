@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AlertCircle, AlertTriangle, ArrowLeft, ArrowUpRight, Plus, RotateCw, Star } from 'lucide-react';
-import { BriefCandidate, BriefDetail, OpenRequirement, RequirementCoverage } from '@repo/shared';
+import { BriefCandidate, BriefDetail, BriefUsage, OpenRequirement, RequirementCoverage } from '@repo/shared';
 import { Navbar } from '@/components/Navbar';
 import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
@@ -262,6 +262,7 @@ export default function BriefDetailPage() {
                     </span>
                   ))}
                 </div>
+                {brief.usage && <UsageSummary usage={brief.usage} tuning={brief.discovery?.tuningVersion} blueprintTuning={brief.blueprint?.blueprint?.tuningVersion} />}
               </div>
             </section>
           </>
@@ -270,6 +271,34 @@ export default function BriefDetailPage() {
     </div>
   );
 }
+
+const STAGE_LABEL: Record<BriefUsage['byStage'][number]['stage'], string> = {
+  understanding: 'reading the brief',
+  discovery: 'discovery',
+  verification: 'verifying repositories',
+  blueprint: 'writing the blueprint'
+};
+
+/** What this brief's run spent, from the cost ledger, and which tuning version produced it. */
+const UsageSummary: React.FC<{ usage: BriefUsage; tuning?: string; blueprintTuning?: string }> = ({ usage, tuning, blueprintTuning }) => {
+  if (usage.calls === 0 && !tuning) return null;
+  const tokens = usage.inputTokens + usage.outputTokens;
+  return (
+    <div className="muted xsmall stack gap-1" aria-label="Run cost">
+      <span>
+        {usage.calls} AI calls{usage.failedCalls ? ` (${usage.failedCalls} failed or retried)` : ''}, {compactNumber(tokens)} tokens
+        {' · '}
+        {usage.costCents === null ? 'cost not priced (set LLM_PRICES_JSON)' : `$${(usage.costCents / 100).toFixed(usage.costCents < 100 ? 4 : 2)}`}
+        {usage.byStage.length > 0 && ` · ${usage.byStage.map((s) => `${STAGE_LABEL[s.stage]} ${s.calls}`).join(', ')}`}
+      </span>
+      {tuning && (
+        <span className="mono">
+          tuning {tuning}{blueprintTuning && blueprintTuning !== tuning ? `, blueprint ${blueprintTuning}` : ''}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const RequirementRow: React.FC<{ requirement: OpenRequirement }> = ({ requirement }) => (
   <div className="row gap-3" style={{ alignItems: 'flex-start' }}>

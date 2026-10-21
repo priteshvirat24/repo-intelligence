@@ -11,7 +11,8 @@ const NAV_ITEMS = [
   { href: '/', label: 'Studio' },
   { href: '/briefs', label: 'Briefs' },
   { href: '/resources', label: 'Library' },
-  { href: '/capabilities', label: 'Capabilities' }
+  { href: '/capabilities', label: 'Capabilities' },
+  { href: '/evaluation', label: 'Evaluation' }
 ];
 
 export const Navbar: React.FC = () => {
