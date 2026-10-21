@@ -364,6 +364,12 @@ const CandidateCard: React.FC<{
           </a>
           <span className="tag">{KIND_LABELS[c.candidateKind] || c.candidateKind}</span>
           {c.duplicateOf && <span className="tag">Copy of {c.duplicateOf}</span>}
+          {c.provenance?.includes('memory') && (
+            <Link href={`/memory`} className="tag" title={c.memory?.lastVerifiedAt ? `Remembered from earlier research, last verified ${shortDate(c.memory.lastVerifiedAt)}` : 'Remembered from earlier research'}>
+              {c.provenance.includes('search') ? 'also in memory' : 'from memory'}
+              {c.memory?.lastVerifiedAt ? ` · verified ${shortDate(c.memory.lastVerifiedAt)}` : ''}
+            </Link>
+          )}
         </div>
         <div className="row wrap gap-3 small muted">
           <span className="row gap-1"><Star size={13} aria-hidden="true" />{compactNumber(c.stars)}</span>

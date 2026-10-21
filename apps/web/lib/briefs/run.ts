@@ -4,7 +4,8 @@ import type { PoolClient } from '@repo/database';
 // app only creates runs and invalidates tasks when the user changes something. Keep in step with graph.py.
 export const PIPELINE: Record<string, string[]> = {
   understand: [],
-  discover: ['understand'],
+  recall: ['understand'], // Phase 4: memory read before research
+  discover: ['understand', 'recall'],
   verify: ['discover'],
   blueprint: ['verify']
 };

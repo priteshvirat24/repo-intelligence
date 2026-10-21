@@ -509,6 +509,7 @@ export type BriefStatus = 'QUEUED' | 'RUNNING' | 'AWAITING_INPUT' | 'COMPLETED' 
 export type DiscoveryStep =
   | 'QUEUED'
   | 'UNDERSTANDING'
+  | 'RECALLING_MEMORY'
   | 'PLANNING_QUERIES'
   | 'SEARCHING_GITHUB'
   | 'READING_READMES'
@@ -675,7 +676,7 @@ export interface BriefUsage {
 export type TaskStatus = 'pending' | 'running' | 'waiting' | 'awaiting_input' | 'done' | 'failed' | 'stale' | 'cancelled';
 
 export interface BriefTask {
-  type: 'understand' | 'discover' | 'verify' | 'blueprint';
+  type: 'understand' | 'recall' | 'discover' | 'verify' | 'blueprint';
   status: TaskStatus;
   errorMessage?: string | null;
   startedAt?: string | null;
@@ -715,4 +716,103 @@ export interface BriefDetail extends BriefSummary {
   candidates: BriefCandidate[];
   blueprint: BriefBlueprint | null;
   usage: BriefUsage;
+}
+
+// Phase 4: memory (PRODUCT_DEFINITION 8, SYSTEM_DESIGN 8). Three types: semantic (claims, source reliability),
+// episodic (run and event episodes) and procedural (procedures learned from episodes and evaluations).
+
+export type MemoryType = 'semantic' | 'episodic' | 'procedural';
+export type ClaimGrade = 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
+export type ClaimStatus = 'current' | 'needs_revalidation' | 'refuted' | 'superseded';
+
+export interface ClaimEvidenceItem {
+  method: string;
+  grade?: ClaimGrade;
+  sourceUrl?: string;
+  locator?: { filePath?: string; startLine?: number; endLine?: number; symbol?: string; commit?: string };
+  excerpt?: string;
+  reason?: string;
+  claimId?: string;
+  at?: string;
+}
+
+/** A semantic memory record as the audit view shows it */
+export interface MemoryClaim {
+  id: string;
+  subject: string;
+  subjectVersion?: string | null;
+  kind: string;
+  statement: string;
+  grade: ClaimGrade;
+  status: ClaimStatus;
+  scope: 'global' | 'workspace';
+  briefId?: string | null;
+  evidence: ClaimEvidenceItem[];
+  observedAt: string;
+  revalidateAfter?: string | null;
+  revalidatedAt?: string | null;
+  /** status current and not past revalidateAfter; anything else is shown as "last verified on" */
+  current: boolean;
+  sourceReliability?: number | null;
+}
+
+export interface MemoryEpisode {
+  id: string;
+  briefId?: string | null;
+  parentId?: string | null;
+  kind: 'run' | 'event';
+  outcome: 'completed' | 'stopped' | 'failed' | 'refuted' | 'confirmed' | 'feedback';
+  title?: string | null;
+  summary?: string | null;
+  tuningVersion?: string | null;
+  queries: Array<{ query: string; requirement: string; results?: number; newCandidates?: number; shortlistedFound?: string[] }>;
+  shortlisted: string[];
+  rejected: Array<{ fullName: string; reason: string }>;
+  decisions: Array<{ component?: string; decision?: string; repo?: string | null }>;
+  budget: { llmCalls?: number; tokens?: number; githubRequests?: number };
+  memory: { memoryCandidates?: number; searchesAvoided?: number; similarEpisodes?: string[] };
+  feedback: Array<{ outcome: string; claimId?: string; subject?: string; reason?: string }>;
+  detail: Record<string, unknown>;
+  finishedAt: string;
+}
+
+export type ProcedureStatus = 'candidate' | 'active' | 'retired';
+
+export interface MemoryProcedure {
+  id: string;
+  workspaceId?: string | null;
+  kind: 'query_pattern' | 'research_strategy' | 'integration_recipe' | 'avoidance';
+  name: string;
+  trigger: { requirementTerms?: string[]; domain?: string; language?: string };
+  steps: Record<string, unknown>;
+  evidence: { episodes?: string[]; evalRuns?: string[]; briefs?: number };
+  successCount: number;
+  failureCount: number;
+  usesCount: number;
+  confidence?: number | null;
+  status: ProcedureStatus;
+  scope: 'global' | 'workspace';
+  revalidationRule: string;
+  activatedAt?: string | null;
+  retiredAt?: string | null;
+  updatedAt: string;
+}
+
+/** What memory contributed to a brief's discovery (declaration merging onto DiscoveryMetrics) */
+export interface DiscoveryMetrics {
+  memoryCandidates?: number;
+  memoryAlsoFound?: number;
+  searchesAvoided?: number;
+  queriesSkipped?: string[];
+  proceduresApplied?: string[];
+}
+
+export interface BriefCandidate {
+  /** where the candidate came from: search, memory or both */
+  provenance?: Array<'search' | 'memory'>;
+  memory?: {
+    claims?: Array<{ id: string; kind: string; grade: ClaimGrade; statement: string; status: ClaimStatus; current: boolean; observedAt?: string; revalidatedAt?: string | null }>;
+    lastVerifiedAt?: string | null;
+    assessedFromBrief?: string | null;
+  };
 }

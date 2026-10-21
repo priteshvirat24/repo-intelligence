@@ -8,6 +8,7 @@ import { compactNumber } from '@/lib/ui/briefs';
 
 const TASK_LABEL: Record<BriefTask['type'], string> = {
   understand: 'Understand the brief',
+  recall: 'Recall what memory knows',
   discover: 'Discover existing solutions',
   verify: 'Verify against code',
   blueprint: 'Write the blueprint'

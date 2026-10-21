@@ -60,7 +60,7 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
      FROM tasks WHERE brief_id = $1`,
     [id]
   );
-  const order = ['understand', 'discover', 'verify', 'blueprint'];
+  const order = ['understand', 'recall', 'discover', 'verify', 'blueprint'];
   brief.tasks = tasksRes.rows.sort((a: any, b: any) => order.indexOf(a.type) - order.indexOf(b.type));
   brief.budget = await getBudget(id, brief.budgetJson || {});
   delete brief.budgetJson;
@@ -88,7 +88,9 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
        rank,
        shortlisted,
        duplicate_of as "duplicateOf",
-       assessment_json as "assessment"
+       assessment_json as "assessment",
+       provenance,
+       NULLIF(memory_json, '{}'::jsonb) as "memory"
      FROM brief_candidates
      WHERE brief_id = $1
      ORDER BY rank ASC`,

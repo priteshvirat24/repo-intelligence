@@ -3,6 +3,7 @@ import { DiscoveryStep } from '@repo/shared';
 const STEP_LABELS: Record<DiscoveryStep, string> = {
   QUEUED: 'Waiting for the worker',
   UNDERSTANDING: 'Reading the brief',
+  RECALLING_MEMORY: 'Checking what earlier research already found',
   PLANNING_QUERIES: 'Planning GitHub searches',
   SEARCHING_GITHUB: 'Searching GitHub',
   READING_READMES: 'Reading READMEs of the strongest matches',
@@ -16,6 +17,7 @@ const STEP_LABELS: Record<DiscoveryStep, string> = {
 const STEP_PROGRESS: Record<DiscoveryStep, number> = {
   QUEUED: 3,
   UNDERSTANDING: 8,
+  RECALLING_MEMORY: 11,
   PLANNING_QUERIES: 15,
   SEARCHING_GITHUB: 30,
   READING_READMES: 45,

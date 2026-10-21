@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: '/briefs', label: 'Briefs' },
   { href: '/resources', label: 'Library' },
   { href: '/capabilities', label: 'Capabilities' },
+  { href: '/memory', label: 'Memory' },
   { href: '/evaluation', label: 'Evaluation' }
 ];
 
