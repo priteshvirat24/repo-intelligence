@@ -58,9 +58,10 @@ def _sync_brief_status(cur, brief_id: str):
     tasks = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
     if not tasks:
         return
-    cur.execute("SELECT stop_reason FROM briefs WHERE id = %s", (brief_id,))
+    cur.execute("SELECT stop_reason, status FROM briefs WHERE id = %s", (brief_id,))
     row = cur.fetchone()
     stop_reason = row[0] if row else None
+    previous_status = row[1] if row else None
     statuses = [tasks[t][0] for t in ORDER if t in tasks]
     failed = next((t for t in ORDER if t in tasks and tasks[t][0] == "failed"), None)
     if stop_reason == "budget":
@@ -76,6 +77,21 @@ def _sync_brief_status(cur, brief_id: str):
     else:
         status, error = "RUNNING", None
     cur.execute("UPDATE briefs SET status = %s, error_message = %s, updated_at = NOW() WHERE id = %s", (status, error, brief_id))
+    if status in ("COMPLETED", "STOPPED", "FAILED") and status != previous_status:
+        _record_episode(cur, brief_id, status)
+
+
+def _record_episode(cur, brief_id: str, status: str):
+    """Phase 4 episodic memory: the run ended, so it is remembered. A failure to write the episode never
+    fails the task that ended the run (savepoint)."""
+    from ..memory import episodic
+    cur.execute("SAVEPOINT record_episode")
+    try:
+        episodic.record_run(cur, brief_id, status)
+        cur.execute("RELEASE SAVEPOINT record_episode")
+    except Exception as e:
+        cur.execute("ROLLBACK TO SAVEPOINT record_episode")
+        print(f"[Memory] Could not record the run episode of brief {brief_id}: {e}")
 
 
 class TaskStore:

@@ -49,6 +49,12 @@ class BriefStore:
                     Json(c.get("assessment") or {}),
                 )
             )
+            if c.get("memory") or (c.get("provenance") and c["provenance"] != ["search"]):
+                # Phase 4: where the candidate came from (search, memory) and what memory knew about it
+                cur.execute(
+                    "UPDATE brief_candidates SET provenance = %s, memory_json = %s WHERE brief_id = %s AND full_name = %s",
+                    (c.get("provenance") or ["search"], Json(c.get("memory") or {}), brief_id, _text(c["full_name"], 300))
+                )
 
         cur.execute(
             "UPDATE briefs SET discovery_json = %s, discovered_at = NOW(), updated_at = NOW() WHERE id = %s",

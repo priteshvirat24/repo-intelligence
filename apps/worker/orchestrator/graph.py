@@ -9,7 +9,8 @@ from typing import Any, Dict, List
 # Task type -> the task types whose outputs it consumes. One row per type per brief (tasks table).
 PIPELINE: Dict[str, List[str]] = {
     "understand": [],
-    "discover": ["understand"],
+    "recall": ["understand"],  # Phase 4: memory read before research
+    "discover": ["understand", "recall"],
     "verify": ["discover"],
     "blueprint": ["verify"],
 }

@@ -63,6 +63,10 @@ def test_graph_runs_in_dependency_order(run):
     assert first["type"] == "understand"
     assert store.claim_next("w2") is None  # discover waits for understand
     store.complete(first, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    recall = store.claim_next("w2")
+    assert recall["type"] == "recall"  # memory is read before research (Phase 4)
+    assert store.claim_next("w1") is None  # discover waits for recall too
+    store.complete(recall, {"candidates": []}, "fp-r", "w2")
     assert store.claim_next("w2")["type"] == "discover"
     assert brief_status(db, brief_id)[0] == "RUNNING"
 
@@ -71,6 +75,7 @@ def test_unchanged_output_does_not_disturb_downstream(run):
     db, store, brief_id = run
     understand = store.claim_next("w1")
     store.complete(understand, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    store.complete(store.claim_next("w1"), {"candidates": []}, "fp-r", "w1")  # recall
     discover = store.claim_next("w1")
     store.complete(discover, {"shortlist": ["a/b"]}, "fp-d", "w1")
     assert statuses(db, brief_id)["discover"] == "done"
@@ -97,6 +102,7 @@ def test_invalidation_takes_ownership_from_a_running_task(run):
     db, store, brief_id = run
     understand = store.claim_next("w1")
     store.complete(understand, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    store.complete(store.claim_next("w1"), {"candidates": []}, "fp-r", "w1")  # recall
     discover = store.claim_next("w1")  # running
     conn = db.get_connection()
     with conn.cursor() as cur:
@@ -135,11 +141,12 @@ def test_budget_stop_is_reported_on_the_brief(run):
 
 
 def test_downstream_order():
-    assert downstream("understand") == ["discover", "verify", "blueprint"]
+    assert downstream("understand") == ["recall", "discover", "verify", "blueprint"]
+    assert downstream("recall") == ["discover", "verify", "blueprint"]
     assert downstream("verify") == ["blueprint"]
     assert downstream("blueprint") == []
     from apps.worker.orchestrator.graph import ancestors
-    assert ancestors("blueprint") == ["understand", "discover", "verify"]
+    assert ancestors("blueprint") == ["understand", "recall", "discover", "verify"]
 
 
 # Understanding task

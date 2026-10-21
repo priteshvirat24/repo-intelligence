@@ -42,12 +42,17 @@ class DiscoveryRunner:
         on_step: Optional[Callable[[str], None]] = None,
         sleep: Callable[[float], None] = time.sleep,
         tuning: Optional[Tuning] = None,
+        skip_query: Optional[Callable[[Dict[str, str]], bool]] = None,
+        procedures: Optional[List[Dict[str, Any]]] = None,
     ):
         self.tuning = resolve(tuning)
         self.llm = llm
         self.github = github
         self.on_step = on_step or (lambda step: None)
         self.sleep = sleep
+        # Phase 4 memory: queries memory already answers are not searched; learned procedures guide the planner
+        self.skip_query = skip_query
+        self.procedures = procedures or []
         # Search API quota: 30 requests/min with a token, 10/min without
         self.search_interval = 2.1 if github.authenticated else 6.5
 
@@ -59,11 +64,16 @@ class DiscoveryRunner:
             raise ValueError("BRIEF_HAS_NO_REQUIREMENTS: the brief was not decomposed into any requirements.")
 
         self.on_step("PLANNING_QUERIES")
-        planned, planner_mode = plan_queries(self.llm, requirements_json, t)
+        planned, planner_mode = plan_queries(self.llm, requirements_json, t, procedures=self.procedures)
 
         self.on_step("SEARCHING_GITHUB")
-        results, searched_as, calls = [], {}, 0
+        results, searched_as, calls, skipped = [], {}, 0, []
         for query in planned:
+            if self.skip_query and self.skip_query(query):
+                results.append((query, []))
+                searched_as[query["query"]] = []
+                skipped.append(query["query"])
+                continue
             items, seen, attempts = [], set(), []
             for text, min_stars in search_attempts(query["query"], t.get("discovery.min_stars")):
                 if calls:
@@ -127,4 +137,6 @@ class DiscoveryRunner:
             "githubAuthenticated": self.github.authenticated,
             "durationMs": int((time.time() - started) * 1000),
         }
+        if self.skip_query:
+            metrics["queriesSkipped"] = skipped
         return {"candidates": stored, "metrics": metrics}

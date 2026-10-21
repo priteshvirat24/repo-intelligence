@@ -32,9 +32,10 @@ from .db.repository import DatabaseRepository, JobLostError
 from .discovery.github_search import GitHubRateLimited
 from .orchestrator.store import DEFAULT_BUDGET, TaskStore
 from .orchestrator.handlers import HANDLERS, TaskContext, fingerprint
+from .memory import MemoryMaintenance
 
 # The progress step shown while each task runs (discovery refines it as it goes)
-TASK_STEP = {"understand": "UNDERSTANDING", "discover": "PLANNING_QUERIES", "verify": "VERIFYING", "blueprint": "DESIGNING"}
+TASK_STEP = {"understand": "UNDERSTANDING", "recall": "RECALLING_MEMORY", "discover": "PLANNING_QUERIES", "verify": "VERIFYING", "blueprint": "DESIGNING"}
 from .providers import ledger
 from . import tuning as tuning_registry
 
@@ -133,6 +134,8 @@ class IngestionWorker:
         self.active_task: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
         self.tasks = TaskStore(self.db)
+        # Phase 4: revalidation and distillation of memory while idle, at most every few minutes
+        self.memory = MemoryMaintenance(self.db)
         # Every LLM and embedding call is recorded in provider_usage
         ledger.add_sink(ledger.DatabaseSink(self.db))
         self.llm = get_llm_provider()
@@ -818,6 +821,7 @@ class IngestionWorker:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
                 if not self.run_next():
+                    self.memory.maybe_run()
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)

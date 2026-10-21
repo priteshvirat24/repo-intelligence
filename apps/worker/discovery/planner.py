@@ -39,14 +39,17 @@ Rules:
 7. Output strictly valid JSON."""
 
 
-def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning: Optional[Tuning] = None) -> Tuple[List[Dict[str, str]], str]:
-    """Returns ([{query, requirement}], mode). mode is "llm", or "heuristic" when the LLM output was unusable."""
+def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning: Optional[Tuning] = None,
+                 procedures: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[Dict[str, str]], str]:
+    """Returns ([{query, requirement}], mode). mode is "llm", or "heuristic" when the LLM output was unusable.
+    procedures: active learned procedures matching the brief (procedural memory), shown to the planner."""
     t = resolve(tuning)
     max_queries, max_words = t.get("discovery.max_queries"), t.get("discovery.max_query_words")
     names = [r["name"] for r in capability_requirements(requirements_json)]
     constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
         prompt = _user_prompt(requirements_json, max_queries, t.get("discovery.planner_lists_constraints"))
+        prompt += procedures_block(procedures)
         with ledger_scope(purpose="discovery_planner"):
             raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
         planned = validate_queries(raw, names, max_queries, max_words, constraint_names)
@@ -78,6 +81,24 @@ def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERI
     lines.append(f"""
 Return JSON: {{"queries": [{{"query": "2-3 keywords", "requirement": "exact requirement name or (overall)"}}]}} with at most {max_queries} queries.""")
     return "\n".join(lines)
+
+
+# Phase 4: procedural memory. Active procedures (maintainer-approved, measured on earlier runs) are shown
+# to the planner as hints, capped in number and size; the rules above still decide what a query may be.
+MAX_PROCEDURES_IN_PROMPT = 5
+MAX_PROCEDURES_CHARS = 800
+
+
+def procedures_block(procedures: Optional[List[Dict[str, Any]]]) -> str:
+    lines = []
+    for p in (procedures or [])[:MAX_PROCEDURES_IN_PROMPT]:
+        query = clean_query((p.get("steps") or {}).get("query"))
+        if query and p.get("requirement"):
+            lines.append(f'- For "{p["requirement"]}": the query "{query}" found the solution in {p.get("successCount", 0)} earlier briefs')
+    if not lines:
+        return ""
+    block = "\n".join(lines)[:MAX_PROCEDURES_CHARS]
+    return f"\n\nQueries that worked for similar requirements before (use them when they fit; still follow the rules):\n{block}"
 
 
 def sorted_requirements(requirements_json: Dict[str, Any]) -> List[Dict[str, Any]]:
