@@ -4,12 +4,14 @@ Task handlers for the brief run graph. Each returns an Outcome; the runner appli
   understand  brief + constraints + answers           -> requirements, acceptance criteria, questions
   discover    requirements + constraints              -> ranked candidates and shortlist
   verify      shortlist                               -> shortlisted repositories indexed (waits for the indexer)
+  execute     verified claims (opt-in, sandboxed)     -> claims raised to E1 or refuted by running them (Phase 6)
   blueprint   verification outcome + candidates       -> the engineering blueprint
 """
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
 from .. import claims as claim_writer
+from .. import execution
 from ..config import config
 from ..db.briefs import BriefStore
 from ..discovery.blueprint import generate_blueprint
@@ -49,21 +51,33 @@ def fingerprint(ctx: TaskContext) -> str:
     """What a task's result depends on. Equal fingerprints mean the previous result still holds."""
     b, o, t = ctx.brief, ctx.outputs, ctx.task["type"]
     if t == "understand":
-        parts = {"title": b["title"], "brief": b["brief_text"], "constraints": b["constraints_json"], "answers": b["answers_json"],
+        parts = {"title": b["title"], "brief": b["brief_text"], "constraints": _research_constraints(b), "answers": b["answers_json"],
                  "prompt": "understanding-v1"}
     elif t == "discover":
-        parts = {"requirements": o.get("understand", {}).get("requirements"), "constraints": b["constraints_json"], "tuning": ctx.tuning.version}
+        parts = {"requirements": o.get("understand", {}).get("requirements"), "constraints": _research_constraints(b), "tuning": ctx.tuning.version}
     elif t == "verify":
         parts = {"shortlist": o.get("discover", {}).get("shortlist"), "count": config.BRIEF_VERIFY_COUNT}
+    elif t == "execute":
+        parts = {"allowed": execution.allowed(b["constraints_json"]), "statuses": o.get("verify", {}).get("statuses"),
+                 "shortlist": o.get("discover", {}).get("shortlist"), "prompt": execution.PROMPT_VERSION,
+                 "caps": [config.EXECUTE_MAX_CANDIDATES, config.EXECUTE_MAX_CLAIMS]}
     else:
         parts = {"verification": o.get("verify", {}).get("verification"), "candidates": o.get("discover", {}).get("shortlist"),
                  "tuning": ctx.tuning.version}
+        if o.get("execute", {}).get("checks"):
+            parts["execution"] = [(c.get("claimId"), c.get("outcome")) for c in o["execute"]["checks"]]
     return digest(parts)
+
+
+def _research_constraints(brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Constraints that shape research. The execution opt-in only affects the execute task, so switching it
+    does not re-run understanding or discovery."""
+    return {k: v for k, v in (brief.get("constraints_json") or {}).items() if k != "allowExecution"}
 
 
 def run_understand(ctx: TaskContext) -> Outcome:
     b = ctx.brief
-    result, mode = understand(ctx.llm_for("models.discovery"), b["title"], b["brief_text"], b["constraints_json"], b["answers_json"])
+    result, mode = understand(ctx.llm_for("models.discovery"), b["title"], b["brief_text"], _research_constraints(b), b["answers_json"])
     requirements = {k: v for k, v in result.items() if k not in ("acceptanceCriteria", "clarifyingQuestions", "assumptions")}
     understanding = {
         "acceptanceCriteria": result["acceptanceCriteria"],
@@ -145,6 +159,19 @@ def run_verify(ctx: TaskContext) -> Outcome:
     return Outcome("done", {"verification": verification, "statuses": {v["fullName"]: v.get("repositoryStatus") for v in final}}, persist=persist)
 
 
+def run_execute(ctx: TaskContext) -> Outcome:
+    """E1 checks in the sandbox, only when the brief opted in; otherwise done at once as skipped."""
+    output = execution.execute_checks(ctx.db, ctx.brief, ctx.outputs, ctx.llm_for("models.discovery"), heartbeat=ctx.heartbeat)
+    if output.get("skipped"):
+        return Outcome("done", output)
+
+    def persist(cur):
+        for check in output["checks"]:
+            execution.apply_check(cur, check)
+
+    return Outcome("done", output, persist=persist)
+
+
 def run_blueprint(ctx: TaskContext) -> Outcome:
     verification = ctx.outputs.get("verify", {}).get("verification") or []
     conn = ctx.db.get_connection()
@@ -167,7 +194,7 @@ def run_blueprint(ctx: TaskContext) -> Outcome:
     return Outcome("done", {"decisions": {d: decisions.count(d) for d in set(decisions)}, "sources": len(blueprint["sources"])}, persist=persist)
 
 
-HANDLERS = {"understand": run_understand, "discover": run_discover, "verify": run_verify, "blueprint": run_blueprint}
+HANDLERS = {"understand": run_understand, "discover": run_discover, "verify": run_verify, "execute": run_execute, "blueprint": run_blueprint}
 
 
 def _ws(ctx: TaskContext) -> Optional[str]:

@@ -10,6 +10,7 @@ const TASK_LABEL: Record<BriefTask['type'], string> = {
   understand: 'Understand the brief',
   discover: 'Discover existing solutions',
   verify: 'Verify against code',
+  execute: 'Run checks in the sandbox',
   blueprint: 'Write the blueprint'
 };
 
@@ -167,6 +168,22 @@ export const ConstraintFields: React.FC<{ value: Record<string, string>; onChang
         <option value="any">Any licence</option>
       </select>
     </label>
+    <label className="row gap-2 small" style={{ alignItems: 'flex-start', maxWidth: 640 }}>
+      <input
+        type="checkbox"
+        checked={String(value.allowExecution) === 'true'}
+        onChange={(e) => onChange({ ...value, allowExecution: e.target.checked ? 'true' : '' })}
+        style={{ marginTop: 3 }}
+      />
+      <span className="stack gap-1">
+        <span><strong>Allow running third-party code in the sandbox</strong> to check claims by executing them (grade E1).</span>
+        <span className="xsmall muted">
+          Open Eye installs the shortlisted packages and runs generated tests against them. That code is untrusted: it runs only in an
+          isolated sandbox with no secrets, limited CPU, memory and time, and no network while tests run. Leave this off to keep research
+          to reading code.
+        </span>
+      </span>
+    </label>
   </div>
 );
 
@@ -180,7 +197,9 @@ export const ConstraintsEditor: React.FC<{ brief: BriefDetail; onChanged: () => 
     return (
       <div className="row wrap between gap-3 small">
         <span className="muted">
-          {shown.length ? shown.map(([k, v]) => `${k}: ${v}`).join(' · ') : 'No constraints set.'}
+          {shown.length
+            ? shown.map(([k, v]) => (k === 'allowExecution' ? 'sandbox execution allowed' : `${k}: ${v}`)).join(' · ')
+            : 'No constraints set.'}
         </span>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setValue(brief.constraints || {}); setEditing(true); }}>
           Change constraints

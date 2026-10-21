@@ -34,7 +34,7 @@ from .orchestrator.store import DEFAULT_BUDGET, TaskStore
 from .orchestrator.handlers import HANDLERS, TaskContext, fingerprint
 
 # The progress step shown while each task runs (discovery refines it as it goes)
-TASK_STEP = {"understand": "UNDERSTANDING", "discover": "PLANNING_QUERIES", "verify": "VERIFYING", "blueprint": "DESIGNING"}
+TASK_STEP = {"understand": "UNDERSTANDING", "discover": "PLANNING_QUERIES", "verify": "VERIFYING", "execute": "EXECUTING", "blueprint": "DESIGNING"}
 from .providers import ledger
 from . import tuning as tuning_registry
 

@@ -11,7 +11,8 @@ PIPELINE: Dict[str, List[str]] = {
     "understand": [],
     "discover": ["understand"],
     "verify": ["discover"],
-    "blueprint": ["verify"],
+    "execute": ["verify"],
+    "blueprint": ["verify", "execute"],
 }
 ORDER = list(PIPELINE)
 

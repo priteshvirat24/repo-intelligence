@@ -6,7 +6,8 @@ export const PIPELINE: Record<string, string[]> = {
   understand: [],
   discover: ['understand'],
   verify: ['discover'],
-  blueprint: ['verify']
+  execute: ['verify'],
+  blueprint: ['verify', 'execute']
 };
 const ORDER = Object.keys(PIPELINE);
 

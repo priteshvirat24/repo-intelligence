@@ -514,6 +514,7 @@ export type DiscoveryStep =
   | 'READING_READMES'
   | 'RANKING'
   | 'VERIFYING'
+  | 'EXECUTING'
   | 'DESIGNING'
   | 'DONE'
   | 'FAILED';
@@ -675,7 +676,7 @@ export interface BriefUsage {
 export type TaskStatus = 'pending' | 'running' | 'waiting' | 'awaiting_input' | 'done' | 'failed' | 'stale' | 'cancelled';
 
 export interface BriefTask {
-  type: 'understand' | 'discover' | 'verify' | 'blueprint';
+  type: 'understand' | 'discover' | 'verify' | 'execute' | 'blueprint';
   status: TaskStatus;
   errorMessage?: string | null;
   startedAt?: string | null;

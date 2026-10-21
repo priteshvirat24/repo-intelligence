@@ -60,7 +60,7 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
      FROM tasks WHERE brief_id = $1`,
     [id]
   );
-  const order = ['understand', 'discover', 'verify', 'blueprint'];
+  const order = ['understand', 'discover', 'verify', 'execute', 'blueprint'];
   brief.tasks = tasksRes.rows.sort((a: any, b: any) => order.indexOf(a.type) - order.indexOf(b.type));
   brief.budget = await getBudget(id, brief.budgetJson || {});
   delete brief.budgetJson;
