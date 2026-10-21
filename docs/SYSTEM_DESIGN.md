@@ -282,7 +282,7 @@ PyPI has no search API, so Python packages are found through GitHub and search, 
 | 4. Browser rendering of permitted pages | Scraper service | Built, but must change (below) |
 | 5. Targeted deeper investigation | `deepen` re-runs discovery with extra queries for one requirement; re-planning rounds (4.2) | Partly built |
 
-**The scraper must change [D§2.4, D§8 access, D§14.6, D§14.14].** It uses Scrapling's stealth fetcher with Camoufox, a browser built to evade fingerprinting. It routes a list of "protected" domains straight to it and retries pages that answered with a challenge. D§2.4 rules out fingerprint evasion, and D§14.6 allows a browser only to render permitted pages. In the end state, rendering uses a standard headless browser that identifies itself. A challenge page, a 403 or a sign-in wall is reported as blocked, and the protected-domain routing is removed. The SSRF checks and the `AUTH_REQUIRED` handling stay.
+**The scraper conflicts with the definition; resolving it is decision 14, still open [D§2.4, D§8 access, D§14.6, D§14.14].** It uses Scrapling's stealth fetcher with Camoufox, a browser built to evade fingerprinting. It routes a list of "protected" domains straight to it and retries pages that answered with a challenge. D§2.4 rules out fingerprint evasion, and D§14.6 allows a browser only to render permitted pages. In the end state, rendering uses a standard headless browser that identifies itself. A challenge page, a 403 or a sign-in wall is reported as blocked, and the protected-domain routing is removed. The SSRF checks and the `AUTH_REQUIRED` handling stay.
 
 ### 5.5 Research plan
 

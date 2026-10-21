@@ -34,7 +34,7 @@ A decision changes only through a new entry that supersedes the old one, with it
 | TD-06 | Embeddings | `mistral-embed`, 1024 dimensions | accepted |
 | TD-07 | Web search | Tavily behind the connector contract | accepted |
 | TD-08 | Single-page extraction | Firecrawl in the web app only; plain HTTP in the research path | accepted (web app); rejected (research path) |
-| TD-09 | Browser rendering | Replace Scrapling with Camoufox by a standard headless browser; Playwright the leading candidate | Camoufox rejected for the end state; replacement pending |
+| TD-09 | Browser rendering | Scrapling with Camoufox in use; proposed replacement by a standard headless browser (Playwright the leading candidate) | open: decision 14 |
 | TD-10 | Site crawling | Scrapy not adopted; bounded crawl over the gateway first | pending |
 | TD-11 | Package and vulnerability data | deps.dev and OSV.dev | accepted |
 | TD-12 | Code host access | GitHub REST and git (shallow, sparse) | accepted; code and issue search pending |
@@ -133,7 +133,7 @@ A decision changes only through a new entry that supersedes the old one, with it
 - **Revisit when:** measured E3 yield is lost because plain HTTP misses page content, and the browser tier cannot recover it within budget.
 
 ### TD-09 Browser rendering: Scrapling with Camoufox; a standard headless browser
-**Status:** Scrapling with Camoufox was accepted on 2026-10-21 by product decision. For the end state it is rejected: PRODUCT_DEFINITION v2.0 excludes fingerprint evasion. A standard headless browser that identifies itself replaces it (pending: Playwright with a stock browser is the leading candidate).
+**Status:** accepted on 2026-10-21 by product decision and kept by the owner on 2026-10-22, pending decision 14 ([PRODUCT_DEFINITION.md](PRODUCT_DEFINITION.md) §14). The proposal for the end state is to reject it: PRODUCT_DEFINITION v2.0 excludes fingerprint evasion. A standard headless browser that identifies itself replaces it (pending: Playwright with a stock browser is the leading candidate).
 - **Context:** layer 4 renders permitted pages that need JavaScript **[D§8 layered retrieval]**. Browser technology never grants permission, and getting past restrictions by fingerprint evasion is excluded **[D§2.4, D§8 access, D§14.6]**.
 - **Options:**
 

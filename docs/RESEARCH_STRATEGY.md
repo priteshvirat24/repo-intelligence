@@ -79,7 +79,7 @@ Every discovery and execution tool has one registry record **[D§8 tool registry
 | Semantic Scholar | planned | search, metadata | keywords or paper id → papers, citations | E4 |
 | Docs fetcher (plain HTTP) | in use | fetch | public URL → page text with headings | E3 (via quote check) |
 | Firecrawl | in use (web app only) | fetch | URL → Markdown | E3 (via quote check) |
-| Browser tier: Scrapling with Camoufox | in use (optional); to be replaced (TD-09) | fetch | URL → rendered Markdown, links | E3 (via quote check) |
+| Browser tier: Scrapling with Camoufox | in use (optional); replacement proposed, decision 14 open (TD-09) | fetch | URL → rendered Markdown, links | E3 (via quote check) |
 | Scrapy | candidate | crawl | start URL, allowed domain → many pages | E3 (via quote check) |
 | Playwright with a stock browser | candidate replacement for the browser tier (TD-09) | fetch | URL → rendered page | E3 (via quote check) |
 | Docker sandbox | in use (local) | execute | files, commands, limits → exit code, output | E1 |

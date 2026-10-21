@@ -71,7 +71,7 @@ In words: Q1 and Q2 start together. Research work (Q3, Q4, Q5) follows and leads
 - The 16-section report structure. Each section not yet produced says so and why. Sections 1–3, 5, 6, 9, 10, 12, 13 and 16 are filled [D§6.2].
 - Migration to the v2 requirement classes for the classifier, stored blueprints and the suite labels [D§5.6, D§14.8, S§7.2].
 - An append-only audit log (approvals, opt-ins, deliveries, sandbox runs, injection detections, configuration changes) and a per-mission audit view [D§11].
-- The scraper renders with a standard headless browser. The stealth fetcher and protected-domain routing go, and challenge pages are reported as blocked [D§2.4, D§14.6, D§14.14].
+- *Pending decision 14 (open; the stealth browser stays for now):* the scraper renders with a standard headless browser. The stealth fetcher and protected-domain routing go, and challenge pages are reported as blocked [D§2.4, D§14.6, D§14.14].
 - Pause, resume and stop, with partial results kept and labelled [D§3.3].
 - Wall-clock and compute limits per mission beside the existing call and token limits, and a marker-credential scan of every output [D§11].
 - `/` opens on "What do you want to build?" [D§3.1].
@@ -79,14 +79,14 @@ In words: Q1 and Q2 start together. Research work (Q3, Q4, Q5) follows and leads
 
 **Out of scope:** new sources, comparison content, memory changes, any change to ranking or prompts.
 
-**Deliverables:** sign-in enforcement and governance rules; `evaluate` task; report skeleton; class migration; audit log and view; revised scraper; mission controls; production deployment with a smoke-test record.
+**Deliverables:** sign-in enforcement and governance rules; `evaluate` task; report skeleton; class migration; audit log and view; revised scraper (once decision 14 is adopted); mission controls; production deployment with a smoke-test record.
 
 **Completion conditions:**
 - Met: ACC-4-01, 4-02, 5.6-01, 5.6-02, 5.9-01, 3.3-04, 7-02, 7-04, 7-05, 8-04, 11-01, 11-03, 11-05, 11-06, 11-07; the sixteen-section structure of ACC-6.2-01.
 - On the public deployment, every API route except health and sign-in answers 401 without a session (automated test).
 - Rule tests cover each of the five statuses and four build statuses on recorded fixtures. No fixture yields a status better than its data.
 - Every stored blueprint carries v2 classes. Rows that could not be mapped are re-classified, not guessed.
-- No scraper code path uses the stealth fetcher (test).
+- Once decision 14 is adopted: no scraper code path uses the stealth fetcher (test).
 - After the deploy: the health check passes, a suite brief runs end to end in production, and replay metrics stay within the noise band of `cfg-66b9cecdb37a`.
 
 **Risks:** v1 class-2 rows that are hard to split (mitigation: re-run the classify stage on recorded inputs); existing anonymous data losing its owner (mitigation: assign it to the operator workspace in the migration); sites that rendered before now report as blocked (accepted: that is the requirement).
