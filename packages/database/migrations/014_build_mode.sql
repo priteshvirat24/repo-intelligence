@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS builds (
 
 CREATE INDEX IF NOT EXISTS idx_builds_claim ON builds(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_builds_brief ON builds(brief_id, created_at DESC);
+-- At most one queued or running build per brief: two concurrent authorisations cannot both start one
+CREATE UNIQUE INDEX IF NOT EXISTS idx_builds_one_active ON builds(brief_id) WHERE status IN ('queued', 'running');
 
 -- 2. Existing briefs get the execute task (E1 checks) between verify and blueprint. It starts done and
 -- skipped, as it would have been without the per-project opt-in, so no blueprint re-runs because of it.

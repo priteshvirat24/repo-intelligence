@@ -670,7 +670,7 @@ export interface BriefUsage {
   outputTokens: number;
   /** null when any call's model has no price in LLM_PRICES_JSON */
   costCents: number | null;
-  byStage: Array<{ stage: 'understanding' | 'discovery' | 'verification' | 'blueprint'; calls: number; inputTokens: number; outputTokens: number }>;
+  byStage: Array<{ stage: 'understanding' | 'discovery' | 'verification' | 'blueprint' | 'execution'; calls: number; inputTokens: number; outputTokens: number }>;
 }
 
 export type TaskStatus = 'pending' | 'running' | 'waiting' | 'awaiting_input' | 'done' | 'failed' | 'stale' | 'cancelled';
@@ -716,4 +716,111 @@ export interface BriefDetail extends BriefSummary {
   candidates: BriefCandidate[];
   blueprint: BriefBlueprint | null;
   usage: BriefUsage;
+}
+
+// Phase 6: sandboxed execution (E1) and build mode
+
+export type BuildStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'awaiting_approval' | 'delivered';
+
+/** A work item a build can be authorised for: a roadmap task, or a to-build item when there is no roadmap */
+export interface BuildRoadmapItem {
+  id: string;
+  title: string;
+  detail: string;
+  acceptanceCriteria: string[];
+  tests: string[];
+  requirements: string[];
+  source: 'roadmap' | 'toBuild';
+}
+
+export interface BuildScope {
+  roadmapTaskIds: string[];
+  requirements: string[];
+}
+
+export interface BuildTestCase {
+  name: string;
+  status: 'passed' | 'failed' | 'error' | 'skipped';
+  message?: string;
+}
+
+export interface BuildCriterion {
+  criterion: string;
+  status: 'passed' | 'failed' | 'untested';
+  tests: string[];
+}
+
+export interface BuildIteration {
+  iteration: number;
+  phase: 'generate' | 'install' | 'test' | 'sandbox';
+  exitCode?: number | null;
+  timedOut?: boolean | null;
+  totals?: { passed: number; failed: number; error: number; skipped: number } | null;
+  passed: boolean;
+  durationMs?: number | null;
+  error?: string | null;
+  notes?: string | null;
+  output?: string;
+}
+
+/** What passed, failed, remains untested, or needs a human (PRODUCT_DEFINITION 5.8) */
+export interface BuildTestReport {
+  outcome: 'passed' | 'partial' | 'failed' | 'not_run';
+  stopReason?: 'all_passed' | 'max_iterations' | 'budget' | 'sandbox_time' | 'sandbox_error';
+  iterations: number;
+  maxIterations?: number;
+  runtime?: 'python' | 'node' | null;
+  image?: string | null;
+  sandbox?: { provider: string; image: string; imageDigest: string | null } | null;
+  installCommand?: string | null;
+  testCommand?: string | null;
+  network?: string | null;
+  sandboxSeconds?: number;
+  totals?: { passed: number; failed: number; error: number; skipped: number };
+  tests?: BuildTestCase[];
+  criteria?: BuildCriterion[];
+  passed?: string[];
+  failed?: string[];
+  untested?: string[];
+  needsHuman: string[];
+  history?: BuildIteration[];
+  notes?: string;
+  dependencies?: string[];
+  pathPrefix?: string;
+  error?: string;
+}
+
+export interface BuildDelivery {
+  /** set while a delivery is in progress or after one failed; absent once delivered */
+  state?: 'delivering' | 'failed';
+  error?: string;
+  repo?: string;
+  branch?: string;
+  baseBranch?: string;
+  pullRequestUrl?: string;
+  pullRequestNumber?: number;
+  approvedBy?: string | null;
+  deliveredAt?: string;
+}
+
+export interface BuildSummary {
+  id: string;
+  briefId: string;
+  status: BuildStatus;
+  step: string | null;
+  scope: BuildScope;
+  iterations: number;
+  maxIterations: number;
+  outcome: BuildTestReport['outcome'] | null;
+  errorMessage: string | null;
+  delivery: BuildDelivery | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface BuildDetail extends BuildSummary {
+  report: BuildTestReport | null;
+  diff: string | null;
+  files: string[];
 }
