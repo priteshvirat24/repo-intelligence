@@ -229,7 +229,16 @@ export default function BriefDetailPage() {
 
         {discovered && (
           <>
-            {brief.blueprint && <BlueprintSection blueprint={brief.blueprint} />}
+            {brief.blueprint && (
+              <BlueprintSection
+                blueprint={brief.blueprint}
+                briefId={brief.id}
+                challenges={brief.challenges}
+                focus={brief.focus}
+                canIterate={!active}
+                onChanged={fetchBrief}
+              />
+            )}
 
             <section style={{ marginBottom: 'var(--s-7)' }}>
               <div className="rule-head">
