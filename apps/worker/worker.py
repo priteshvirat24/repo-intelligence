@@ -842,10 +842,26 @@ class IngestionWorker:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)
                 time.sleep(3)
 
+
+def start_scraper_daemon(port: int = 8001):
+    """Starts the Scrapling & Camoufox HTTP extraction daemon in a background thread."""
+    try:
+        from .scraper.api import run_scraper_server
+        t = threading.Thread(target=run_scraper_server, kwargs={"port": port, "host": "0.0.0.0"}, daemon=True)
+        t.start()
+        print(f"[Worker] Started Scrapling & Camoufox scraper daemon on port {port}", flush=True)
+    except Exception as e:
+        print(f"[Worker] Could not start Scrapling/Camoufox daemon: {e}", file=sys.stderr, flush=True)
+
+
 if __name__ == "__main__":
+    # Start the Scrapling/Camoufox scraper daemon on the configured port
+    start_scraper_daemon(port=int(os.getenv("SCRAPER_PORT", 8001)))
+
     # Unique per replica: job ownership checks compare locked_by, so replicas must not share an id
     worker = IngestionWorker(worker_id=os.getenv("WORKER_ID") or os.getenv("RAILWAY_REPLICA_ID") or f"worker-{socket.gethostname()}")
     if "--batch" in sys.argv:
         worker.run_batch()
     else:
         worker.run_loop()
+

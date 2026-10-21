@@ -1,0 +1,103 @@
+{
+  "id": "data-etl-quality",
+  "domain": "data-pipelines",
+  "outsideTeamExpertise": false,
+  "title": "Nightly ETL with data quality checks",
+  "brief": "Every night we load data from three REST APIs and a few CSV exports into PostgreSQL, transform it into reporting tables, and must stop bad data from reaching the reports. We need scheduling, retries, lineage, and data quality checks that block a load when they fail.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "orchestration",
+        "name": "Scheduling, retries and dependencies between steps",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "apache/airflow",
+            "rating": "essential"
+          },
+          {
+            "repo": "dagster-io/dagster",
+            "rating": "essential"
+          },
+          {
+            "repo": "PrefectHQ/prefect",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "ingestion",
+        "name": "Load REST APIs and CSV into PostgreSQL",
+        "criticality": "MUST",
+        "type": "integration",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "dlt-hub/dlt",
+            "rating": "essential"
+          },
+          {
+            "repo": "airbytehq/airbyte",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "transform",
+        "name": "SQL transformations into reporting tables",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "dbt-labs/dbt-core",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "quality",
+        "name": "Data quality checks that block bad loads",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "great-expectations/great_expectations",
+            "rating": "essential"
+          },
+          {
+            "repo": "sodadata/soda-core",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "lineage",
+        "name": "Lineage across steps",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "dagster-io/dagster",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "OpenLineage/OpenLineage",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": []
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "id": "web-job-queue",
+  "domain": "web-backends-auth",
+  "outsideTeamExpertise": false,
+  "title": "Background jobs with retries and a dashboard",
+  "brief": "Our Node.js API and a Python service both need background jobs with retries, delays, scheduled jobs and priorities, plus a web dashboard to inspect and retry failed jobs. We already run Redis and Postgres.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "node-queue",
+        "name": "Job queue for Node.js with retries, delays and priorities",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "taskforcesh/bullmq",
+            "rating": "essential"
+          },
+          {
+            "repo": "timgit/pg-boss",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "graphile/worker",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "python-queue",
+        "name": "Job queue for Python",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "celery/celery",
+            "rating": "essential"
+          },
+          {
+            "repo": "rq/rq",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "Bogdanp/dramatiq",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "dashboard",
+        "name": "Dashboard to inspect and retry jobs",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "felixmosh/bull-board",
+            "rating": "essential"
+          },
+          {
+            "repo": "mher/flower",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "schedules",
+        "name": "Scheduled (cron) jobs",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "taskforcesh/bullmq",
+            "rating": "essential"
+          },
+          {
+            "repo": "celery/celery",
+            "rating": "essential"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": [
+      {
+        "repo": "Automattic/kue",
+        "reason": "Archived and unmaintained"
+      },
+      {
+        "repo": "OptimalBits/bull",
+        "reason": "In maintenance mode; its authors point new projects to BullMQ"
+      }
+    ]
+  }
+}

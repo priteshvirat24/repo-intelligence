@@ -1,0 +1,94 @@
+{
+  "id": "geo-gps-routes",
+  "domain": "geospatial-visualisation",
+  "outsideTeamExpertise": true,
+  "title": "GPS trace analysis for a delivery fleet",
+  "brief": "Our drivers record GPS traces as GPX or Garmin FIT files. We want a service that imports the files, snaps the traces to the road network, computes distance, duration, stops and average speed per trip, and shows each trip on a web map. Self-hosted, based on OpenStreetMap roads.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "parse",
+        "name": "Parse GPX and FIT files",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "tkrajina/gpxpy",
+            "rating": "essential"
+          },
+          {
+            "repo": "polyvertex/fitdecode",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "dtcooper/python-fitparse",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "map-matching",
+        "name": "Snap GPS traces to roads (map matching)",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "valhalla/valhalla",
+            "rating": "essential"
+          },
+          {
+            "repo": "Project-OSRM/osrm-backend",
+            "rating": "essential"
+          },
+          {
+            "repo": "graphhopper/graphhopper",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "trip-stats",
+        "name": "Trip statistics: distance, duration, stops, speed",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 4,
+        "solutions": [
+          {
+            "repo": "geopandas/geopandas",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "shapely/shapely",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "map",
+        "name": "Show trips on a web map",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "Leaflet/Leaflet",
+            "rating": "essential"
+          },
+          {
+            "repo": "maplibre/maplibre-gl-js",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [],
+    "traps": []
+  }
+}

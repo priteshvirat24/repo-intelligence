@@ -1,0 +1,96 @@
+{
+  "id": "llm-prompt-evals",
+  "domain": "llm-applications",
+  "outsideTeamExpertise": false,
+  "title": "Regression tests for LLM prompts",
+  "brief": "We change prompts often and break things. We want test suites of example inputs with assertions and LLM-as-judge scoring, run in CI on every change, with a comparison between prompt versions and models.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "test-cases",
+        "name": "Prompt test cases with assertions",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "promptfoo/promptfoo",
+            "rating": "essential"
+          },
+          {
+            "repo": "confident-ai/deepeval",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "judge",
+        "name": "LLM-as-judge scoring",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "promptfoo/promptfoo",
+            "rating": "essential"
+          },
+          {
+            "repo": "confident-ai/deepeval",
+            "rating": "essential"
+          },
+          {
+            "repo": "vibrantlabsai/ragas",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "ci",
+        "name": "Run in CI on every change",
+        "criticality": "MUST",
+        "type": "integration",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "promptfoo/promptfoo",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "compare",
+        "name": "Compare prompt versions and models",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "promptfoo/promptfoo",
+            "rating": "essential"
+          },
+          {
+            "repo": "langfuse/langfuse",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [
+      {
+        "repo": "promptfoo/promptfoo",
+        "rating": "essential"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "EleutherAI/lm-evaluation-harness",
+        "reason": "Benchmarks models on academic tasks; not for testing an application's prompts"
+      }
+    ]
+  }
+}

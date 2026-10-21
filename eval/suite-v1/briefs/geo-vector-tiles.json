@@ -1,0 +1,125 @@
+{
+  "id": "geo-vector-tiles",
+  "domain": "geospatial-visualisation",
+  "outsideTeamExpertise": true,
+  "title": "Self-hosted vector map tiles",
+  "brief": "We need our own web basemap without per-request fees from a map vendor. Build vector tiles from OpenStreetMap data for one country, serve them from our infrastructure (ideally as static files on object storage), and render them in the browser with a customisable style. We also need to overlay our own GeoJSON datasets as extra tile layers. Updates monthly are enough.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "tile-build",
+        "name": "Generate vector tiles from OpenStreetMap extracts",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "onthegomap/planetiler",
+            "rating": "essential"
+          },
+          {
+            "repo": "systemed/tilemaker",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "openmaptiles/openmaptiles",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "custom-layers",
+        "name": "Turn our GeoJSON datasets into vector tiles",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "felt/tippecanoe",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "serving",
+        "name": "Serve tiles from our own infrastructure or static storage",
+        "criticality": "MUST",
+        "type": "deployment",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "protomaps/PMTiles",
+            "rating": "essential"
+          },
+          {
+            "repo": "maptiler/tileserver-gl",
+            "rating": "essential"
+          },
+          {
+            "repo": "maplibre/martin",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "consbio/mbtileserver",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "rendering",
+        "name": "Render vector tiles in the browser",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "maplibre/maplibre-gl-js",
+            "rating": "essential"
+          },
+          {
+            "repo": "openlayers/openlayers",
+            "rating": "acceptable"
+          }
+        ]
+      },
+      {
+        "id": "styles",
+        "name": "Customisable basemap style",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "protomaps/basemaps",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "openmaptiles/osm-bright-gl-style",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [
+      {
+        "repo": "protomaps/PMTiles",
+        "rating": "essential"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "mapbox/tippecanoe",
+        "reason": "Unmaintained upstream; development continues in felt/tippecanoe"
+      },
+      {
+        "repo": "mapbox/mapbox-gl-js",
+        "reason": "Version 2 and later are not open source (proprietary licence); MapLibre is the open fork"
+      }
+    ]
+  }
+}

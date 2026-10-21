@@ -1,0 +1,92 @@
+{
+  "id": "dev-dependency-updates",
+  "domain": "developer-tooling",
+  "outsideTeamExpertise": false,
+  "title": "Automated dependency updates for a monorepo",
+  "brief": "Our monorepo has npm workspaces and Python services. We want automated pull requests that update dependencies, grouped sensibly so we do not get fifty pull requests a week, with automatic merge for passing patch updates, and release notes generated from the changes.",
+  "labels": {
+    "status": "draft",
+    "labelledBy": [
+      "claude-draft"
+    ],
+    "reviewedBy": [],
+    "requirements": [
+      {
+        "id": "update-prs",
+        "name": "Open dependency update pull requests for npm and Python",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "renovatebot/renovate",
+            "rating": "essential"
+          },
+          {
+            "repo": "dependabot/dependabot-core",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "grouping",
+        "name": "Group updates and schedule them",
+        "criticality": "MUST",
+        "type": "functional",
+        "expectedClass": 1,
+        "solutions": [
+          {
+            "repo": "renovatebot/renovate",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "automerge",
+        "name": "Automatically merge passing patch updates",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "renovatebot/renovate",
+            "rating": "essential"
+          }
+        ]
+      },
+      {
+        "id": "release-notes",
+        "name": "Generate release notes from changes",
+        "criticality": "SHOULD",
+        "type": "functional",
+        "expectedClass": 2,
+        "solutions": [
+          {
+            "repo": "changesets/changesets",
+            "rating": "essential"
+          },
+          {
+            "repo": "googleapis/release-please",
+            "rating": "acceptable"
+          },
+          {
+            "repo": "semantic-release/semantic-release",
+            "rating": "acceptable"
+          }
+        ]
+      }
+    ],
+    "products": [
+      {
+        "repo": "renovatebot/renovate",
+        "rating": "essential"
+      }
+    ],
+    "traps": [
+      {
+        "repo": "greenkeeperio/greenkeeper",
+        "reason": "Archived; the service was shut down"
+      }
+    ]
+  }
+}

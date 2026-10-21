@@ -1,14 +1,17 @@
 import crypto from 'crypto';
 import { FirecrawlProvider } from '../providers/firecrawl';
+import { ScraplingProvider } from '../providers/scrapling';
 import { ResourceAdapter, ResourceDescriptor, IngestResult } from './types';
 import { ResourceTypeDetector } from './detector';
 
 export class LinkedInResourceAdapter implements ResourceAdapter {
   name = 'LinkedInResourceAdapter';
   private firecrawl: FirecrawlProvider;
+  private scrapling: ScraplingProvider;
 
   constructor() {
     this.firecrawl = new FirecrawlProvider();
+    this.scrapling = new ScraplingProvider();
   }
 
   canHandle(url: string): boolean {
@@ -23,8 +26,19 @@ export class LinkedInResourceAdapter implements ResourceAdapter {
   async ingest(url: string): Promise<IngestResult> {
     const desc = this.detect(url);
 
-    // Attempt scrape through Firecrawl or native fetch
-    const scraped = await this.firecrawl.scrape(desc.canonicalUrl);
+    // 1. Attempt stealth extraction via Scrapling + Camoufox (bypasses HTTP 999 botwalls)
+    let scraped: any = null;
+    if (this.scrapling.isAvailable()) {
+      const stealthRes = await this.scrapling.scrape(desc.canonicalUrl, { waitFor: 2000 });
+      if (stealthRes.success && stealthRes.markdown.length > 100) {
+        scraped = stealthRes;
+      }
+    }
+
+    // 2. Fall back to Firecrawl or native fetch
+    if (!scraped || !scraped.success) {
+      scraped = await this.firecrawl.scrape(desc.canonicalUrl);
+    }
 
     // LinkedIn frequently returns 999, 403, or redirects to authwall / login
     const isAuthWalled =
