@@ -10,15 +10,18 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
-METRICS = [("recallAt10", "Recall@10"), ("recallAll", "Recall (all kept)"), ("shortlistPrecision", "Shortlist precision"), ("trapRejection", "Trap rejection")]
+METRICS = [("recallAt10", "Recall@10"), ("recallAll", "Recall (all kept)"), ("shortlistPrecision", "Shortlist precision"),
+           ("trapRejection", "Trap rejection (all traps)"), ("trapRejectionSurfaced", "Trap rejection (traps it found)")]
 
 
-def fmt(values: List[float]) -> str:
+def fmt(values: List[float], digits: int = 3) -> str:
     values = [v for v in values if v is not None]
     if not values:
         return "n/a"
     mean = sum(values) / len(values)
-    return f"{mean:.3f}" if len(values) == 1 else f"{mean:.3f} ({min(values):.3f}–{max(values):.3f})"
+    if len(values) == 1 or min(values) == max(values):
+        return f"{mean:.{digits}f}"
+    return f"{mean:.{digits}f} ({min(values):.{digits}f}–{max(values):.{digits}f})"
 
 
 def variant(run: Dict[str, Any]) -> str:
@@ -43,17 +46,17 @@ def build(runs: List[Dict[str, Any]]) -> str:
         "|---|" + "---|" * len(by_system),
     ]
     for key, label in METRICS:
-        lines.append(f"| {label} | " + " | ".join(fmt([r["aggregate"][key] for r in rs]) for _, rs in sorted(by_system.items())) + " |")
+        lines.append(f"| {label} | " + " | ".join(fmt([r["aggregate"].get(key) for r in rs]) for _, rs in sorted(by_system.items())) + " |")
     def total(key):
-        return " | ".join(fmt([r["aggregate"][key] for r in rs]) for _, rs in sorted(by_system.items()))
+        return " | ".join(fmt([r["aggregate"][key] for r in rs], 0) for _, rs in sorted(by_system.items()))
     lines.append(f"| LLM calls per run | {total('llmCalls')} |")
     lines.append(f"| Input tokens per run | {total('inputTokens')} |")
     lines.append(f"| Output tokens per run | {total('outputTokens')} |")
     lines.append("| Cost per run (cents) | " + " | ".join(
         fmt([r["aggregate"]["costCents"] for r in rs]) if any(r["aggregate"]["costCents"] is not None for r in rs) else "not priced"
         for _, rs in sorted(by_system.items())) + " |")
-    lines.append("| Mean time per brief (s) | " + " | ".join(fmt([r["aggregate"]["meanDurationMs"] / 1000 for r in rs]) for _, rs in sorted(by_system.items())) + " |")
-    lines.append("| Briefs with errors | " + " | ".join(fmt([r["aggregate"]["errors"] for r in rs]) for _, rs in sorted(by_system.items())) + " |")
+    lines.append("| Mean time per brief (s) | " + " | ".join(fmt([r["aggregate"]["meanDurationMs"] / 1000 for r in rs], 1) for _, rs in sorted(by_system.items())) + " |")
+    lines.append("| Briefs with errors | " + " | ".join(fmt([r["aggregate"]["errors"] for r in rs], 0) for _, rs in sorted(by_system.items())) + " |")
     lines += ["", "## Runs", "", "| Run | System | Mode | Tuning | Commit | Model | Snapshot (recorded / replayed) |", "|---|---|---|---|---|---|---|"]
     for r in runs:
         lines.append(f"| `{r['runId']}` | {r['system']} | {r['mode']} | {r.get('tuningVersion') or '—'} | {r['commit']} | {r.get('model') or '—'} | {r['snapshot']['recorded']} / {r['snapshot']['replayed']} |")
