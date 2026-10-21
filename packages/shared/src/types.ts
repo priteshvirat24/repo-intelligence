@@ -505,13 +505,16 @@ export interface ChatSession {
 // Briefs and GitHub discovery
 
 export type BriefSourceType = 'text' | 'markdown' | 'pdf' | 'docx';
-export type BriefStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type BriefStatus = 'QUEUED' | 'RUNNING' | 'AWAITING_INPUT' | 'COMPLETED' | 'FAILED' | 'STOPPED';
 export type DiscoveryStep =
   | 'QUEUED'
+  | 'UNDERSTANDING'
   | 'PLANNING_QUERIES'
   | 'SEARCHING_GITHUB'
   | 'READING_READMES'
   | 'RANKING'
+  | 'VERIFYING'
+  | 'DESIGNING'
   | 'DONE'
   | 'FAILED';
 export type CandidateKind = 'implementation' | 'library' | 'framework' | 'curated_list' | 'tutorial' | 'unknown';
@@ -610,6 +613,10 @@ export interface BlueprintSource {
   symbol?: string | null;
   quote?: string;
   url: string;
+  /** The graded claim behind this source (claims table), when there is one */
+  claimId?: string;
+  grade?: 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
+  claimStatus?: 'needs_revalidation' | 'refuted';
 }
 
 export interface BlueprintComponent {
@@ -665,8 +672,43 @@ export interface BriefUsage {
   byStage: Array<{ stage: 'understanding' | 'discovery' | 'verification' | 'blueprint'; calls: number; inputTokens: number; outputTokens: number }>;
 }
 
+export type TaskStatus = 'pending' | 'running' | 'waiting' | 'awaiting_input' | 'done' | 'failed' | 'stale' | 'cancelled';
+
+export interface BriefTask {
+  type: 'understand' | 'discover' | 'verify' | 'blueprint';
+  status: TaskStatus;
+  errorMessage?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  updatedAt: string;
+}
+
+export interface ClarifyingQuestion {
+  question: string;
+  why: string;
+  blocking: boolean;
+}
+
+export interface BriefUnderstanding {
+  acceptanceCriteria: string[];
+  clarifyingQuestions: ClarifyingQuestion[];
+  assumptions: string[];
+  mode?: 'llm' | 'heuristic';
+}
+
+export interface BriefBudget {
+  limits: { llmCalls: number; tokens: number; githubRequests: number };
+  used: { llmCalls: number; tokens: number; githubRequests: number };
+}
+
 export interface BriefDetail extends BriefSummary {
   briefText: string;
+  constraints: Record<string, string>;
+  answers: Record<string, string>;
+  understanding: BriefUnderstanding | null;
+  budget: BriefBudget;
+  stopReason?: string | null;
+  tasks: BriefTask[];
   decompositionMode: 'llm' | 'heuristic';
   requirements: OpenQueryRequirements;
   discovery: DiscoveryMetrics;

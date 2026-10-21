@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from ..providers.llm import BaseLLMProvider
 from ..providers.ledger import ledger_scope
 from ..tuning import Tuning, resolve
+from ..claims import statement_key
 from .planner import CONSTRAINT_TYPES, sorted_requirements
 
 DECISIONS = {"reuse", "adapt", "build"}
@@ -45,10 +46,19 @@ def build_sources(inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
     and known limitations [L]. Only these ids survive validation."""
     sources: List[Dict[str, Any]] = []
     counters = {"C": 0, "R": 0, "L": 0}
+    claim_ids = inputs.get("claimIds") or {}
 
-    def add(prefix: str, source: Dict[str, Any]):
+    def add(prefix: str, source: Dict[str, Any], claim_kind: Optional[str] = None, statement: Optional[str] = None):
         counters[prefix] += 1
-        sources.append({"id": f"{prefix}{counters[prefix]}", **source})
+        entry = {"id": f"{prefix}{counters[prefix]}", **source}
+        if claim_kind and statement:
+            # The graded claim behind this source (apps/worker/claims.py), for the evidence panel
+            claim = claim_ids.get((f"github:{source['repo'].lower()}", claim_kind, statement_key(statement)))
+            if claim:
+                entry["claimId"], entry["grade"] = claim["id"], claim["grade"]
+                if claim["status"] != "current":
+                    entry["claimStatus"] = claim["status"]
+        sources.append(entry)
 
     for v in inputs["verification"]:
         repo = v.get("repository")
@@ -67,7 +77,7 @@ def build_sources(inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "symbol": cap.get("symbol_name"),
                 "quote": (cap.get("quote_snippet") or "")[:MAX_QUOTE_CHARS],
                 "url": _url(repo, cap["file_path"], cap.get("start_line"), cap.get("end_line")),
-            })
+            }, "capability", f"{cap['name']}: {cap.get('description') or ''}".strip(": "))
         for lim in v["limitations"]:
             add("L", {
                 "kind": "limitation",
@@ -76,7 +86,7 @@ def build_sources(inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "text": lim["description"],
                 "filePath": lim.get("file_path"),
                 "url": repo["url"],
-            })
+            }, "limitation", f"{lim.get('category') or 'Limitation'}: {lim['description']}")
     for c in inputs["candidates"]:
         assessment = c.get("assessment_json") or {}
         coverage = assessment.get("coverage") or {}
@@ -88,7 +98,7 @@ def build_sources(inputs: Dict[str, Any]) -> List[Dict[str, Any]]:
             "text": (assessment.get("summary") or c.get("description") or "")
                     + (f" Covers: {', '.join(f'{n} ({coverage[n]})' for n in covered)}." if covered else ""),
             "url": c["source_url"],
-        })
+        }, "readme_summary", assessment.get("summary"))
     return sources
 
 

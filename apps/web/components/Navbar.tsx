@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Plus } from 'lucide-react';
@@ -18,6 +18,14 @@ const NAV_ITEMS = [
 export const Navbar: React.FC = () => {
   const pathname = usePathname() || '/';
   const { openAddRepository, readyRepoCount, backgroundJobs } = useLibrary();
+  const [me, setMe] = useState<{ authConfigured: boolean; authenticated: boolean; user?: { name?: string } | null } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/me', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setMe)
+      .catch(() => setMe(null));
+  }, []);
 
   const isActive = (href: string) =>
     href === '/'
@@ -55,6 +63,14 @@ export const Navbar: React.FC = () => {
           {readyRepoCount !== null && (
             <span className="nav-meta">
               {readyRepoCount} {readyRepoCount === 1 ? 'repository' : 'repositories'} ready
+            </span>
+          )}
+          {me?.authConfigured && !me.authenticated && (
+            <a href="/api/auth/signin" className="btn btn-secondary btn-sm">Sign in with GitHub</a>
+          )}
+          {me?.authenticated && (
+            <span className="nav-meta">
+              {me.user?.name || 'Signed in'} · <a href="/api/auth/signout" className="link-quiet">sign out</a>
             </span>
           )}
           <button type="button" onClick={openAddRepository} className="btn btn-primary btn-sm">

@@ -5,8 +5,8 @@ Evaluation harness (SYSTEM_DESIGN 10).
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b1 --mode replay --requirements-from <run id>
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b0 --mode replay
 
-Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and b1 (Open Eye: production decomposer, then discovery with the
-given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
+Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and b1 (Open Eye: the production understanding
+task, then discovery with the given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
 a missing response fails that brief), fill (serving the snapshot and recording what is missing) and live.
 
 LLM calls always run live; their tokens land in provider_usage under scope eval/<run id>:<brief>, and
@@ -31,6 +31,7 @@ from ..discovery.runner import DiscoveryRunner
 from ..providers import ledger
 from ..providers.llm import get_llm_provider
 from ..tuning import default_tuning, load_tuning_file
+from ..understanding import understand
 from .baselines import run_b0
 from .recording import RecordingTransport, ReplayMiss
 from .suite import aggregate, load_suite, score_brief
@@ -45,12 +46,18 @@ def git_commit() -> str:
         return "unknown"
 
 
-def decompose(suite_dir: str, out_dir: Path, run_id: str):
-    """B1 step 1: the production TypeScript decomposer, run as a script against the same database."""
-    subprocess.run(
-        ["npx", "tsx", "scripts/eval-decompose.ts", str(Path(suite_dir).resolve()), str(out_dir.resolve()), run_id],
-        cwd=ROOT / "apps" / "web", check=True,
-    )
+def decompose(briefs: List[Dict[str, Any]], out_dir: Path, run_id: str):
+    """B1 step 1: the production understanding task (apps/worker/understanding.py) for every brief."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    llm = get_llm_provider()
+    for brief in briefs:
+        started = time.time()
+        with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}"):
+            result, mode = understand(llm, brief["title"], brief["brief"])
+        requirements = {k: v for k, v in result.items() if k not in ("acceptanceCriteria", "clarifyingQuestions", "assumptions")}
+        (out_dir / f"{brief['id']}.json").write_text(json.dumps(
+            {"briefId": brief["id"], "mode": mode, "durationMs": int((time.time() - started) * 1000), "requirements": requirements}, indent=2))
+        print(f"[eval] understood {brief['id']}: {len(requirements['requirements'])} requirements ({mode})", flush=True)
 
 
 def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, Any]]:
@@ -124,7 +131,7 @@ def main(argv: List[str] = None) -> int:
             requirements_dir = work_dir / args.requirements_from / "requirements"
         else:
             requirements_dir = work_dir / run_id / "requirements"
-            decompose(args.suite, requirements_dir, run_id)
+            decompose(briefs, requirements_dir, run_id)
 
     per_brief = []
     for brief in briefs:

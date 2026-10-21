@@ -1,5 +1,6 @@
 import { query } from '@repo/database';
 import { BlueprintVerification, BriefBlueprint, BriefCandidate, BriefDetail, BriefSummary, BriefUsage } from '@repo/shared';
+import { DEFAULT_BUDGET } from './constraints';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -22,27 +23,47 @@ const SUMMARY_COLUMNS = `
   b.discovered_at as "discoveredAt"
 `;
 
-export async function listBriefs(limit = 50): Promise<BriefSummary[]> {
+export async function listBriefs(workspaceId: string, limit = 50): Promise<BriefSummary[]> {
   const res = await query<BriefSummary>(
-    `SELECT ${SUMMARY_COLUMNS} FROM briefs b ORDER BY b.created_at DESC LIMIT $1`,
-    [limit]
+    `SELECT ${SUMMARY_COLUMNS} FROM briefs b WHERE b.workspace_id = $1 ORDER BY b.created_at DESC LIMIT $2`,
+    [workspaceId, limit]
   );
   return res.rows;
 }
 
-export async function getBrief(id: string): Promise<BriefDetail | null> {
+/** The brief only if it belongs to the workspace (briefs are private to their workspace). */
+export async function briefInWorkspace(id: string, workspaceId: string): Promise<boolean> {
+  const res = await query('SELECT 1 FROM briefs WHERE id = $1 AND workspace_id = $2', [id, workspaceId]);
+  return (res.rowCount || 0) > 0;
+}
+
+export async function getBrief(id: string, workspaceId: string): Promise<BriefDetail | null> {
   const briefRes = await query(
     `SELECT ${SUMMARY_COLUMNS},
        b.brief_text as "briefText",
        b.decomposition_mode as "decompositionMode",
        b.requirements_json as "requirements",
        b.discovery_json as "discovery",
-       b.content_hash as "contentHash"
-     FROM briefs b WHERE b.id = $1`,
-    [id]
+       b.content_hash as "contentHash",
+       b.constraints_json as "constraints",
+       b.answers_json as "answers",
+       NULLIF(b.understanding_json, '{}'::jsonb) as "understanding",
+       b.budget_json as "budgetJson",
+       b.stop_reason as "stopReason"
+     FROM briefs b WHERE b.id = $1 AND b.workspace_id = $2`,
+    [id, workspaceId]
   );
   const brief = briefRes.rows[0];
   if (!brief) return null;
+  const tasksRes = await query(
+    `SELECT type, status, error_message as "errorMessage", started_at as "startedAt", finished_at as "finishedAt", updated_at as "updatedAt"
+     FROM tasks WHERE brief_id = $1`,
+    [id]
+  );
+  const order = ['understand', 'discover', 'verify', 'blueprint'];
+  brief.tasks = tasksRes.rows.sort((a: any, b: any) => order.indexOf(a.type) - order.indexOf(b.type));
+  brief.budget = await getBudget(id, brief.budgetJson || {});
+  delete brief.budgetJson;
 
   const candidatesRes = await query(
     `SELECT
@@ -78,6 +99,18 @@ export async function getBrief(id: string): Promise<BriefDetail | null> {
   return { ...rest, candidates: candidatesRes.rows as BriefCandidate[], blueprint: await getBlueprint(id), usage: await getUsage(id, contentHash) };
 }
 
+async function getBudget(briefId: string, budgetJson: any) {
+  const res = await query(
+    `SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND operation <> 'embedding')::int AS "llmCalls",
+            COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github'), 0)::int AS tokens,
+            COUNT(*) FILTER (WHERE provider = 'github')::int AS "githubRequests"
+     FROM provider_usage
+     WHERE scope_type = 'brief' AND scope_id = $1::text AND ($2::timestamptz IS NULL OR created_at >= $2::timestamptz)`,
+    [briefId, budgetJson.resetAt || null]
+  );
+  return { limits: { ...DEFAULT_BUDGET, ...(budgetJson.limits || {}) }, used: res.rows[0] };
+}
+
 /** Ledger totals for everything spent on a brief: understanding the upload, discovery, indexing the
  * verification repositories (jobs queued by this brief's blueprint) and writing the blueprint. */
 async function getUsage(briefId: string, contentHash: string): Promise<BriefUsage> {
@@ -88,7 +121,8 @@ async function getUsage(briefId: string, contentHash: string): Promise<BriefUsag
             WHERE v->>'state' = 'queued' AND j.repository_id::text = v->>'repositoryId' AND j.created_at >= bp.created_at - INTERVAL '1 minute'
           )
      SELECT CASE
-              WHEN u.scope_type = 'brief_upload' THEN 'understanding'
+              WHEN u.scope_type = 'brief_upload' OR u.purpose = 'understanding' THEN 'understanding'
+              WHEN u.scope_type = 'brief' AND u.purpose = 'blueprint' THEN 'blueprint'
               WHEN u.scope_type = 'brief' THEN 'discovery'
               WHEN u.scope_type = 'repository_job' THEN 'verification'
               ELSE 'blueprint'

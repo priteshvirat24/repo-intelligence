@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, List
 import httpx
 from ..config import config
+from ..providers import ledger
 
 
 class GitHubRateLimited(RuntimeError):
@@ -33,11 +34,8 @@ class GitHubSearchClient:
         READMEs are searched too: established libraries often describe what they do only there (python-sgp4's
         description never says "orbit propagation"), and best-match still ranks name/description hits first."""
         qualifiers = " in:name,description,topics,readme archived:false" + (f" stars:>={min_stars}" if min_stars else "")
-        resp = self.http.get(
-            "https://api.github.com/search/repositories",
-            params={"q": query + qualifiers, "per_page": per_page},
-            headers=self.headers,
-        )
+        resp = self._get("search", "https://api.github.com/search/repositories",
+                         params={"q": query + qualifiers, "per_page": per_page}, headers=self.headers)
         self._raise_for_rate_limit(resp)
         if resp.status_code == 422:
             return []  # GitHub rejected the query text itself; other queries still run
@@ -46,15 +44,27 @@ class GitHubSearchClient:
 
     def fetch_readme(self, full_name: str, max_chars: int = 3000) -> str:
         """Raw README text (first max_chars), or "" when the repository has none."""
-        resp = self.http.get(
-            f"https://api.github.com/repos/{full_name}/readme",
-            headers={**self.headers, "Accept": "application/vnd.github.raw"},
-        )
+        resp = self._get("readme", f"https://api.github.com/repos/{full_name}/readme",
+                         headers={**self.headers, "Accept": "application/vnd.github.raw"})
         self._raise_for_rate_limit(resp)
         if resp.status_code in (403, 404, 451):
             return ""
         resp.raise_for_status()
         return resp.text[:max_chars]
+
+    def _get(self, operation: str, url: str, **kwargs) -> httpx.Response:
+        """A metered GitHub request: counted against the run's budget and recorded in the ledger."""
+        import time
+        ledger.authorize("github")
+        started = time.time()
+        try:
+            resp = self.http.get(url, **kwargs)
+        except Exception as e:
+            ledger.record("github", operation, None, int((time.time() - started) * 1000), False, error=str(e))
+            raise
+        ledger.record("github", operation, None, int((time.time() - started) * 1000), resp.status_code < 400,
+                      error=None if resp.status_code < 400 else f"HTTP {resp.status_code}")
+        return resp
 
     @staticmethod
     def _raise_for_rate_limit(resp: httpx.Response):

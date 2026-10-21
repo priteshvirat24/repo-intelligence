@@ -2,20 +2,26 @@ import { DiscoveryStep } from '@repo/shared';
 
 const STEP_LABELS: Record<DiscoveryStep, string> = {
   QUEUED: 'Waiting for the worker',
+  UNDERSTANDING: 'Reading the brief',
   PLANNING_QUERIES: 'Planning GitHub searches',
   SEARCHING_GITHUB: 'Searching GitHub',
   READING_READMES: 'Reading READMEs of the strongest matches',
   RANKING: 'Ranking candidates',
+  VERIFYING: 'Verifying the best repositories against their code',
+  DESIGNING: 'Writing the blueprint',
   DONE: 'Done',
   FAILED: 'Failed'
 };
 
 const STEP_PROGRESS: Record<DiscoveryStep, number> = {
-  QUEUED: 5,
+  QUEUED: 3,
+  UNDERSTANDING: 8,
   PLANNING_QUERIES: 15,
-  SEARCHING_GITHUB: 35,
-  READING_READMES: 65,
-  RANKING: 90,
+  SEARCHING_GITHUB: 30,
+  READING_READMES: 45,
+  RANKING: 55,
+  VERIFYING: 70,
+  DESIGNING: 90,
   DONE: 100,
   FAILED: 100
 };

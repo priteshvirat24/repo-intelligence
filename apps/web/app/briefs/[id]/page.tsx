@@ -9,6 +9,7 @@ import { Navbar } from '@/components/Navbar';
 import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
 import { BlueprintSection } from '@/components/briefs/BlueprintSection';
+import { BudgetPanel, ConstraintsEditor, TaskTimeline, UnderstandingPanel } from '@/components/briefs/RunPanel';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { KIND_LABELS, compactNumber, discoveryProgress, discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
 
@@ -123,6 +124,9 @@ export default function BriefDetailPage() {
 
   const active = isBriefActive(brief.status);
   const requirements = brief.requirements?.requirements || [];
+  // Results appear as soon as the task that produces them is done, not only when the whole run is
+  const taskDone = (type: string) => brief.tasks?.find((t) => t.type === type)?.status === 'done';
+  const discovered = taskDone('discover') || brief.candidates.length > 0;
   const shortlist = brief.candidates.filter((c) => c.shortlisted);
   const others = brief.candidates.filter((c) => !c.shortlisted);
   const queries = brief.discovery?.queries || [];
@@ -175,20 +179,42 @@ export default function BriefDetailPage() {
           <div className="callout callout-danger" role="alert" style={{ marginBottom: 'var(--s-6)' }}>
             <AlertCircle size={16} aria-hidden="true" />
             <div>
-              <div className="callout-title">Discovery failed.</div>
-              <div>{brief.errorMessage || 'The worker could not finish discovery.'}</div>
+              <div className="callout-title">The run failed.</div>
+              <div>{brief.errorMessage || 'The worker could not finish.'}</div>
             </div>
           </div>
         )}
 
-        {brief.decompositionMode === 'heuristic' && (
+        {brief.status === 'AWAITING_INPUT' && (
           <div className="callout callout-inferred" style={{ marginBottom: 'var(--s-6)' }}>
             <AlertTriangle size={16} aria-hidden="true" />
             <div>
-              <div className="callout-title">Requirements were extracted with keyword rules.</div>
-              <div>The AI provider did not return a usable breakdown, so these requirements are rough. Searches are based on them.</div>
+              <div className="callout-title">Research is waiting for an answer.</div>
+              <div>Answer the question marked below; only the affected steps run again.</div>
             </div>
           </div>
+        )}
+
+        <section style={{ marginBottom: 'var(--s-7)' }} aria-labelledby="run-heading">
+          <div className="rule-head">
+            <h2 id="run-heading" className="label">Run</h2>
+          </div>
+          <div className="grid-2" style={{ gap: 'var(--s-5)', alignItems: 'start' }}>
+            <TaskTimeline tasks={brief.tasks || []} />
+            <div className="stack gap-3">
+              <ConstraintsEditor brief={brief} onChanged={fetchBrief} />
+              <BudgetPanel briefId={brief.id} budget={brief.budget} stopped={brief.status === 'STOPPED'} onChanged={fetchBrief} />
+            </div>
+          </div>
+        </section>
+
+        {brief.understanding && (
+          <section style={{ marginBottom: 'var(--s-7)' }} aria-labelledby="understanding-heading">
+            <div className="rule-head">
+              <h2 id="understanding-heading" className="label">What Open Eye understood</h2>
+            </div>
+            <UnderstandingPanel brief={brief} onChanged={fetchBrief} />
+          </section>
         )}
 
         <section style={{ marginBottom: 'var(--s-7)' }}>
@@ -201,7 +227,7 @@ export default function BriefDetailPage() {
           </div>
         </section>
 
-        {brief.status === 'COMPLETED' && (
+        {discovered && (
           <>
             {brief.blueprint && <BlueprintSection blueprint={brief.blueprint} />}
 

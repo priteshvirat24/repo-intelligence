@@ -1,9 +1,9 @@
 import * as crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { query } from '@repo/database';
-import { getLLMProvider, ProviderConfigError } from '@/lib/ai/providers';
-import { OpenProblemDecomposer } from '@/lib/ai/open_query';
-import { withLedgerScope } from '@/lib/ai/ledger';
+import { pool } from '@repo/database';
+import { authErrorResponse, requestContext } from '@/lib/auth/context';
+import { createRun } from '@/lib/briefs/run';
+import { BriefConstraints, BudgetLimits, parseBudget, parseConstraints, safeJson } from '@/lib/briefs/constraints';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import {
   BriefParseError,
@@ -17,14 +17,13 @@ import { listBriefs } from '@/lib/briefs/store';
 
 export const dynamic = 'force-dynamic';
 
-// The decomposer prompt is built for a problem statement, not a whole document: send the opening of
-// the brief (where goals and requirements usually are) and keep the full text in the database.
-const DECOMPOSITION_INPUT_CHARS = 12_000;
-
 export async function GET() {
   try {
-    return NextResponse.json({ items: await listBriefs() });
+    const ctx = await requestContext();
+    return NextResponse.json({ items: await listBriefs(ctx.workspaceId) });
   } catch (error: any) {
+    const denied = authErrorResponse(error);
+    if (denied) return denied;
     console.error('Error listing briefs:', error);
     return NextResponse.json({ error: 'Could not load briefs.' }, { status: 500 });
   }
@@ -40,6 +39,8 @@ export async function POST(req: NextRequest) {
   let parsed: ParsedBrief;
   let filename: string | null = null;
   let title = '';
+  let constraints: BriefConstraints = {};
+  let budget: BudgetLimits | null = null;
   try {
     const contentType = req.headers.get('content-type') || '';
     if (contentType.includes('multipart/form-data')) {
@@ -49,6 +50,8 @@ export async function POST(req: NextRequest) {
       }
       const form = await req.formData();
       title = String(form.get('title') || '').trim();
+      constraints = parseConstraints(safeJson(form.get('constraints')));
+      budget = parseBudget(safeJson(form.get('budget')));
       const file = form.get('file');
       if (file && typeof file !== 'string') {
         filename = file.name || 'brief';
@@ -62,6 +65,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Send the brief as text, or upload a file.' }, { status: 400 });
       }
       title = typeof body.title === 'string' ? body.title.trim() : '';
+      constraints = parseConstraints(body.constraints);
+      budget = parseBudget(body.budget);
       parsed = finishBrief(body.text, 'text');
     }
   } catch (error: any) {
@@ -75,50 +80,42 @@ export async function POST(req: NextRequest) {
   const finalTitle = (title || titleFromBrief(parsed.text, filename)).slice(0, 200);
   const contentHash = crypto.createHash('sha256').update(parsed.text).digest('hex');
 
+  let ctx;
   try {
-    const existing = await query(`SELECT id FROM briefs WHERE content_hash = $1 ORDER BY created_at DESC LIMIT 1`, [contentHash]);
+    ctx = await requestContext();
+  } catch (error) {
+    return authErrorResponse(error) || NextResponse.json({ error: 'Could not read the session.' }, { status: 500 });
+  }
+
+  const client = await pool.connect();
+  try {
+    const existing = await client.query(
+      `SELECT id FROM briefs WHERE content_hash = $1 AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1`,
+      [contentHash, ctx.workspaceId]
+    );
     if (existing.rows[0]) {
       return NextResponse.json({ id: existing.rows[0].id, alreadyExists: true });
     }
 
-    let llm;
-    try {
-      llm = getLLMProvider();
-    } catch (error) {
-      if (error instanceof ProviderConfigError) {
-        return NextResponse.json(
-          { error: 'Open Eye is not connected to an AI provider yet. Ask the administrator to set the API keys.' },
-          { status: 503 }
-        );
-      }
-      throw error;
-    }
-
-    const input = `Project brief: ${finalTitle}\n\n${parsed.text.slice(0, DECOMPOSITION_INPUT_CHARS)}`;
-    const { requirements, mode } = await withLedgerScope(
-      { scopeType: 'brief_upload', scopeId: contentHash.slice(0, 16), purpose: 'brief_decomposition' },
-      () => new OpenProblemDecomposer(llm).decomposeDetailed(input)
-    );
-
-    const inserted = await query(
-      `INSERT INTO briefs (title, source_type, source_filename, brief_text, content_hash, requirements_json, decomposition_mode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+    // Understanding the brief is the run graph's first task, in the worker: nothing here waits for an LLM
+    await client.query('BEGIN');
+    const inserted = await client.query(
+      `INSERT INTO briefs (title, source_type, source_filename, brief_text, content_hash, workspace_id, created_by,
+                           constraints_json, budget_json, step)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'QUEUED')
        RETURNING id, status`,
-      [finalTitle, parsed.sourceType, filename, parsed.text, contentHash, JSON.stringify(requirements), mode]
+      [finalTitle, parsed.sourceType, filename, parsed.text, contentHash, ctx.workspaceId, ctx.userId,
+       JSON.stringify(constraints), JSON.stringify(budget ? { limits: budget } : {})]
     );
+    await createRun(client, inserted.rows[0].id);
+    await client.query('COMMIT');
 
-    return NextResponse.json(
-      {
-        id: inserted.rows[0].id,
-        status: inserted.rows[0].status,
-        decompositionMode: mode,
-        requirementCount: requirements.requirements.length,
-        truncated: parsed.truncated
-      },
-      { status: 202 }
-    );
+    return NextResponse.json({ id: inserted.rows[0].id, status: inserted.rows[0].status, truncated: parsed.truncated }, { status: 202 });
   } catch (error: any) {
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error('Error creating brief:', error);
     return NextResponse.json({ error: 'The brief could not be saved. Try again.' }, { status: 500 });
+  } finally {
+    client.release();
   }
 }

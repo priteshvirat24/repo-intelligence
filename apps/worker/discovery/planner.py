@@ -2,7 +2,7 @@ import re
 from typing import Any, Dict, List, Tuple, Optional
 
 from ..providers.llm import BaseLLMProvider
-from ..providers.ledger import ledger_scope
+from ..providers.ledger import BudgetExceeded, ledger_scope
 from ..tuning import Tuning, resolve
 from .output import list_from_output
 
@@ -53,6 +53,8 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
         if len(planned) >= 2:
             return planned, "llm"
         print(f"[DiscoveryPlanner] LLM returned {len(planned)} usable queries; using requirement keywords instead")
+    except BudgetExceeded:
+        raise
     except Exception as e:
         print(f"[DiscoveryPlanner] LLM query planning failed ({e}); using requirement keywords instead")
     return heuristic_queries(requirements_json, max_queries, max_words), "heuristic"

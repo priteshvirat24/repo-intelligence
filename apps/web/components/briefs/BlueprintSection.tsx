@@ -8,6 +8,15 @@ import { IndexingProgress } from '@/components/IndexingState';
 
 const DECISION_LABEL: Record<string, string> = { reuse: 'Reuse', adapt: 'Adapt', investigate: 'Investigate', build: 'Build' };
 const DECISION_TONE: Record<string, string> = { reuse: 'badge-verified', adapt: 'badge-inferred', investigate: 'badge-neutral', build: 'badge-outline' };
+// Evidence grades (PRODUCT_DEFINITION 5.1)
+const GRADE_TONE: Record<string, string> = { E1: 'badge-verified', E2: 'badge-verified', E3: 'badge-neutral', E4: 'badge-inferred', E5: 'badge-outline' };
+const GRADE_HELP: Record<string, string> = {
+  E1: 'Executed: observed by running the code',
+  E2: 'Verified in code at a file, lines and commit',
+  E3: 'Officially documented or reported by the platform',
+  E4: 'Claimed by a README or article; not yet checked',
+  E5: 'Inferred by Open Eye'
+};
 const EVIDENCE_LABEL: Record<string, string> = { verified: 'verified in code', unconfirmed: 'unconfirmed', none: '' };
 
 /** Verification progress, then the blueprint: what to reuse, how to integrate it, what is left to build. */
@@ -121,6 +130,8 @@ const Blueprint: React.FC<{ data: EngineeringBlueprint; sources: Map<string, Blu
                   <ArrowUpRight size={12} aria-hidden="true" />
                 </a>{' '}
                 <span className="faint">{s.kind === 'code' ? 'verified code' : s.kind === 'readme' ? 'README' : 'limitation'}</span>
+                {s.grade && <span className={`badge ${GRADE_TONE[s.grade] || 'badge-outline'}`} title={GRADE_HELP[s.grade]} style={{ marginLeft: 6 }}>{s.grade}</span>}
+                {s.claimStatus === 'needs_revalidation' && <span className="badge badge-inferred" style={{ marginLeft: 6 }}>source changed since verified</span>}
                 <div className="muted">{s.title}{s.text ? `: ${s.text}` : ''}</div>
                 {s.quote && <pre className="quote-well mono xsmall" style={{ whiteSpace: 'pre-wrap', margin: 'var(--s-1) 0 0' }}>{s.quote}</pre>}
               </li>
