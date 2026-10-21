@@ -16,6 +16,8 @@ FINAL_WEIGHTS = {"coverage": 0.45, "relevance": 0.25, "health": 0.30}
 UNASSESSED_FACTOR = 0.6
 NON_IMPLEMENTATION_FACTOR = 0.5
 DUPLICATE_FACTOR = 0.3
+# Shortlist only repositories pushed to within this many days; None disables the rule
+SHORTLIST_MAX_STALE_DAYS = 730
 # Kinds that are not themselves a starting point to build on
 NON_IMPLEMENTATION_KINDS = {"curated_list", "tutorial"}
 
@@ -165,9 +167,18 @@ def final_score(candidate: Dict[str, Any], tuning: Optional[Tuning] = None) -> f
     return round(score, 4)
 
 
-def select_shortlist(candidates: List[Dict[str, Any]], size: int = 6) -> None:
+def is_stale(candidate: Dict[str, Any], max_days: Optional[int], now: Optional[datetime] = None) -> bool:
+    if not max_days:
+        return False
+    pushed = _parse_time(candidate.get("pushed_at"))
+    return pushed is None or ((now or utc_now()) - pushed).days > max_days
+
+
+def select_shortlist(candidates: List[Dict[str, Any]], size: int = 6, max_stale_days: Optional[int] = None,
+                     now: Optional[datetime] = None) -> None:
     """Marks the best assessed implementations: README read, fully covering at least one capability,
-    not a list or a copy."""
+    not a list or a copy, and (when max_stale_days is set) pushed to within that many days. A stale
+    repository stays in the candidate list; it is just not recommended as a starting point."""
     picked = 0
     for c in candidates:
         coverage = (c.get("assessment") or {}).get("coverage") or {}
@@ -177,6 +188,7 @@ def select_shortlist(candidates: List[Dict[str, Any]], size: int = 6) -> None:
             and "yes" in coverage.values()
             and c.get("candidate_kind") not in NON_IMPLEMENTATION_KINDS
             and not c.get("duplicate_of")
+            and not is_stale(c, max_stale_days, now)
         )
         c["shortlisted"] = eligible and picked < size
         if c["shortlisted"]:

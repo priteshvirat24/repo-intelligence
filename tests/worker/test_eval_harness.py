@@ -124,3 +124,14 @@ def test_fill_serves_recorded_and_records_missing(tmp_path):
     assert (fill.replayed, fill.fetched, fill.recorded) == (1, 1, 1)
     replay = httpx.Client(transport=RecordingTransport(str(tmp_path), "replay"))
     assert replay.get("https://api.github.com/search/repositories", params={"q": "new query"}).json()["q"] == "new query"
+
+
+
+def test_trap_rejection_among_surfaced_traps():
+    found_and_kept_out = score_brief(BRIEF, ["org/trap", "org/essential-one"], shortlisted=["org/essential-one"])
+    never_found = score_brief(BRIEF, ["org/essential-one"], shortlisted=["org/essential-one"])
+    assert found_and_kept_out["trapsSurfaced"] == 1 and found_and_kept_out["trapRejectionSurfaced"] == 1.0
+    # Both reject every trap, but only one of them was ever tested by a trap
+    assert never_found["trapRejection"] == 1.0 and never_found["trapRejectionSurfaced"] is None
+    agg = aggregate([found_and_kept_out, never_found, score_brief(BRIEF, ["org/trap"], shortlisted=["org/trap"])])
+    assert (agg["trapsSurfaced"], agg["trapsShortlisted"], agg["trapRejectionSurfaced"]) == (2, 1, 0.5)

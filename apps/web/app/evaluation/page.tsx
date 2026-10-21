@@ -13,11 +13,25 @@ const SYSTEM_LABEL: Record<string, string> = {
   b1: 'Open Eye (B1)'
 };
 
+/** "b1:category-queries" -> "Open Eye (B1) · category-queries"; the default tuning needs no suffix */
+function variantLabel(variant: string): string {
+  const [system, tuning] = variant.split(':');
+  const base = SYSTEM_LABEL[system] || system.toUpperCase();
+  return tuning && tuning !== 'default' ? `${base} · ${tuning}` : base;
+}
+
+function shortVariant(variant: string): string {
+  const [system, tuning] = variant.split(':');
+  const name = system === 'b0s' ? 'B0s' : system.toUpperCase();
+  return tuning ? `${name} ${tuning}` : name;
+}
+
 const METRICS: Array<{ key: keyof EvalRunSummary['aggregate']; label: string; help: string }> = [
   { key: 'recallAt10', label: 'Recall@10', help: 'Share of the essential solutions an expert expects that appear in the top 10' },
   { key: 'recallAll', label: 'Recall (all kept)', help: 'The same over every candidate kept, up to 40' },
   { key: 'shortlistPrecision', label: 'Shortlist precision', help: 'Share of recommended starting points that are labelled essential or acceptable' },
-  { key: 'trapRejection', label: 'Trap rejection', help: 'Share of look-alike, abandoned or unusable repositories that were not recommended' }
+  { key: 'trapRejection', label: 'Trap rejection (all traps)', help: 'Share of look-alike, abandoned or unusable repositories that were not recommended. A system that finds nothing scores 100%.' },
+  { key: 'trapRejectionSurfaced', label: 'Trap rejection (traps it found)', help: 'Of the traps the system actually surfaced, the share it did not recommend' }
 ];
 
 function stats(values: Array<number | null>): { mean: number | null; min: number | null; max: number | null; n: number } {
@@ -54,13 +68,15 @@ export default function EvaluationPage() {
   const bySystem = useMemo(() => {
     const map = new Map<string, EvalRunSummary[]>();
     for (const run of data?.runs || []) {
-      if (!map.has(run.system)) map.set(run.system, []);
-      map.get(run.system)!.push(run);
+      if (!map.has(run.variant)) map.set(run.variant, []);
+      map.get(run.variant)!.push(run);
     }
     return map;
   }, [data]);
 
   const systems = data?.systems || [];
+  // The most recent Open Eye variant, whose misses the per-brief table lists
+  const latestB1 = data?.runs.find((r) => r.system === 'b1')?.variant;
   const draftLabels = (data?.labelsStatus || '').toLowerCase().startsWith('draft');
 
   return (
@@ -119,7 +135,10 @@ export default function EvaluationPage() {
                     <tr>
                       <th>Metric</th>
                       {systems.map((s) => (
-                        <th key={s} className="num">{SYSTEM_LABEL[s] || s} · {bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</th>
+                        <th key={s} className="num" title={variantLabel(s)}>
+                          {shortVariant(s)}
+                          <div className="faint" style={{ textTransform: 'none' }}>{bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</div>
+                        </th>
                       ))}
                     </tr>
                   </thead>
@@ -129,7 +148,7 @@ export default function EvaluationPage() {
                       const best = Math.max(...cells.map((c) => c.mean ?? -1));
                       return (
                         <tr key={m.key}>
-                          <td title={m.help}>{m.label}</td>
+                          <td title={m.help} style={{ whiteSpace: 'nowrap' }}>{m.label}</td>
                           {cells.map((c, i) => (
                             <td key={systems[i]} className="num" style={c.mean === best && c.mean !== null && systems.length > 1 ? { fontWeight: 600 } : undefined}>
                               {pct(c.mean)}
@@ -140,11 +159,11 @@ export default function EvaluationPage() {
                       );
                     })}
                     <tr>
-                      <td>AI calls per run</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>AI calls per run</td>
                       {systems.map((s) => <td key={s} className="num">{Math.round(stats((bySystem.get(s) || []).map((r) => r.aggregate.llmCalls)).mean || 0)}</td>)}
                     </tr>
                     <tr>
-                      <td>Time per brief</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>Time per brief</td>
                       {systems.map((s) => <td key={s} className="num">{Math.round((stats((bySystem.get(s) || []).map((r) => r.aggregate.meanDurationMs)).mean || 0) / 1000)}s</td>)}
                     </tr>
                   </tbody>
@@ -155,7 +174,7 @@ export default function EvaluationPage() {
 
             <section className="stack gap-3">
               <div className="rule-head">
-                <h2 className="label">Per brief (latest run of each system)</h2>
+                <h2 className="label">Recall@10 per brief (latest run of each)</h2>
                 <span className="count">{data.briefs.length}</span>
               </div>
               <div className="table-wrap">
@@ -163,20 +182,20 @@ export default function EvaluationPage() {
                   <thead>
                     <tr>
                       <th>Brief</th>
-                      {systems.map((s) => <th key={s} className="num">{s.toUpperCase()} recall@10</th>)}
-                      <th>Essential solutions missed by Open Eye</th>
+                      {systems.map((s) => <th key={s} className="num" title={variantLabel(s)}>{shortVariant(s)}</th>)}
+                      <th>Essential solutions missed by Open Eye ({latestB1 ? shortVariant(latestB1) : 'B1'}, latest)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.briefs.map((b) => (
                       <tr key={b.briefId}>
-                        <td><span className="mono">{b.briefId}</span><div className="xsmall faint">{b.domain}</div></td>
+                        <td style={{ whiteSpace: 'nowrap' }}><span className="mono">{b.briefId}</span><div className="xsmall faint">{b.domain}</div></td>
                         {systems.map((s) => (
                           <td key={s} className="num">{b.bySystem[s]?.error ? 'error' : pct(b.bySystem[s]?.recallAt10 ?? null)}</td>
                         ))}
                         <td className="xsmall">
-                          {b.bySystem.b1
-                            ? b.bySystem.b1.error || (b.bySystem.b1.missed.length ? b.bySystem.b1.missed.join(', ') : 'none')
+                          {latestB1 && b.bySystem[latestB1]
+                            ? b.bySystem[latestB1].error || (b.bySystem[latestB1].missed.length ? b.bySystem[latestB1].missed.join(', ') : 'none')
                             : '—'}
                         </td>
                       </tr>
@@ -200,7 +219,7 @@ export default function EvaluationPage() {
                     {data.runs.map((r) => (
                       <tr key={r.runId}>
                         <td>{shortDate(r.finishedAt)}</td>
-                        <td>{r.system.toUpperCase()}</td>
+                        <td>{shortVariant(r.variant)}</td>
                         <td>{r.mode}</td>
                         <td className="mono xsmall">{r.tuningVersion || '—'}</td>
                         <td className="mono xsmall">{r.commit}</td>

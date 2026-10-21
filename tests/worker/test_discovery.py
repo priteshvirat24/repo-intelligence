@@ -382,3 +382,34 @@ def test_constraints_do_not_make_a_repository_a_starting_point():
     assert candidate["coverage_score"] == 0
     assert "Backend in Python" not in candidate["assessment"]["coverage"]
     assert not candidate["shortlisted"]
+
+
+
+def test_constraints_reach_the_planner_only_when_tuned_to():
+    from apps.worker.discovery.planner import _user_prompt
+    req = {**REQUIREMENTS, "requirements": REQUIREMENTS["requirements"] + [
+        {"name": "Backend in Python", "description": "Python service", "criticality": "MUST", "type": "deployment"}]}
+    assert "Backend in Python" not in _user_prompt(req, 8, list_constraints=False)
+    with_constraints = _user_prompt(req, 8, list_constraints=True)
+    assert with_constraints.index("Constraints") < with_constraints.index("Backend in Python") < with_constraints.index("Requirements:")
+
+
+def test_promoted_default_is_exactly_the_measured_candidate():
+    from apps.worker.tuning import load_tuning_file, default_tuning
+    # category-queries-fresh was measured on suite-v1 and promoted: the default must be that configuration
+    assert load_tuning_file("eval/candidates/category-queries-fresh.json").version == default_tuning().version
+    assert "KIND OF TOOL" in default_tuning().get("prompts.discovery_planner")
+    assert default_tuning().get("discovery.planner_lists_constraints") is True
+    assert default_tuning().get("discovery.shortlist_max_stale_days") == 730
+
+
+
+def test_stale_repositories_are_listed_but_not_shortlisted():
+    fresh = {"full_name": "a/fresh", "coverage_score": 0.5, "candidate_kind": "library", "assessment": {"coverage": {"x": "yes"}},
+             "pushed_at": "2026-09-01T00:00:00Z"}
+    stale = {**fresh, "full_name": "a/stale", "pushed_at": "2024-02-12T00:00:00Z"}
+    candidates = [stale, fresh]
+    ranking.select_shortlist(candidates, size=6, max_stale_days=730, now=NOW)
+    assert [c["full_name"] for c in candidates if c["shortlisted"]] == ["a/fresh"]
+    ranking.select_shortlist(candidates, size=6, max_stale_days=None, now=NOW)
+    assert all(c["shortlisted"] for c in candidates)

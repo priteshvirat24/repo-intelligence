@@ -62,6 +62,11 @@ def score_brief(brief: Dict[str, Any], ranked: List[str], shortlisted: List[str]
         "shortlistUnlabelled": [r for r in short if r not in relevant and r not in trap_set],
         "trapsTotal": len(trap_set),
         "trapRejection": round(sum(1 for t in trap_set if t not in short) / len(trap_set), 4) if trap_set else None,
+        # Of the traps the system actually surfaced, the share it did not recommend. trapRejection alone
+        # rewards a system that finds nothing (it cannot recommend a trap it never saw)
+        "trapsSurfaced": len(trap_set & set(ranked_n)),
+        "trapRejectionSurfaced": (round(sum(1 for t in trap_set & set(ranked_n) if t not in short) / len(trap_set & set(ranked_n)), 4)
+                                  if trap_set & set(ranked_n) else None),
         "trapsShortlisted": sorted(t for t in trap_set if t in short),
         "trapsInTop10": sorted(trap_set & top10),
     }
@@ -78,4 +83,10 @@ def aggregate(per_brief: List[Dict[str, Any]]) -> Dict[str, Any]:
         "recallAll": mean("recallAll"),
         "shortlistPrecision": mean("shortlistPrecision"),
         "trapRejection": mean("trapRejection"),
+        "trapsSurfaced": sum(b.get("trapsSurfaced", 0) for b in per_brief),
+        "trapsShortlisted": sum(len(b.get("trapsShortlisted", [])) for b in per_brief),
+        "trapRejectionSurfaced": (
+            round(1 - sum(len(b.get("trapsShortlisted", [])) for b in per_brief) / sum(b.get("trapsSurfaced", 0) for b in per_brief), 4)
+            if sum(b.get("trapsSurfaced", 0) for b in per_brief) else None
+        ),
     }

@@ -9,6 +9,9 @@ from .output import list_from_output
 MAX_QUERIES = 8
 # GitHub ANDs every keyword: long queries return almost nothing
 MAX_QUERY_WORDS = 4
+# Show the planner the brief's constraints so it can name the ecosystem (node, python, postgres).
+# Promoted 2026-10-21 with the kind-of-tool prompt (eval/results/suite-v1, category-queries-fresh).
+PLANNER_LISTS_CONSTRAINTS = True
 OVERALL = "(overall)"
 
 _STOPWORDS = {
@@ -24,14 +27,14 @@ CONSTRAINT_TYPES = {"deployment", "performance"}
 
 CRITICALITY_ORDER = {"MUST": 0, "SHOULD": 1, "NICE_TO_HAVE": 2}
 
-SYSTEM_PROMPT = """You plan GitHub repository searches that find existing open-source implementations of a project's requirements.
+SYSTEM_PROMPT = """You plan GitHub repository searches that find existing open-source tools a team could build this project on.
 
 Rules:
-1. Each query is 2 or 3 plain keywords. GitHub only returns repositories matching every keyword, so more words means fewer results.
-2. Use the words a repository's name, description or topics would contain: established technical terms, algorithm and format names, library categories (e.g. "sgp4 propagation", "webgl globe", "pdf table extraction"). No marketing words.
-3. Search for capabilities only. Constraints such as programming language, hosting, team or performance targets are not searches.
-4. No GitHub qualifiers (language:, stars:), no quotes, no boolean operators.
-5. Cover every MUST capability; add one query for the overall product (e.g. "satellite tracker").
+1. Each query names the KIND OF TOOL a developer would install, in 2 or 3 words, plus the ecosystem when the brief has one: "job queue node", "task queue python", "documentation generator typescript", "vector tile server", "sgp4 propagation", "saml sso". GitHub matches every word, so more words means fewer results.
+2. Never search for implementation details or features inside a tool (retry backoff, JSONB columns, dark mode, bcrypt, row-level security): READMEs of the established tools describe what kind of tool they are, not those details.
+3. Use the constraints only to choose ecosystem words (node, python, typescript, postgres, nextjs). Never search for a constraint on its own.
+4. One query per distinct kind of tool the project needs; cover every MUST capability; add one query for the whole product (e.g. "satellite tracker").
+5. No GitHub qualifiers, quotes or boolean operators.
 6. "requirement" must be copied exactly from the given requirement names, or be "(overall)".
 7. Output strictly valid JSON."""
 
@@ -43,7 +46,7 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     names = [r["name"] for r in capability_requirements(requirements_json)]
     constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
-        prompt = _user_prompt(requirements_json, max_queries)
+        prompt = _user_prompt(requirements_json, max_queries, t.get("discovery.planner_lists_constraints"))
         with ledger_scope(purpose="discovery_planner"):
             raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
         planned = validate_queries(raw, names, max_queries, max_words, constraint_names)
@@ -55,11 +58,15 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     return heuristic_queries(requirements_json, max_queries, max_words), "heuristic"
 
 
-def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES) -> str:
+def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES, list_constraints: bool = PLANNER_LISTS_CONSTRAINTS) -> str:
     lines = [f"Problem: {requirements_json.get('problemSummary', '')}"]
     domains = requirements_json.get("domains") or []
     if domains:
         lines.append(f"Domains: {', '.join(domains[:5])}")
+    constraints = [r for r in sorted_requirements(requirements_json) if r.get("type") in CONSTRAINT_TYPES]
+    if list_constraints and constraints:
+        lines.append("Constraints (use only to choose ecosystem words; never search for them on their own):")
+        lines += [f"- {r['name']}: {r.get('description', '')}" for r in constraints[:8]]
     lines.append("Requirements:")
     for r in capability_requirements(requirements_json)[:12]:
         lines.append(f"- [{r.get('criticality', 'SHOULD')}] {r.get('name')}: {r.get('description', '')}")

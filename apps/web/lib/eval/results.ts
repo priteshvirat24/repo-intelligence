@@ -10,6 +10,9 @@ export interface EvalAggregate {
   recallAll: number | null;
   shortlistPrecision: number | null;
   trapRejection: number | null;
+  /** Of the traps the system surfaced, the share not recommended (absent in runs scored before it existed) */
+  trapRejectionSurfaced?: number | null;
+  trapsSurfaced?: number;
   errors: number;
   meanDurationMs: number;
   llmCalls: number;
@@ -23,8 +26,11 @@ export interface EvalRunSummary {
   suite: string;
   labelsStatus: string | null;
   system: string;
+  /** system, or system:tuning name for B1 (runs with different tunings are compared, not averaged) */
+  variant: string;
   mode: string;
   tuningVersion: string | null;
+  tuningName: string | null;
   commit: string;
   model: string | null;
   note: string;
@@ -42,8 +48,13 @@ export interface EvaluationData {
   suite: string | null;
   labelsStatus: string | null;
   runs: EvalRunSummary[];
+  /** variants, baselines first */
   systems: string[];
   briefs: EvalBriefRow[];
+}
+
+function variantOf(run: any): string {
+  return run.tuningName ? `${run.system}:${run.tuningName}` : run.system;
 }
 
 function resultsRoot(): string | null {
@@ -75,11 +86,14 @@ export function loadEvaluation(): EvaluationData {
       }
     })
     .filter((r) => r && r.aggregate && Array.isArray(r.briefs))
+    .map((r) => ({ ...r, tuningName: r.tuningName ?? null, variant: variantOf(r) }))
     .sort((a, b) => String(b.finishedAt).localeCompare(String(a.finishedAt)));
 
-  const systems = Array.from(new Set(full.map((r) => r.system))).sort();
+  // Baselines first, then Open Eye's default tuning, then candidates by name
+  const rank = (v: string) => (v.startsWith('b0') ? 0 : v === 'b1:default' || v === 'b1' ? 1 : 2);
+  const systems = Array.from(new Set(full.map((r) => r.variant))).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   const latestBySystem = new Map<string, any>();
-  for (const r of full) if (!latestBySystem.has(r.system)) latestBySystem.set(r.system, r);
+  for (const r of full) if (!latestBySystem.has(r.variant)) latestBySystem.set(r.variant, r);
 
   const briefIds: string[] = full[0]?.briefs.map((b: any) => b.briefId) || [];
   const briefs: EvalBriefRow[] = briefIds.map((briefId) => {
