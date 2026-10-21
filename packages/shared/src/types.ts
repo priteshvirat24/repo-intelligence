@@ -1197,3 +1197,96 @@ export interface DiscoveryMetrics {
     unavailable: string[];
   } | null;
 }
+
+// Phase 5: controlled self-evolution (PRODUCT_DEFINITION 9)
+
+export type FeedbackTargetKind = 'candidate' | 'blueprint_decision' | 'claim';
+/** useful / not_useful for candidates; correct / wrong for blueprint decisions and claims */
+export type FeedbackVerdict = 'useful' | 'not_useful' | 'correct' | 'wrong';
+
+export interface FeedbackEntry {
+  targetKind: FeedbackTargetKind;
+  targetId: string;
+  verdict: FeedbackVerdict;
+  note?: string | null;
+  tuningVersion?: string | null;
+  updatedAt?: string;
+}
+
+export type ConfigVersionStatus = 'candidate' | 'pending' | 'promoted' | 'retired' | 'rejected' | 'rolled_back';
+
+/** Gate metrics recorded with a decision (apps/worker/evolution/gate.py) */
+export type EvolutionMetrics = Record<string, { baseline: number | null; candidate: number | null; delta: number | null; band?: number }>;
+
+export interface ConfigVersionSummary {
+  id: string;
+  parentId: string | null;
+  level: 'L1' | 'L2' | 'L3';
+  status: ConfigVersionStatus;
+  notes: string | null;
+  /** keys that differ from the parent version (or, without one, from the oldest registered version) */
+  changedKeys: string[];
+  evidence: { runs?: string[]; method?: string; gate?: { target?: string | null; reasons?: string[]; metrics?: EvolutionMetrics } } | null;
+  createdAt: string;
+  promotedAt: string | null;
+  decidedAt: string | null;
+  /** live feedback on results this version produced */
+  feedback: { total: number; negative: number; rate: number | null };
+}
+
+export interface EvolutionEvent {
+  id: number;
+  kind: 'promoted' | 'rejected' | 'rolled_back' | 'proposed' | 'proposal_rejected';
+  version: string | null;
+  activeBefore: string | null;
+  activeAfter: string | null;
+  level: string | null;
+  actor: string;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface EvolutionProposal {
+  id: string;
+  level: 'L2' | 'L3' | 'L4';
+  title: string;
+  rationale: string | null;
+  configVersion: string | null;
+  baseVersion: string | null;
+  changedKeys: string[];
+  benchmarkWin: boolean;
+  evidence: {
+    runs?: string[];
+    baselineRuns?: string[];
+    gate?: { reasons?: string[]; recurringTraps?: string[]; metrics?: EvolutionMetrics };
+  } | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdBy: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+}
+
+export interface LabelProposal {
+  id: string;
+  briefId: string;
+  briefTitle: string;
+  kind: 'solution' | 'trap' | 'decision_review' | 'claim_review';
+  repo: string | null;
+  requirement: string | null;
+  proposal: Record<string, unknown>;
+  status: 'pending' | 'accepted' | 'dismissed';
+  createdAt: string;
+}
+
+export interface EvolutionData {
+  /** the promoted version; null when the built-in defaults are active */
+  active: string | null;
+  versions: ConfigVersionSummary[];
+  events: EvolutionEvent[];
+  proposals: EvolutionProposal[];
+  /** label proposals from the caller's workspace, for reviewers of the evaluation suite */
+  labelProposals: LabelProposal[];
+  /** whether the caller may approve, reject and roll back */
+  canGovern: boolean;
+}

@@ -20,6 +20,7 @@ import {
 } from '@repo/shared';
 import { IndexingProgress } from '@/components/IndexingState';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds } from '@/lib/ui/api';
+import { Feedback } from '@/components/briefs/Feedback';
 
 // Build-versus-reuse classes (PRODUCT_DEFINITION 5.4)
 const CLASS_LABEL: Record<BuildReuseClass, string> = {
@@ -338,6 +339,7 @@ const BuildVersusReuse: React.FC<{ data: EngineeringBlueprint; sources: Sources;
                         {EVIDENCE_LABEL[c.evidence] && <span className="xsmall faint">{EVIDENCE_LABEL[c.evidence]}</span>}
                         {(c.evidenceGrades || []).map((g) => <GradeBadge key={g} grade={g} />)}
                         <Citations ids={c.sources} sources={sources} />
+                        <Feedback kind="blueprint_decision" target={c.requirement} subject={`the decision for ${c.requirement}`} />
                       </div>
                     </td>
                     {briefId && (

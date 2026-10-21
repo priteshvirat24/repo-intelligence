@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
 import { BlueprintSection } from '@/components/briefs/BlueprintSection';
 import { BuildPanel } from '@/components/briefs/BuildPanel';
+import { Feedback } from '@/components/briefs/Feedback';
 import { BudgetPanel, ConstraintsEditor, TaskTimeline, UnderstandingPanel } from '@/components/briefs/RunPanel';
 import { CandidateEvidence, CandidateSources } from '@/components/briefs/CandidateEvidence';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
@@ -421,6 +422,7 @@ const CandidateCard: React.FC<{
           {c.coverageScore !== null && ` · coverage ${c.coverageScore.toFixed(2)}`} · relevance {c.relevanceScore.toFixed(2)} · health {c.healthScore.toFixed(2)}
         </span>
         <div className="row gap-2">
+          <Feedback kind="candidate" target={c.fullName} />
           {addState?.message && (
             <span className="small" role="status" style={addState.error ? { color: 'var(--danger)' } : undefined}>{addState.message}</span>
           )}

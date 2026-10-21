@@ -130,6 +130,24 @@ python -m apps.worker.eval.report eval/results/suite-v1/<run>.json ...
 - **LLM calls are never replayed.** They run live in every mode, so replay runs differ only by model nondeterminism. Run a configuration at least three times and compare means with their spread.
 - **`--requirements-from`** reuses an earlier run's decomposition. Use it when a change concerns discovery or ranking, so decomposition noise does not mask the difference.
 
+### Ranking features and controlled evolution (Phase 5)
+
+Each B1 result file also stores, per brief, the ranking inputs of every candidate the searches found (`features`) and the run's L1 tuning values (`tuningValues`). From them, `apps/worker/evolution` re-ranks a run under another tuning without any network or LLM call. This is exact for the run's own tuning (checked on every use) and for the ranking keys downstream of the README assessment (`offline.OFFLINE_EXACT_KEYS`). Runs recorded before features were stored cannot be used by the tuner.
+
+```bash
+# L1 auto-tuner: searches ranking weights and thresholds on the promoted tuning's runs; promotes a candidate only
+# if it beats the run-to-run noise on recall@10 (or shortlist precision) in every run with no guard regression
+python -m apps.worker.evolution.tune --suite eval/suite-v1 [--dry-run] [--candidate overrides.json]
+
+# Recurring weaknesses in the latest variant's runs, with draft candidate tunings (never applied)
+python -m apps.worker.evolution.weakness --suite eval/suite-v1 [--draft-dir eval/candidates/drafts]
+
+# An L2 change (prompt, model) benchmarked with --tuning: a proposal a maintainer approves on /evolution
+python -m apps.worker.evolution.propose --suite eval/suite-v1 --tuning candidate.json --runs <id>,<id>,<id> --title "..."
+```
+
+Tuner decisions are written to `eval/evolution/<suite version>/` and recorded in `config_versions` and `evolution_events`.
+
 ## Metrics computed today
 
 | Metric | Computation |

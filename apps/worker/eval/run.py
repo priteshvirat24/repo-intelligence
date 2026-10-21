@@ -31,6 +31,7 @@ from ..discovery.registry_search import RegistrySearch
 from ..discovery.runner import DiscoveryRunner
 from ..connectors.gateway import Gateway, MemoryCache
 from ..connectors.registry import Connectors
+from ..evolution import offline
 from ..providers import ledger
 from ..providers.llm import get_llm_provider
 from ..tuning import default_tuning, load_tuning_file
@@ -167,6 +168,9 @@ def main(argv: List[str] = None) -> int:
                     "readmesAssessed": result["metrics"]["readmesAssessed"],
                     "decompositionMs": decomposition.get("durationMs"),
                 }
+                # Ranking inputs of every kept candidate: lets apps/worker/evolution re-rank this run under
+                # another tuning without a network or LLM call
+                entry["features"] = offline.capture(decomposition["requirements"], result)
             entry["ranked"] = out["ranked"]
             entry["shortlisted"] = out["shortlisted"]
             entry["scores"] = score_brief(brief, out["ranked"], out["shortlisted"])
@@ -195,6 +199,7 @@ def main(argv: List[str] = None) -> int:
         "mode": args.mode,
         "tuningVersion": tuning.version if args.system == "b1" else None,
         "tuningName": (Path(args.tuning).stem if args.tuning else "default") if args.system == "b1" else None,
+        "tuningValues": offline.l1_values(tuning) if args.system == "b1" else None,
         "requirementsFrom": args.requirements_from,
         "commit": git_commit(),
         "model": config.LLM_MODEL or None,
