@@ -17,7 +17,7 @@ UNASSESSED_FACTOR = 0.6
 NON_IMPLEMENTATION_FACTOR = 0.5
 DUPLICATE_FACTOR = 0.3
 # Shortlist only repositories pushed to within this many days; None disables the rule
-SHORTLIST_MAX_STALE_DAYS = None
+SHORTLIST_MAX_STALE_DAYS = 730
 # Kinds that are not themselves a starting point to build on
 NON_IMPLEMENTATION_KINDS = {"curated_list", "tutorial"}
 

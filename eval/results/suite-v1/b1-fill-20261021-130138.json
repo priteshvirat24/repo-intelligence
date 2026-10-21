@@ -1,0 +1,2686 @@
+{
+  "runId": "b1-fill-20261021-130138",
+  "suite": "suite-v1",
+  "labelsStatus": "draft: one AI-drafted label set, not yet independently labelled or reviewed (see eval/README.md)",
+  "system": "b1",
+  "mode": "fill",
+  "tuningVersion": "cfg-02b30c8854db",
+  "requirementsFrom": "b1-fill-20261021-124327",
+  "commit": "d48988c",
+  "model": "ministral-8b-latest",
+  "githubAuthenticated": true,
+  "note": "B1 baseline run 1 of 3 (commit 2247758, default tuning, shared decomposition)",
+  "finishedAt": "2026-10-21T13:14:46.026013+00:00",
+  "aggregate": {
+    "briefs": 15,
+    "recallAt10": 0.1133,
+    "recallAll": 0.2067,
+    "shortlistPrecision": 0.0889,
+    "trapRejection": 1.0,
+    "errors": 0,
+    "meanDurationMs": 77261,
+    "llmCalls": 60,
+    "inputTokens": 202097,
+    "outputTokens": 39251,
+    "costCents": null,
+    "trapsSurfaced": 1,
+    "trapsShortlisted": 0,
+    "trapRejectionSurfaced": 1.0
+  },
+  "snapshot": {
+    "recorded": 201,
+    "replayed": 104,
+    "fetchedLive": 201
+  },
+  "briefs": [
+    {
+      "briefId": "geo-satellite-tracker",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "TLE Data Ingestion",
+          "Orbital Propagation (SGP4/SGP8)",
+          "Coordinate Transformations",
+          "3D Globe Rendering (WebGL)",
+          "Ground Track Computation",
+          "Backend Framework (Python/TypeScript)",
+          "Real-Time Data Streaming",
+          "Scalability for 10,000 Satellites",
+          "WebAssembly (WASM) Acceleration",
+          "Satellite Metadata Integration",
+          "User Interaction",
+          "Error Handling and Fallbacks",
+          "Performance Profiling",
+          "Data Persistence",
+          "Alternative Orbital Models"
+        ],
+        "queries": [
+          {
+            "query": "TLE parsing CelesTrak API",
+            "requirement": "TLE Data Ingestion",
+            "results": 15,
+            "searchedAs": [
+              "TLE parsing CelesTrak API stars:>=10"
+            ]
+          },
+          {
+            "query": "SGP4 SGP8 orbital propagation",
+            "requirement": "Orbital Propagation (SGP4/SGP8)",
+            "results": 15,
+            "searchedAs": [
+              "SGP4 SGP8 orbital propagation stars:>=10",
+              "SGP4 SGP8 stars:>=10",
+              "SGP4 SGP8"
+            ]
+          },
+          {
+            "query": "ECI ECEF geodetic coordinate",
+            "requirement": "Coordinate Transformations",
+            "results": 8,
+            "searchedAs": [
+              "ECI ECEF geodetic coordinate stars:>=10"
+            ]
+          },
+          {
+            "query": "WebGL Three.js satellite globe",
+            "requirement": "3D Globe Rendering (WebGL)",
+            "results": 15,
+            "searchedAs": [
+              "WebGL Three.js satellite globe stars:>=10"
+            ]
+          },
+          {
+            "query": "ground track computation WebGL",
+            "requirement": "Ground Track Computation",
+            "results": 15,
+            "searchedAs": [
+              "ground track computation WebGL stars:>=10"
+            ]
+          },
+          {
+            "query": "satellite tracker TLE WebGL",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "satellite tracker TLE WebGL stars:>=10"
+            ]
+          },
+          {
+            "query": "WebAssembly orbital propagation",
+            "requirement": "Orbital Propagation (SGP4/SGP8)",
+            "results": 15,
+            "searchedAs": [
+              "WebAssembly orbital propagation stars:>=10"
+            ]
+          },
+          {
+            "query": "real-time WebSocket satellite positions",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "real-time WebSocket satellite positions stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 25029
+      },
+      "ranked": [
+        "Flowm/satvis",
+        "juliensimon/starlink-viz",
+        "thkruz/keeptrack.space",
+        "BigBodyCobain/Shadowbroker",
+        "sgoudelis/ground-station",
+        "VrushankPatel/godseye",
+        "ATTron/astroz",
+        "1manprojects/one_Sgp4",
+        "colincode0/earth-view",
+        "brandon-rhodes/python-sgp4",
+        "geospace-code/pymap3d",
+        "neuromorphicsystems/sgp4",
+        "bilawalsidhu/gods-eye-view",
+        "calesthio/Crucix",
+        "accius/openhamclock",
+        "w3reality/three-geo",
+        "maplibre/navara",
+        "arscan/encom-globe",
+        "joshuaferrara/go-satellite",
+        "kevtoe/worldview",
+        "gberrante/map_3d",
+        "nsat/jspredict",
+        "cpaczek/skylight",
+        "Beliavsky/Fortran-code-on-GitHub",
+        "asdfghj1237890/mini-macau",
+        "opengeos/geolibre-rust",
+        "koansys/isat",
+        "McNeight/Satellite",
+        "sksat/orts",
+        "cool-japan/spintronics",
+        "Zushah/WasmGPU",
+        "dalindev/XNOHub.com",
+        "pulkitxm/claude-directory",
+        "gavineadie/SatelliteKit",
+        "SnowLeopard-io/ErgalicsStudio",
+        "notha99y/TLE",
+        "sacridini/Awesome-Geospatial",
+        "CaviraOSS/Akashic",
+        "FedericoStra/tletools",
+        "smittix/intercept"
+      ],
+      "shortlisted": [
+        "Flowm/satvis",
+        "juliensimon/starlink-viz",
+        "thkruz/keeptrack.space",
+        "BigBodyCobain/Shadowbroker",
+        "sgoudelis/ground-station",
+        "VrushankPatel/godseye"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.4,
+        "recallAll": 0.4,
+        "foundEssential": [
+          "brandon-rhodes/python-sgp4",
+          "thkruz/keeptrack.space"
+        ],
+        "missedEssential": [
+          "cesiumgs/cesium",
+          "shashwatak/satellite-js",
+          "vasturiano/globe.gl"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.3333,
+        "shortlistUnlabelled": [
+          "juliensimon/starlink-viz",
+          "bigbodycobain/shadowbroker",
+          "sgoudelis/ground-station",
+          "vrushankpatel/godseye"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 61759,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 13669,
+        "outputTokens": 2885,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "geo-vector-tiles",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Vector Tile Generation Pipeline",
+          "Self-Hosted Vector Tile Storage",
+          "Browser-Compatible Rendering",
+          "Customizable Styling Engine",
+          "GeoJSON Overlay Support",
+          "Monthly Data Updates",
+          "Vendor-Free Cost Model",
+          "Performance Optimization for Static Tiles",
+          "Tile Cache Invalidation Strategy",
+          "Scalable Tile Generation Infrastructure",
+          "GeoJSON Overlay Performance",
+          "API for Dynamic GeoJSON Updates",
+          "Tile Server for Dynamic Rendering",
+          "Data License Compliance"
+        ],
+        "queries": [
+          {
+            "query": "tippecanoe mbtiles osm pbf",
+            "requirement": "Vector Tile Generation Pipeline",
+            "results": 15,
+            "searchedAs": [
+              "tippecanoe mbtiles osm pbf stars:>=10"
+            ]
+          },
+          {
+            "query": "maplibre style specification geojson",
+            "requirement": "Customizable Styling Engine",
+            "results": 15,
+            "searchedAs": [
+              "maplibre style specification geojson stars:>=10"
+            ]
+          },
+          {
+            "query": "maplibre gl js geojson",
+            "requirement": "Browser-Compatible Rendering",
+            "results": 15,
+            "searchedAs": [
+              "maplibre gl js geojson stars:>=10"
+            ]
+          },
+          {
+            "query": "geojson tile overlay vector",
+            "requirement": "GeoJSON Overlay Support",
+            "results": 15,
+            "searchedAs": [
+              "geojson tile overlay vector stars:>=10"
+            ]
+          },
+          {
+            "query": "osm monthly update vector",
+            "requirement": "Monthly Data Updates",
+            "results": 15,
+            "searchedAs": [
+              "osm monthly update vector stars:>=10"
+            ]
+          },
+          {
+            "query": "mbtiles cache invalidation strategy",
+            "requirement": "Tile Cache Invalidation Strategy",
+            "results": 8,
+            "searchedAs": [
+              "mbtiles cache invalidation strategy stars:>=10"
+            ]
+          },
+          {
+            "query": "maplibre tile server geojson",
+            "requirement": "API for Dynamic GeoJSON Updates",
+            "results": 15,
+            "searchedAs": [
+              "maplibre tile server geojson stars:>=10"
+            ]
+          },
+          {
+            "query": "self hosted vector tile",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "self hosted vector tile stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 19599
+      },
+      "ranked": [
+        "maplibre/martin",
+        "onthegomap/planetiler",
+        "hyperknot/openfreemap",
+        "asdfghj1237890/mini-macau",
+        "maplibre/flutter-maplibre-gl",
+        "openlayers/ol-mapbox-style",
+        "dimartarmizi/map-to-poster",
+        "protomaps/PMTiles",
+        "markuman/sms",
+        "protomaps/protomaps-leaflet",
+        "maplibre/maplibre-rs",
+        "NASA-AMMOS/3DTilesRendererJS",
+        "felt/tippecanoe",
+        "mapbox/tile-reduce",
+        "maplibre/maplibre-gl-leaflet",
+        "mapbox/awesome-vector-tiles",
+        "JamesLMilner/terra-draw",
+        "opengeos/leafmap",
+        "marc-shade/world-intel-mcp",
+        "sacridini/Awesome-Geospatial",
+        "tile-ai/tilelang",
+        "opengeos/GeoLibre",
+        "opengeos/RustGIS",
+        "consbio/mbgl-renderer",
+        "simplifaisoul/osiris",
+        "jperelli/osm-static-maps",
+        "CesiumGS/cesium-native",
+        "mapbox/tilelive",
+        "lambdajack/sequentially-generate-planet-mbtiles",
+        "FreemapSlovakia/freemap-v3-react",
+        "sshuair/awesome-gis",
+        "opengeos/anymap-ts",
+        "brandonxiang/vueleaflet",
+        "milos-agathon/forge3d",
+        "maplibre/awesome-maplibre",
+        "mizmay/standalone_web_maps_foss4g2025",
+        "bmcbride/gps-map",
+        "Osyanne/CitiesSkylines2-osm-toolkit",
+        "maptiler/maptiler-sdk-js",
+        "storytold/photocraft"
+      ],
+      "shortlisted": [
+        "maplibre/martin",
+        "onthegomap/planetiler",
+        "hyperknot/openfreemap",
+        "asdfghj1237890/mini-macau",
+        "maplibre/flutter-maplibre-gl",
+        "openlayers/ol-mapbox-style"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.4,
+        "recallAll": 0.6,
+        "foundEssential": [
+          "onthegomap/planetiler",
+          "protomaps/pmtiles"
+        ],
+        "missedEssential": [
+          "felt/tippecanoe",
+          "maplibre/maplibre-gl-js",
+          "maptiler/tileserver-gl"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.3333,
+        "shortlistUnlabelled": [
+          "hyperknot/openfreemap",
+          "asdfghj1237890/mini-macau",
+          "maplibre/flutter-maplibre-gl",
+          "openlayers/ol-mapbox-style"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 78978,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 13640,
+        "outputTokens": 2673,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "geo-gps-routes",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "GPS Trace File Ingestion",
+          "Road Network Snapping",
+          "Trip Segmentation",
+          "Geospatial Metrics Calculation",
+          "OpenStreetMap Integration",
+          "Web Mapping Interface",
+          "Self-Hosted Deployment",
+          "Performance Optimization",
+          "API for Programmatic Access",
+          "Data Persistence",
+          "User Authentication",
+          "Alerting for Anomalies"
+        ],
+        "queries": [
+          {
+            "query": "GPX FIT parser metadata",
+            "requirement": "GPS Trace File Ingestion",
+            "results": 15,
+            "searchedAs": [
+              "GPX FIT parser metadata stars:>=10"
+            ]
+          },
+          {
+            "query": "OpenStreetMap road snapping algorithm",
+            "requirement": "Road Network Snapping",
+            "results": 15,
+            "searchedAs": [
+              "OpenStreetMap road snapping algorithm stars:>=10"
+            ]
+          },
+          {
+            "query": "speed duration trip segmentation",
+            "requirement": "Trip Segmentation",
+            "results": 15,
+            "searchedAs": [
+              "speed duration trip segmentation stars:>=10"
+            ]
+          },
+          {
+            "query": "road network distance duration",
+            "requirement": "Geospatial Metrics Calculation",
+            "results": 15,
+            "searchedAs": [
+              "road network distance duration stars:>=10"
+            ]
+          },
+          {
+            "query": "OSM PBF XYZ tiles",
+            "requirement": "OpenStreetMap Integration",
+            "results": 15,
+            "searchedAs": [
+              "OSM PBF XYZ tiles stars:>=10"
+            ]
+          },
+          {
+            "query": "Leaflet MapLibre GL JS",
+            "requirement": "Web Mapping Interface",
+            "results": 15,
+            "searchedAs": [
+              "Leaflet MapLibre GL JS stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL PostGIS geospatial analytics",
+            "requirement": "Data Persistence",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL PostGIS geospatial analytics stars:>=10"
+            ]
+          },
+          {
+            "query": "satellite tracker",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "satellite tracker stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 18210
+      },
+      "ranked": [
+        "Project-OSRM/osrm-backend",
+        "mapbox/mcp-server",
+        "arpanghosh8453/fit-dashboard",
+        "time4tea/gopro-dashboard-overlay",
+        "jovandeginste/workout-tracker",
+        "maptiler/tileserver-gl",
+        "arpanghosh8453/open-dronelog",
+        "dimartarmizi/map-to-poster",
+        "Romancha/GPStitch",
+        "onthegomap/planetiler",
+        "citusdata/citus",
+        "mapbox/tile-reduce",
+        "ShenMian/tracker",
+        "bilawalsidhu/gods-eye-view",
+        "aasthas2022/SDE-Interview-and-Prep-Roadmap",
+        "JamesLMilner/terra-draw",
+        "maplibre/maplibre-gl-leaflet",
+        "mapbox/mapbox-directions-swift",
+        "joshuafuller/map-room",
+        "dodo-saba/fit2gpx",
+        "protomaps/protomaps-leaflet",
+        "Blizaine/Maestro",
+        "protomaps/PMTiles",
+        "xushanpei/open-file-viewer",
+        "versatiles-org/versatiles-rs",
+        "calesthio/Crucix",
+        "sgoudelis/ground-station",
+        "sakitam-fdd/wind-layer",
+        "slawek87/geolocation-python",
+        "opengeos/anymap-ts",
+        "satellite-image-deep-learning/techniques",
+        "BigBodyCobain/Shadowbroker",
+        "markuman/sms",
+        "TailAdmin/free-nextjs-admin-dashboard",
+        "rt-bishop/Look4Sat",
+        "tumic0/QtPBFImagePlugin",
+        "leancoderkavy/premiere-pro-mcp",
+        "TailAdmin/free-react-tailwind-admin-dashboard",
+        "sshuair/awesome-gis",
+        "Kanahiro/chiitiler"
+      ],
+      "shortlisted": [
+        "Project-OSRM/osrm-backend",
+        "mapbox/mcp-server",
+        "arpanghosh8453/fit-dashboard",
+        "time4tea/gopro-dashboard-overlay",
+        "jovandeginste/workout-tracker",
+        "maptiler/tileserver-gl"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.2,
+        "recallAll": 0.2,
+        "foundEssential": [
+          "project-osrm/osrm-backend"
+        ],
+        "missedEssential": [
+          "graphhopper/graphhopper",
+          "leaflet/leaflet",
+          "tkrajina/gpxpy",
+          "valhalla/valhalla"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "mapbox/mcp-server",
+          "arpanghosh8453/fit-dashboard",
+          "time4tea/gopro-dashboard-overlay",
+          "jovandeginste/workout-tracker",
+          "maptiler/tileserver-gl"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 57464,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12980,
+        "outputTokens": 2550,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "dev-pr-review-bot",
+      "domain": "developer-tooling",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Multi-Language Linter Support",
+          "GitHub App/Action Deployment",
+          "Inline Review Commenting",
+          "PR-Specific Line Diff Analysis",
+          "Repository-Level Configuration",
+          "Concurrency Control for PRs",
+          "Customizable Error Formatting",
+          "Audit Logging for Bot Actions",
+          "Performance Optimization for Large PRs"
+        ],
+        "queries": [
+          {
+            "query": "github app linting python",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "github app linting python stars:>=10"
+            ]
+          },
+          {
+            "query": "flake8 pylint eslint golint",
+            "requirement": "Multi-Language Linter Support",
+            "results": 15,
+            "searchedAs": [
+              "flake8 pylint eslint golint stars:>=10"
+            ]
+          },
+          {
+            "query": "github pr diff inline",
+            "requirement": "PR-Specific Line Diff Analysis",
+            "results": 15,
+            "searchedAs": [
+              "github pr diff inline stars:>=10"
+            ]
+          },
+          {
+            "query": "github app inline review",
+            "requirement": "Inline Review Commenting",
+            "results": 15,
+            "searchedAs": [
+              "github app inline review stars:>=10"
+            ]
+          },
+          {
+            "query": "github actions multi-language linter",
+            "requirement": "PR-Specific Line Diff Analysis",
+            "results": 15,
+            "searchedAs": [
+              "github actions multi-language linter stars:>=10"
+            ]
+          },
+          {
+            "query": "github app concurrency control",
+            "requirement": "Concurrency Control for PRs",
+            "results": 15,
+            "searchedAs": [
+              "github app concurrency control stars:>=10"
+            ]
+          },
+          {
+            "query": "github app repository config",
+            "requirement": "Repository-Level Configuration",
+            "results": 15,
+            "searchedAs": [
+              "github app repository config stars:>=10"
+            ]
+          },
+          {
+            "query": "github app webhook pull_request",
+            "requirement": "PR-Specific Line Diff Analysis",
+            "results": 15,
+            "searchedAs": [
+              "github app webhook pull_request stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 24780
+      },
+      "ranked": [
+        "agavra/tuicr",
+        "umputun/revdiff",
+        "wearerequired/lint-action",
+        "superset-sh/superset",
+        "zeromicro/go-zero",
+        "modem-dev/hunk",
+        "palantir/bulldozer",
+        "ixartz/Next-js-Boilerplate",
+        "repository-settings/app",
+        "obra/superpowers",
+        "octo-sts/app",
+        "tomasbjerre/violations-lib",
+        "dcoapp/app",
+        "yoshiko-pg/difit",
+        "josegonzalez/python-github-backup",
+        "hassio-addons/repository",
+        "paperclipai/paperclip",
+        "actions/github-script",
+        "wemake-services/wemake-python-styleguide",
+        "qltysh/qlty",
+        "ixartz/SaaS-Boilerplate",
+        "github/copilot-cli-for-beginners",
+        "palantir/policy-bot",
+        "kentaro-m/auto-assign",
+        "moby/buildkit",
+        "PDFCraftTool/pdfcraft",
+        "The-PR-Agent/pr-agent",
+        "lissy93/networking-toolbox",
+        "backnotprop/plannotator",
+        "1inch/sdks",
+        "BloopAI/vibe-kanban",
+        "Nikita-Filonov/ai-review",
+        "github/github-mcp-server",
+        "alirezarezvani/claude-skills",
+        "Egonex-AI/Understand-Anything",
+        "Kilo-Org/kilocode",
+        "anuraghazra/github-readme-stats",
+        "waooAI/waoowaoo",
+        "DonJayamanne/pythonVSCode",
+        "jenkinsci/violation-comments-to-stash-plugin"
+      ],
+      "shortlisted": [
+        "agavra/tuicr",
+        "umputun/revdiff",
+        "wearerequired/lint-action",
+        "zeromicro/go-zero",
+        "palantir/bulldozer"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "probot/probot",
+          "reviewdog/reviewdog",
+          "semgrep/semgrep",
+          "super-linter/super-linter"
+        ],
+        "shortlistSize": 5,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "agavra/tuicr",
+          "umputun/revdiff",
+          "wearerequired/lint-action",
+          "zeromicro/go-zero",
+          "palantir/bulldozer"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 83723,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12535,
+        "outputTokens": 2379,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "dev-dependency-updates",
+      "domain": "developer-tooling",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Dependency Update Batching",
+          "Automated Pull Request Generation",
+          "Selective Merge for Patch Updates",
+          "Cross-Language Dependency Resolution",
+          "Automated Release Notes Generation",
+          "Dependency Conflict Resolution",
+          "CI/CD Pipeline Integration",
+          "Dependency Versioning Strategy",
+          "Performance Optimization for Large Monorepos",
+          "Audit and Security Scanning",
+          "Backward Compatibility Checks"
+        ],
+        "queries": [
+          {
+            "query": "dependency update batching monorepo",
+            "requirement": "Dependency Update Batching",
+            "results": 15,
+            "searchedAs": [
+              "dependency update batching monorepo stars:>=10"
+            ]
+          },
+          {
+            "query": "npm workspaces python pip",
+            "requirement": "Automated Pull Request Generation",
+            "results": 15,
+            "searchedAs": [
+              "npm workspaces python pip stars:>=10"
+            ]
+          },
+          {
+            "query": "patch update selective merge",
+            "requirement": "Selective Merge for Patch Updates",
+            "results": 15,
+            "searchedAs": [
+              "patch update selective merge stars:>=10"
+            ]
+          },
+          {
+            "query": "cross language dependency resolution",
+            "requirement": "Cross-Language Dependency Resolution",
+            "results": 15,
+            "searchedAs": [
+              "cross language dependency resolution stars:>=10"
+            ]
+          },
+          {
+            "query": "automated changelog release notes",
+            "requirement": "Automated Release Notes Generation",
+            "results": 15,
+            "searchedAs": [
+              "automated changelog release notes stars:>=10"
+            ]
+          },
+          {
+            "query": "monorepo CICD dependency update",
+            "requirement": "CI/CD Pipeline Integration",
+            "results": 15,
+            "searchedAs": [
+              "monorepo CICD dependency update stars:>=10"
+            ]
+          },
+          {
+            "query": "dependency conflict resolution monorepo",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "dependency conflict resolution monorepo stars:>=10"
+            ]
+          },
+          {
+            "query": "semantic versioning npm python",
+            "requirement": "Dependency Versioning Strategy",
+            "results": 15,
+            "searchedAs": [
+              "semantic versioning npm python stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 25968
+      },
+      "ranked": [
+        "conventional-changelog/standard-version",
+        "duriantaco/skylos",
+        "vercel/release",
+        "Graphify-Labs/graphify",
+        "visgl/deck.gl",
+        "gastownhall/beads",
+        "ycm-core/YouCompleteMe",
+        "unslothai/unsloth",
+        "Egonex-AI/Understand-Anything",
+        "PaddlePaddle/PaddleOCR",
+        "HKUDS/DeepTutor",
+        "deusyu/translate-book",
+        "ComposioHQ/composio",
+        "googleapis/release-please",
+        "DeusData/codebase-memory-mcp",
+        "tirth8205/code-review-graph",
+        "backstage/community-plugins",
+        "Kyubyong/nlp_tasks",
+        "k4yt3x/video2x",
+        "googleapis/release-please-action",
+        "Canner/WrenAI",
+        "r3labs/diff",
+        "OWASP/cve-lite-cli",
+        "rbarrois/python-semanticversion",
+        "freedmand/semantra-python",
+        "colbymchenry/codegraph",
+        "orhun/git-cliff",
+        "rung/threat-matrix-cicd",
+        "fabric8-analytics/fabric8-analytics-vscode-extension",
+        "Karanjot786/TermUI",
+        "dotnet/fsharp",
+        "mozilla/neqo",
+        "nextlevelbuilder/ui-ux-pro-max-skill",
+        "agentscope-ai/QwenPaw",
+        "ml-tooling/ml-workspace",
+        "kucherenko/jscpd",
+        "jhillyerd/plugin-git",
+        "databricks/mlops-stacks",
+        "aleclarson/vite-tsconfig-paths",
+        "aws/aws-cdk"
+      ],
+      "shortlisted": [
+        "conventional-changelog/standard-version",
+        "duriantaco/skylos",
+        "vercel/release"
+      ],
+      "scores": {
+        "essentialTotal": 3,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "changesets/changesets",
+          "dependabot/dependabot-core",
+          "renovatebot/renovate"
+        ],
+        "shortlistSize": 3,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "conventional-changelog/standard-version",
+          "duriantaco/skylos",
+          "vercel/release"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 73706,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 14950,
+        "outputTokens": 2432,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "dev-docs-site",
+      "domain": "developer-tooling",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Multi-Language SDK Documentation Integration",
+          "Versioned Documentation by Release",
+          "Markdown-Based Guides",
+          "Full-Text Search Capability",
+          "Static Site Generation",
+          "Code Comment Parsing and Rendering",
+          "Versioned Content Management",
+          "Self-Hosted Deployment Flexibility",
+          "Performance Optimization for Large SDKs",
+          "CI/CD Pipeline Integration",
+          "Dark Mode Support"
+        ],
+        "queries": [
+          {
+            "query": "jsdoc sphinx api docs",
+            "requirement": "Multi-Language SDK Documentation Integration",
+            "results": 15,
+            "searchedAs": [
+              "jsdoc sphinx api docs stars:>=10"
+            ]
+          },
+          {
+            "query": "versioned static site docs",
+            "requirement": "Versioned Documentation by Release",
+            "results": 15,
+            "searchedAs": [
+              "versioned static site docs stars:>=10"
+            ]
+          },
+          {
+            "query": "markdown guides static site",
+            "requirement": "Markdown-Based Guides",
+            "results": 15,
+            "searchedAs": [
+              "markdown guides static site stars:>=10"
+            ]
+          },
+          {
+            "query": "full text search static",
+            "requirement": "Full-Text Search Capability",
+            "results": 15,
+            "searchedAs": [
+              "full text search static stars:>=10"
+            ]
+          },
+          {
+            "query": "typescript python doc parser",
+            "requirement": "Code Comment Parsing and Rendering",
+            "results": 15,
+            "searchedAs": [
+              "typescript python doc parser stars:>=10"
+            ]
+          },
+          {
+            "query": "versioned content management docs",
+            "requirement": "Versioned Content Management",
+            "results": 15,
+            "searchedAs": [
+              "versioned content management docs stars:>=10"
+            ]
+          },
+          {
+            "query": "github actions docs deployment",
+            "requirement": "CI/CD Pipeline Integration",
+            "results": 15,
+            "searchedAs": [
+              "github actions docs deployment stars:>=10"
+            ]
+          },
+          {
+            "query": "dark mode static documentation",
+            "requirement": "Dark Mode Support",
+            "results": 15,
+            "searchedAs": [
+              "dark mode static documentation stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 30532
+      },
+      "ranked": [
+        "vuejs/vitepress",
+        "GitbookIO/gitbook",
+        "react/react-native-website",
+        "prometheus/docs",
+        "Zie619/n8n-workflows",
+        "suitenumerique/docs",
+        "gatsbyjs/gatsby",
+        "run-llama/liteparse",
+        "rocketride-org/rocketride-server",
+        "inkonchain/docs",
+        "docsifyjs/docsify",
+        "imfing/hextra",
+        "celestiaorg/docs",
+        "oblador/react-native-vector-icons",
+        "xberg-io/xberg",
+        "HugoBlox/kit",
+        "LibreChat-AI/docs",
+        "joomla/joomla-cms",
+        "cakephp/docs",
+        "openai/openai-node",
+        "pyodide/sphinx-js",
+        "firecrawl/anydoc",
+        "teamtnt/tntsearch",
+        "documize/community",
+        "supermemoryai/supermemory",
+        "saicaca/fuwari",
+        "D4Vinci/Scrapling",
+        "morluto/rea",
+        "kkoomen/vim-doge",
+        "web-infra-dev/rspress",
+        "ColorlibHQ/gentelella",
+        "chauncygu/collection-claude-code-source-code",
+        "BabylonJS/Documentation",
+        "dapr/docs",
+        "arc53/DocsGPT",
+        "netlify/actions",
+        "pulumi/docs",
+        "BurntSushi/ripgrep",
+        "567-labs/instructor",
+        "tirth8205/code-review-graph"
+      ],
+      "shortlisted": [
+        "vuejs/vitepress",
+        "GitbookIO/gitbook",
+        "react/react-native-website",
+        "prometheus/docs",
+        "Zie619/n8n-workflows",
+        "suitenumerique/docs"
+      ],
+      "scores": {
+        "essentialTotal": 6,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "facebook/docusaurus",
+          "mkdocstrings/mkdocstrings",
+          "pagefind/pagefind",
+          "sphinx-doc/sphinx",
+          "squidfunk/mkdocs-material",
+          "typestrong/typedoc"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "vuejs/vitepress",
+          "gitbookio/gitbook",
+          "react/react-native-website",
+          "prometheus/docs",
+          "zie619/n8n-workflows",
+          "suitenumerique/docs"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 100870,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12797,
+        "outputTokens": 2540,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "data-postgres-cdc",
+      "domain": "data-pipelines",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "CDC Source Integration",
+          "Target ClickHouse Ingestion",
+          "Schema Change Handling",
+          "Near Real-Time Latency",
+          "Low Primary Database Load",
+          "Transactional Consistency",
+          "Schema Evolution Support",
+          "Conflict Resolution",
+          "Monitoring and Alerting",
+          "ClickHouse Partitioning Strategy",
+          "Data Validation",
+          "Disaster Recovery (DR) Support"
+        ],
+        "queries": [
+          {
+            "query": "PostgreSQL logical replication CDC",
+            "requirement": "CDC Source Integration",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL logical replication CDC stars:>=10"
+            ]
+          },
+          {
+            "query": "Debezium PostgreSQL connector",
+            "requirement": "CDC Source Integration",
+            "results": 15,
+            "searchedAs": [
+              "Debezium PostgreSQL connector stars:>=10"
+            ]
+          },
+          {
+            "query": "pgoutput plugin CDC",
+            "requirement": "CDC Source Integration",
+            "results": 15,
+            "searchedAs": [
+              "pgoutput plugin CDC stars:>=10"
+            ]
+          },
+          {
+            "query": "ClickHouse async bulk inserts",
+            "requirement": "Target ClickHouse Ingestion",
+            "results": 15,
+            "searchedAs": [
+              "ClickHouse async bulk inserts stars:>=10"
+            ]
+          },
+          {
+            "query": "ClickHouse MergeTree CDC",
+            "requirement": "Target ClickHouse Ingestion",
+            "results": 5,
+            "searchedAs": [
+              "ClickHouse MergeTree CDC stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL schema change replication",
+            "requirement": "Schema Change Handling",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL schema change replication stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL ClickHouse schema sync",
+            "requirement": "Schema Change Handling",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL ClickHouse schema sync stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL ClickHouse CDC pipeline",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL ClickHouse CDC pipeline stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 17376
+      },
+      "ranked": [
+        "PeerDB-io/peerdb",
+        "toluaina/pgsync",
+        "xataio/pgstream",
+        "risingwavelabs/risingwave",
+        "supabase/etl",
+        "2ndQuadrant/pglogical",
+        "eulerto/wal2json",
+        "ClickHouse/clickhouse-go",
+        "yugabyte/yugabyte-db",
+        "mikependon/RepoDB",
+        "kenn-io/agentsview",
+        "Altinity/clickhouse-sink-connector",
+        "amacneil/dbmate",
+        "kibae/pg-logical-replication",
+        "behnamyazdan/ecommerce_realtime_data_pipeline",
+        "julien-duponchelle/python-mysql-replication",
+        "replicase/pgcapture",
+        "apitap/apitap-lib",
+        "smi2/phpClickHouse",
+        "ClickHouse/clickhouse-connect",
+        "vnvo/deltaforge",
+        "manticoresoftware/manticoresearch",
+        "apecloud/ape-dts",
+        "dgea005/pypgoutput",
+        "redpanda-data/connect",
+        "debezium/debezium-examples",
+        "citusdata/citus",
+        "jackc/pglogrepl",
+        "sequinstream/sequin",
+        "chdb-io/chdb",
+        "agoodway/walex",
+        "djeada/Databases-Notes",
+        "maximdanilchenko/aiochclient",
+        "Rohithgilla12/data-peek",
+        "long2ice/synch",
+        "Olshansk/postgres_for_everything",
+        "retail-ai-inc/sync",
+        "pgrundev/pgsync",
+        "dimitri/pgcopydb",
+        "wannabespace/tamery"
+      ],
+      "shortlisted": [
+        "PeerDB-io/peerdb",
+        "toluaina/pgsync",
+        "xataio/pgstream",
+        "risingwavelabs/risingwave",
+        "supabase/etl",
+        "2ndQuadrant/pglogical"
+      ],
+      "scores": {
+        "essentialTotal": 2,
+        "recallAt10": 0.5,
+        "recallAll": 0.5,
+        "foundEssential": [
+          "peerdb-io/peerdb"
+        ],
+        "missedEssential": [
+          "debezium/debezium"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "toluaina/pgsync",
+          "xataio/pgstream",
+          "risingwavelabs/risingwave",
+          "supabase/etl",
+          "2ndquadrant/pglogical"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 54973,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12465,
+        "outputTokens": 2418,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "data-etl-quality",
+      "domain": "data-pipelines",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Nightly Scheduling & Execution",
+          "Multi-Source Data Ingestion",
+          "Retry & Fault Tolerance",
+          "Data Quality Checks (Blocking)",
+          "Data Lineage & Provenance",
+          "PostgreSQL Target Integration",
+          "Transformation Logic",
+          "Alerting & Notifications",
+          "Performance Optimization",
+          "Monitoring & Observability",
+          "Idempotent Reprocessing",
+          "Data Governance & Access Control",
+          "API Rate Limit Handling",
+          "Data Masking for Sensitive Fields"
+        ],
+        "queries": [
+          {
+            "query": "cron scheduling airflow dagster",
+            "requirement": "Nightly Scheduling & Execution",
+            "results": 15,
+            "searchedAs": [
+              "cron scheduling airflow dagster stars:>=10"
+            ]
+          },
+          {
+            "query": "api pagination rate limit",
+            "requirement": "Multi-Source Data Ingestion",
+            "results": 15,
+            "searchedAs": [
+              "api pagination rate limit stars:>=10"
+            ]
+          },
+          {
+            "query": "exponential backoff dead letter",
+            "requirement": "Retry & Fault Tolerance",
+            "results": 15,
+            "searchedAs": [
+              "exponential backoff dead letter stars:>=10"
+            ]
+          },
+          {
+            "query": "schema validation referential integrity",
+            "requirement": "Data Quality Checks (Blocking)",
+            "results": 15,
+            "searchedAs": [
+              "schema validation referential integrity stars:>=10"
+            ]
+          },
+          {
+            "query": "data lineage provenance tracking",
+            "requirement": "Data Lineage & Provenance",
+            "results": 15,
+            "searchedAs": [
+              "data lineage provenance tracking stars:>=10"
+            ]
+          },
+          {
+            "query": "postgresql bulk insert transactional",
+            "requirement": "PostgreSQL Target Integration",
+            "results": 15,
+            "searchedAs": [
+              "postgresql bulk insert transactional stars:>=10"
+            ]
+          },
+          {
+            "query": "sql transformations idempotent deterministic",
+            "requirement": "Transformation Logic",
+            "results": 15,
+            "searchedAs": [
+              "sql transformations idempotent deterministic stars:>=10"
+            ]
+          },
+          {
+            "query": "etl pipeline orchestration fault",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "etl pipeline orchestration fault stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 33807
+      },
+      "ranked": [
+        "apache/nifi",
+        "timgit/pg-boss",
+        "hatchet-dev/hatchet",
+        "kestra-io/kestra",
+        "semantica-agi/semantica",
+        "dexadata/dexaflow",
+        "sipyourdrink-ltd/bernstein",
+        "lib/pq",
+        "borisdj/EFCore.BulkExtensions",
+        "dotnetcore/SmartSql",
+        "google/go-github",
+        "syda-ai/syda",
+        "PeerDB-io/peerdb",
+        "K-Dense-AI/scientific-agent-skills",
+        "Devinterview-io/sql-interview-questions",
+        "zdennis/activerecord-import",
+        "zzzprojects/Dapper-Plus",
+        "okta/okta-sdk-python",
+        "plhery/node-twitter-api-v2",
+        "redpanda-data/connect",
+        "benavlabs/FastAPI-boilerplate",
+        "getzep/graphiti",
+        "ministackorg/ministack",
+        "MichielMe/fastscheduler",
+        "sqlalchemy/alembic",
+        "perixtar/Tech-OA-Interview-Questions",
+        "mavinoo/laravelBatch",
+        "gajus/slonik",
+        "ruvnet/RuVector",
+        "trustgraph-ai/trustgraph",
+        "sparkdq-community/sparkdq",
+        "andrewm4894/anomstack",
+        "data-goblin/power-bi-agentic-development",
+        "limingrui679-design/high-stakes-analytics-decision-lab",
+        "AnghelLeonard/Hibernate-SpringBoot",
+        "Trendyol/kafka-konsumer",
+        "maxpert/marmot",
+        "Ovi/DummyJSON",
+        "karanpratapsingh/system-design",
+        "drt-hub/drt"
+      ],
+      "shortlisted": [
+        "apache/nifi",
+        "timgit/pg-boss",
+        "hatchet-dev/hatchet",
+        "kestra-io/kestra",
+        "semantica-agi/semantica",
+        "dexadata/dexaflow"
+      ],
+      "scores": {
+        "essentialTotal": 6,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "apache/airflow",
+          "dagster-io/dagster",
+          "dbt-labs/dbt",
+          "dlt-hub/dlt",
+          "fivetran/great_expectations",
+          "prefecthq/prefect"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "apache/nifi",
+          "timgit/pg-boss",
+          "hatchet-dev/hatchet",
+          "kestra-io/kestra",
+          "semantica-agi/semantica",
+          "dexadata/dexaflow"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 94734,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 13770,
+        "outputTokens": 2648,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "data-log-pipeline",
+      "domain": "data-pipelines",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Log Collection Pipeline",
+          "Log Storage and Retention",
+          "Error-Rate Anomaly Detection",
+          "Self-Hosted Deployment",
+          "Cost Efficiency",
+          "Log Parsing and Enrichment",
+          "Alerting and Notification",
+          "Scalability for Future Growth",
+          "Log Compression",
+          "Multi-Protocol Log Ingestion"
+        ],
+        "queries": [
+          {
+            "query": "fluentd high-throughput log collection",
+            "requirement": "Log Collection Pipeline",
+            "results": 15,
+            "searchedAs": [
+              "fluentd high-throughput log collection stars:>=10"
+            ]
+          },
+          {
+            "query": "loki distributed log storage",
+            "requirement": "Log Storage and Retention",
+            "results": 15,
+            "searchedAs": [
+              "loki distributed log storage stars:>=10"
+            ]
+          },
+          {
+            "query": "error rate anomaly detection",
+            "requirement": "Error-Rate Anomaly Detection",
+            "results": 15,
+            "searchedAs": [
+              "error rate anomaly detection stars:>=10"
+            ]
+          },
+          {
+            "query": "log parsing structured fields",
+            "requirement": "Log Parsing and Enrichment",
+            "results": 15,
+            "searchedAs": [
+              "log parsing structured fields stars:>=10"
+            ]
+          },
+          {
+            "query": "alertmanager custom webhook alerts",
+            "requirement": "Alerting and Notification",
+            "results": 15,
+            "searchedAs": [
+              "alertmanager custom webhook alerts stars:>=10"
+            ]
+          },
+          {
+            "query": "filebeat fluent bit multi-protocol",
+            "requirement": "Multi-Protocol Log Ingestion",
+            "results": 16,
+            "searchedAs": [
+              "filebeat fluent bit multi-protocol stars:>=10",
+              "filebeat fluent stars:>=10"
+            ]
+          },
+          {
+            "query": "vector log aggregation containerized",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "vector log aggregation containerized stars:>=10"
+            ]
+          },
+          {
+            "query": "cost-optimized log storage ceph",
+            "requirement": "Log Storage and Retention",
+            "results": 15,
+            "searchedAs": [
+              "cost-optimized log storage ceph stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 29620
+      },
+      "ranked": [
+        "ccfos/nightingale",
+        "kube-logging/logging-operator",
+        "GreptimeTeam/greptimedb",
+        "fluent/fluent-bit-docs",
+        "yzhao062/pyod",
+        "prometheus-operator/kube-prometheus",
+        "sirupsen/logrus",
+        "grafana/promql-anomaly-detection",
+        "thuml/Time-Series-Library",
+        "grafana/tempo",
+        "ruvnet/RuView",
+        "stefanprodan/dockprom",
+        "distr-sh/distr",
+        "ashwathstephen/sairo",
+        "saidsef/grafana-loki-on-k8s",
+        "allegro/akubra",
+        "phuslu/log",
+        "rotel-dev/rotel",
+        "graphprotocol/graph-node",
+        "ozontech/file.d",
+        "sadsfae/ansible-elk",
+        "dottxt-ai/outlines",
+        "khuedoan/homelab",
+        "TwiN/gatus",
+        "parse-community/parse-server",
+        "kubesphere/notification-manager",
+        "chickenbestlover/RNN-Time-series-Anomaly-Detection",
+        "amusi/CVPR2026-Papers-with-Code",
+        "VersusControl/versus-incident",
+        "dbohdan/structured-text-tools",
+        "logpai/logparser",
+        "allinurl/goaccess",
+        "katanaml/sparrow",
+        "gliderlabs/logspout",
+        "aasthas2022/SDE-Interview-and-Prep-Roadmap",
+        "yahoo/egads",
+        "MykalMachon/railway-grafana-stack",
+        "node-formidable/formidable",
+        "vegasbrianc/prometheus",
+        "pointfreeco/swift-parsing"
+      ],
+      "shortlisted": [
+        "ccfos/nightingale",
+        "kube-logging/logging-operator",
+        "GreptimeTeam/greptimedb",
+        "fluent/fluent-bit-docs",
+        "yzhao062/pyod",
+        "prometheus-operator/kube-prometheus"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "fluent/fluent-bit",
+          "grafana/grafana",
+          "grafana/loki",
+          "vectordotdev/vector"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "ccfos/nightingale",
+          "kube-logging/logging-operator",
+          "greptimeteam/greptimedb",
+          "fluent/fluent-bit-docs",
+          "yzhao062/pyod",
+          "prometheus-operator/kube-prometheus"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 72835,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12688,
+        "outputTokens": 2277,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "llm-rag-citations",
+      "domain": "llm-applications",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Self-Hosted Vector Store",
+          "Multi-Format Document Ingestion",
+          "Semantic Search with Citation Support",
+          "Granular Access Control",
+          "Metadata Extraction and Embedding",
+          "Document Structure Preservation",
+          "Query Processing Latency",
+          "Embedding Model Selection",
+          "Citation Generation",
+          "Document Versioning Support",
+          "Audit Logging",
+          "Scalability for Large Corpora"
+        ],
+        "queries": [
+          {
+            "query": "pdf confluence markdown ingestion",
+            "requirement": "Multi-Format Document Ingestion",
+            "results": 15,
+            "searchedAs": [
+              "pdf confluence markdown ingestion stars:>=10"
+            ]
+          },
+          {
+            "query": "semantic search citation support",
+            "requirement": "Semantic Search with Citation Support",
+            "results": 15,
+            "searchedAs": [
+              "semantic search citation support stars:>=10"
+            ]
+          },
+          {
+            "query": "role based document access",
+            "requirement": "Granular Access Control",
+            "results": 15,
+            "searchedAs": [
+              "role based document access stars:>=10"
+            ]
+          },
+          {
+            "query": "metadata extraction vector embeddings",
+            "requirement": "Metadata Extraction and Embedding",
+            "results": 15,
+            "searchedAs": [
+              "metadata extraction vector embeddings stars:>=10"
+            ]
+          },
+          {
+            "query": "document structure preservation retrieval",
+            "requirement": "Document Structure Preservation",
+            "results": 15,
+            "searchedAs": [
+              "document structure preservation retrieval stars:>=10"
+            ]
+          },
+          {
+            "query": "sentence transformers hybrid retrieval",
+            "requirement": "Embedding Model Selection",
+            "results": 15,
+            "searchedAs": [
+              "sentence transformers hybrid retrieval stars:>=10"
+            ]
+          },
+          {
+            "query": "automatic citation generation pdf",
+            "requirement": "Citation Generation",
+            "results": 15,
+            "searchedAs": [
+              "automatic citation generation pdf stars:>=10"
+            ]
+          },
+          {
+            "query": "document versioning vector database",
+            "requirement": "Document Versioning Support",
+            "results": 15,
+            "searchedAs": [
+              "document versioning vector database stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 17899
+      },
+      "ranked": [
+        "Future-House/paper-qa",
+        "LeDat98/NexusRAG",
+        "pathwaycom/serviette",
+        "neuml/txtai",
+        "HKUDS/RAG-Anything",
+        "tobi/qmd",
+        "huggingface/sentence-transformers",
+        "VectifyAI/PageIndex",
+        "yusufkaraaslan/Skill_Seekers",
+        "semantica-agi/semantica",
+        "HugoBlox/hugo-theme-academic-cv",
+        "Azure-Samples/azure-search-openai-demo",
+        "openai/chatgpt-retrieval-plugin",
+        "Tencent/WeKnora",
+        "ruvnet/RuVector",
+        "xberg-io/xberg",
+        "SciPhi-AI/R2R",
+        "GD4AI/obsidian-llm-wiki",
+        "discord/access",
+        "Mintplex-Labs/anything-llm",
+        "infiniflow/infinity",
+        "PromtEngineer/localGPT",
+        "onury/accesscontrol",
+        "The-Vibe-Company/quivr",
+        "lyonzin/knowledge-rag",
+        "nashsu/llm_wiki",
+        "topoteretes/cognee",
+        "infiniflow/ragflow",
+        "MadsLorentzen/ai-job-search",
+        "onyx-dot-app/onyx",
+        "dreamfactorysoftware/dreamfactory",
+        "zmister2016/MrDoc",
+        "TencentCloud/TencentDB-Agent-Memory",
+        "alibaba/AliSQL",
+        "joungminsung/OpenDocuments",
+        "EvotecIT/OfficeIMO",
+        "swirlai/swirl-search",
+        "mem0ai/mem0",
+        "VectorSpaceLab/OmniGen",
+        "illuin-tech/colpali"
+      ],
+      "shortlisted": [
+        "Future-House/paper-qa",
+        "LeDat98/NexusRAG",
+        "pathwaycom/serviette",
+        "neuml/txtai",
+        "HKUDS/RAG-Anything",
+        "tobi/qmd"
+      ],
+      "scores": {
+        "essentialTotal": 7,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "deepset-ai/haystack",
+          "docling-project/docling",
+          "langchain-ai/langchain",
+          "pgvector/pgvector",
+          "qdrant/qdrant",
+          "run-llama/llama_index",
+          "unstructured-io/unstructured"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "future-house/paper-qa",
+          "ledat98/nexusrag",
+          "pathwaycom/serviette",
+          "neuml/txtai",
+          "hkuds/rag-anything",
+          "tobi/qmd"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 74258,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 14119,
+        "outputTokens": 2774,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "llm-prompt-evals",
+      "domain": "llm-applications",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Example-Based Test Suite Generation",
+          "Assertion-Driven Validation Framework",
+          "LLM-as-Judge Scoring System",
+          "CI/CD Pipeline Integration",
+          "Versioned Prompt/Model Comparison",
+          "Few-Shot Learning Validation",
+          "Adversarial Input Testing",
+          "Automated Test Suite Maintenance",
+          "Performance Metrics Dashboard",
+          "Multi-LLM Support",
+          "Prompt Template Versioning",
+          "Automated Failure Analysis",
+          "Human-in-the-Loop Validation"
+        ],
+        "queries": [
+          {
+            "query": "example based test generation",
+            "requirement": "Example-Based Test Suite Generation",
+            "results": 15,
+            "searchedAs": [
+              "example based test generation stars:>=10"
+            ]
+          },
+          {
+            "query": "assertion validation framework LLM",
+            "requirement": "Assertion-Driven Validation Framework",
+            "results": 15,
+            "searchedAs": [
+              "assertion validation framework LLM stars:>=10"
+            ]
+          },
+          {
+            "query": "LLM judge scoring system",
+            "requirement": "LLM-as-Judge Scoring System",
+            "results": 15,
+            "searchedAs": [
+              "LLM judge scoring system stars:>=10"
+            ]
+          },
+          {
+            "query": "prompt model version comparison",
+            "requirement": "Versioned Prompt/Model Comparison",
+            "results": 15,
+            "searchedAs": [
+              "prompt model version comparison stars:>=10"
+            ]
+          },
+          {
+            "query": "few shot learning validation",
+            "requirement": "Few-Shot Learning Validation",
+            "results": 15,
+            "searchedAs": [
+              "few shot learning validation stars:>=10"
+            ]
+          },
+          {
+            "query": "adversarial input testing LLM",
+            "requirement": "Adversarial Input Testing",
+            "results": 15,
+            "searchedAs": [
+              "adversarial input testing LLM stars:>=10"
+            ]
+          },
+          {
+            "query": "multi LLM support testing",
+            "requirement": "Multi-LLM Support",
+            "results": 15,
+            "searchedAs": [
+              "multi LLM support testing stars:>=10"
+            ]
+          },
+          {
+            "query": "prompt regression testing framework",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "prompt regression testing framework stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 22116
+      },
+      "ranked": [
+        "comet-ml/opik",
+        "evidentlyai/evidently",
+        "Giskard-AI/giskard-oss",
+        "usestrix/strix",
+        "confident-ai/deepteam",
+        "muratcankoylan/Agent-Skills-for-Context-Engineering",
+        "huggingface/setfit",
+        "666ghj/MiroFish",
+        "morluto/rea",
+        "Hunyuan-PromptEnhancer/PromptEnhancer",
+        "huggingface/transformers",
+        "QData/TextAttack",
+        "spmallick/learnopencv",
+        "HKUDS/LightRAG",
+        "confident-ai/deepeval",
+        "GreyDGL/PentestGPT",
+        "MoienTajik/AspNetCore-Developer-Roadmap",
+        "Tencent-Hunyuan/HunyuanVideo",
+        "tencent-ailab/IP-Adapter",
+        "sierra-research/tau2-bench",
+        "Piebald-AI/claude-code-system-prompts",
+        "DataTalksClub/llm-zoomcamp",
+        "NVIDIA-NeMo/Gym",
+        "Mintplex-Labs/anything-llm",
+        "crmne/ruby_llm",
+        "vxcontrol/pentagi",
+        "Mr-Infect/AI-penetration-testing",
+        "oscarknagg/few-shot",
+        "tensorflow/tfjs-examples",
+        "instantX-research/InstantID",
+        "QwenAudio/CosyVoice",
+        "cantaro86/Financial-Models-Numerical-Methods",
+        "xtekky/gpt4free",
+        "ax-llm/ax",
+        "dair-ai/ML-YouTube-Courses",
+        "mapstruct/mapstruct-examples",
+        "rohitg00/ai-engineering-from-scratch",
+        "sicara/easy-few-shot-learning",
+        "eddycjy/go-gin-example",
+        "huggingface/smolagents"
+      ],
+      "shortlisted": [
+        "comet-ml/opik",
+        "evidentlyai/evidently",
+        "Giskard-AI/giskard-oss",
+        "usestrix/strix",
+        "confident-ai/deepteam"
+      ],
+      "scores": {
+        "essentialTotal": 2,
+        "recallAt10": 0.0,
+        "recallAll": 0.5,
+        "foundEssential": [],
+        "missedEssential": [
+          "confident-ai/deepeval",
+          "promptfoo/promptfoo"
+        ],
+        "shortlistSize": 5,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "comet-ml/opik",
+          "evidentlyai/evidently",
+          "giskard-ai/giskard-oss",
+          "usestrix/strix",
+          "confident-ai/deepteam"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 52590,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 14469,
+        "outputTokens": 2609,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "llm-voice-agent",
+      "domain": "llm-applications",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Real-Time Speech-to-Text (ASR)",
+          "LLM-Based Response Generation",
+          "Text-to-Speech (TTS) Synthesis",
+          "Barge-In Detection and Handling",
+          "Sub-1 Second End-to-End Latency",
+          "Self-Hosted Deployment",
+          "Real-Time Audio Processing Pipeline",
+          "Context Preservation During Interruptions",
+          "Multi-Language and Accent Support",
+          "Scalable Architecture for High Call Volume",
+          "Audio Quality and Signal Processing",
+          "Fallback Mechanisms for Model Failures",
+          "Privacy and Data Residency Controls",
+          "Customizable Voice and Tone",
+          "Integration with Existing Telephony Systems"
+        ],
+        "queries": [
+          {
+            "query": "real-time streaming ASR Whisper",
+            "requirement": "Real-Time Speech-to-Text (ASR)",
+            "results": 15,
+            "searchedAs": [
+              "real-time streaming ASR Whisper stars:>=10"
+            ]
+          },
+          {
+            "query": "vLLM real-time conversational LLM",
+            "requirement": "LLM-Based Response Generation",
+            "results": 15,
+            "searchedAs": [
+              "vLLM real-time conversational LLM stars:>=10"
+            ]
+          },
+          {
+            "query": "FastSpeech2 WebRTC TTS",
+            "requirement": "Text-to-Speech (TTS) Synthesis",
+            "results": 14,
+            "searchedAs": [
+              "FastSpeech2 WebRTC TTS stars:>=10",
+              "FastSpeech2 WebRTC stars:>=10",
+              "FastSpeech2 WebRTC"
+            ]
+          },
+          {
+            "query": "barge-in detection WebRTC audio",
+            "requirement": "Barge-In Detection and Handling",
+            "results": 15,
+            "searchedAs": [
+              "barge-in detection WebRTC audio stars:>=10"
+            ]
+          },
+          {
+            "query": "WebRTC noise suppression echo",
+            "requirement": "Real-Time Audio Processing Pipeline",
+            "results": 15,
+            "searchedAs": [
+              "WebRTC noise suppression echo stars:>=10"
+            ]
+          },
+          {
+            "query": "multi-party speech diarization overlap",
+            "requirement": "Real-Time Audio Processing Pipeline",
+            "results": 15,
+            "searchedAs": [
+              "multi-party speech diarization overlap stars:>=10"
+            ]
+          },
+          {
+            "query": "real-time telephony SIP WebRTC",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "real-time telephony SIP WebRTC stars:>=10"
+            ]
+          },
+          {
+            "query": "edge deployment ONNX Triton",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "edge deployment ONNX Triton stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 38483
+      },
+      "ranked": [
+        "k2-fsa/sherpa-onnx",
+        "PaddlePaddle/PaddleSpeech",
+        "QuentinFuxa/WhisperLiveKit",
+        "modelscope/FunASR",
+        "Blaizzy/mlx-audio",
+        "mudler/LocalAI",
+        "QwenAudio/SenseVoice",
+        "microsoft/VibeVoice",
+        "LSXPrime/SoundFlow",
+        "2noise/ChatTTS",
+        "Ryuk17/SpeechAlgorithms",
+        "triton-inference-server/server",
+        "ufal/whisper_streaming",
+        "PunithVT/ai-avatar-system",
+        "mahimairaja/voiceai",
+        "attenlabs/saa-sdk",
+        "gojargo/jargo",
+        "kizuna-ai-lab/sokuji",
+        "QwenLM/Qwen3-Omni",
+        "tonarino/webrtc-audio-processing",
+        "canopyai/Orpheus-TTS",
+        "TheDeathDragon/LiveTranslate",
+        "NVIDIA/DeepStream",
+        "gpt-omni/mini-omni",
+        "Kedreamix/Linly-Talker",
+        "SYSTRAN/faster-whisper",
+        "livekit/python-sdks",
+        "honwee/mynah",
+        "livekit/agents",
+        "SevaSk/ecoute",
+        "jamiepine/voicebox",
+        "QwenLM/Qwen3-ASR",
+        "ictinnovations/asterisk-ai-voice-agent",
+        "mail2chromium/Android-Audio-Processing-Using-WebRTC",
+        "seehiong/polyphon-ai",
+        "taresh18/conversify",
+        "halsay/ASR-TTS-paper-daily",
+        "dignifiedquire/sonora",
+        "Kedreamix/Linly-Talker-Stream",
+        "OpenCSGs/csglite"
+      ],
+      "shortlisted": [
+        "k2-fsa/sherpa-onnx",
+        "PaddlePaddle/PaddleSpeech",
+        "QuentinFuxa/WhisperLiveKit",
+        "modelscope/FunASR",
+        "Blaizzy/mlx-audio",
+        "mudler/LocalAI"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.5,
+        "foundEssential": [],
+        "missedEssential": [
+          "livekit/agents",
+          "pipecat-ai/pipecat",
+          "snakers4/silero-vad",
+          "systran/faster-whisper"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "paddlepaddle/paddlespeech",
+          "quentinfuxa/whisperlivekit",
+          "modelscope/funasr",
+          "blaizzy/mlx-audio",
+          "mudler/localai"
+        ],
+        "trapsTotal": 2,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 103585,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 14763,
+        "outputTokens": 2998,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "web-saas-auth",
+      "domain": "web-backends-auth",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Multi-Factor Authentication Support",
+          "Google OAuth Integration",
+          "Organization-Based Role Management",
+          "SAML 2.0 Single Sign-On (SSO)",
+          "Security Event Auditing",
+          "PostgreSQL Schema Design for Multi-Tenancy",
+          "Next.js Backend API Integration",
+          "Tenant Isolation and Access Control",
+          "Session Management and Tokens",
+          "Scalable Authentication Backend",
+          "Password Policy Enforcement",
+          "Audit Log Retention and Querying",
+          "Cross-Tenant Authentication Flow",
+          "Multi-Region Deployment Support"
+        ],
+        "queries": [
+          {
+            "query": "multi-tenant authentication bcrypt Argon2",
+            "requirement": "Multi-Factor Authentication Support",
+            "results": 12,
+            "searchedAs": [
+              "multi-tenant authentication bcrypt Argon2 stars:>=10"
+            ]
+          },
+          {
+            "query": "Google OAuth NextAuth.js role",
+            "requirement": "Google OAuth Integration",
+            "results": 15,
+            "searchedAs": [
+              "Google OAuth NextAuth.js role stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL schema-per-tenant row-level security",
+            "requirement": "PostgreSQL Schema Design for Multi-Tenancy",
+            "results": 10,
+            "searchedAs": [
+              "PostgreSQL schema-per-tenant row-level security stars:>=10"
+            ]
+          },
+          {
+            "query": "SAML 2.0 IdP discovery",
+            "requirement": "SAML 2.0 Single Sign-On (SSO)",
+            "results": 15,
+            "searchedAs": [
+              "SAML 2.0 IdP discovery stars:>=10"
+            ]
+          },
+          {
+            "query": "role-based access control RBAC",
+            "requirement": "Organization-Based Role Management",
+            "results": 15,
+            "searchedAs": [
+              "role-based access control RBAC stars:>=10"
+            ]
+          },
+          {
+            "query": "immutable audit logging JWT",
+            "requirement": "Security Event Auditing",
+            "results": 15,
+            "searchedAs": [
+              "immutable audit logging JWT stars:>=10"
+            ]
+          },
+          {
+            "query": "Next.js API Routes JWT",
+            "requirement": "Session Management and Tokens",
+            "results": 15,
+            "searchedAs": [
+              "Next.js API Routes JWT stars:>=10"
+            ]
+          },
+          {
+            "query": "multi-tenant authentication framework",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "multi-tenant authentication framework stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 21007
+      },
+      "ranked": [
+        "authorizerdev/authorizer",
+        "boxyhq/saas-starter-kit",
+        "apache/casbin",
+        "auth0/nextjs-auth0",
+        "nextjs/saas-starter",
+        "fosrl/pangolin",
+        "seeden/rbac",
+        "juicycleff/ultimate-backend",
+        "vvo/iron-session",
+        "dvoraj75/django-rls-tenants",
+        "SulgX/SulgX-Panel",
+        "aasthas2022/SDE-Interview-and-Prep-Roadmap",
+        "NangoHQ/nango",
+        "yiisoft/rbac",
+        "Nike-Inc/gimme-aws-creds",
+        "Finbuckle/Finbuckle.MultiTenant",
+        "mikespook/gorbac",
+        "phellipeandrade/rbac",
+        "Excelorithm/SaaSLaunchpad",
+        "LingyiChen-AI/JadeAI",
+        "ulisesbocchio/spring-boot-security-saml",
+        "nazarli-shabnam/clevis",
+        "garrytan/gstack",
+        "doyensec/maSSO",
+        "bowphp/framework",
+        "vstorm-co/full-stack-ai-agent-template",
+        "callistaenterprise/blog-multitenancy",
+        "jaredhanson/passport",
+        "italia/iam-proxy-italia",
+        "mo-esmp/DynamicRoleBasedAuthorizationNETCore",
+        "enjaku4/veri",
+        "awinogrodzki/next-firebase-auth-edge",
+        "AIDotNet/OpenDeepWiki",
+        "aipotheosis-labs/aci",
+        "OWASP/rbac",
+        "sameersbn/docker-gitlab",
+        "legend-esc/carbonchain",
+        "sparrow-js/an-codeAI",
+        "discord/access",
+        "Corvia/django-tenant-users"
+      ],
+      "shortlisted": [
+        "authorizerdev/authorizer",
+        "boxyhq/saas-starter-kit",
+        "apache/casbin",
+        "auth0/nextjs-auth0",
+        "nextjs/saas-starter",
+        "fosrl/pangolin"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "better-auth/better-auth",
+          "keycloak/keycloak",
+          "nextauthjs/next-auth",
+          "ory/polis"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "authorizerdev/authorizer",
+          "boxyhq/saas-starter-kit",
+          "apache/casbin",
+          "auth0/nextjs-auth0",
+          "nextjs/saas-starter",
+          "fosrl/pangolin"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 81664,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 13262,
+        "outputTokens": 2877,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "web-public-api",
+      "domain": "web-backends-auth",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Multi-Tenant API Key Management",
+          "Dynamic Rate Limiting per Key",
+          "Usage Metering for Billing",
+          "OpenAPI Documentation Generation",
+          "Distributed Rate Limiting Backend",
+          "Key-Based Authentication",
+          "Observability & Monitoring",
+          "Abuse Prevention",
+          "Multi-Region Deployment",
+          "API Key Rotation & Revocation",
+          "Billing Integration",
+          "API Versioning",
+          "Caching Layer"
+        ],
+        "queries": [
+          {
+            "query": "api key management multi",
+            "requirement": "Multi-Tenant API Key Management",
+            "results": 15,
+            "searchedAs": [
+              "api key management multi stars:>=10"
+            ]
+          },
+          {
+            "query": "dynamic rate limiting redis",
+            "requirement": "Dynamic Rate Limiting per Key",
+            "results": 15,
+            "searchedAs": [
+              "dynamic rate limiting redis stars:>=10"
+            ]
+          },
+          {
+            "query": "api usage metering billing",
+            "requirement": "Usage Metering for Billing",
+            "results": 15,
+            "searchedAs": [
+              "api usage metering billing stars:>=10"
+            ]
+          },
+          {
+            "query": "openapi swagger generator versioning",
+            "requirement": "OpenAPI Documentation Generation",
+            "results": 15,
+            "searchedAs": [
+              "openapi swagger generator versioning stars:>=10"
+            ]
+          },
+          {
+            "query": "distributed rate limiting redis",
+            "requirement": "Distributed Rate Limiting Backend",
+            "results": 15,
+            "searchedAs": [
+              "distributed rate limiting redis stars:>=10"
+            ]
+          },
+          {
+            "query": "api key stateless jwt",
+            "requirement": "Key-Based Authentication",
+            "results": 15,
+            "searchedAs": [
+              "api key stateless jwt stars:>=10"
+            ]
+          },
+          {
+            "query": "prometheus opentelemetry observability",
+            "requirement": "Observability & Monitoring",
+            "results": 15,
+            "searchedAs": [
+              "prometheus opentelemetry observability stars:>=10"
+            ]
+          },
+          {
+            "query": "api gateway multi tenant",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "api gateway multi tenant stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 16481
+      },
+      "ranked": [
+        "apache/apisix",
+        "animir/node-rate-limiter-flexible",
+        "getlago/lago",
+        "go-redis/redis_rate",
+        "GreptimeTeam/greptimedb",
+        "swagger-api/swagger-codegen",
+        "apache/skywalking",
+        "OpenAPITools/openapi-generator",
+        "router-for-me/CLIProxyAPI",
+        "hatchet-dev/hatchet",
+        "getlago/lago-api",
+        "open-telemetry/opentelemetry-go",
+        "murraco/spring-boot-jwt",
+        "dwyl/learn-json-web-tokens",
+        "TauricResearch/TradingAgents",
+        "fastify/fastify-swagger",
+        "openmeterio/openmeter",
+        "iam-veeramalla/observability-zero-to-hero",
+        "grpc-ecosystem/grpc-gateway",
+        "stefanprodan/AspNetCoreRateLimit",
+        "developersdigest/llm-answer-engine",
+        "QuantumNous/new-api",
+        "MHSanaei/3x-ui",
+        "BerriAI/litellm",
+        "polarsource/polar",
+        "loft-sh/vcluster",
+        "axnsan12/drf-yasg",
+        "open-telemetry/opentelemetry-demo",
+        "domaindrivendev/Swashbuckle.AspNetCore",
+        "RicoSuter/NSwag",
+        "x90skysn3k/brutespray",
+        "open-telemetry/opentelemetry-rust",
+        "meteroid-oss/meteroid",
+        "apache/kyuubi",
+        "netlify/gotrue",
+        "cristipufu/aspnetcore-redis-rate-limiting",
+        "fagongzi/manba",
+        "tfranzel/drf-spectacular",
+        "etcd-io/etcd",
+        "Wei-Shaw/sub2api"
+      ],
+      "shortlisted": [
+        "apache/apisix",
+        "animir/node-rate-limiter-flexible",
+        "getlago/lago",
+        "go-redis/redis_rate",
+        "GreptimeTeam/greptimedb",
+        "swagger-api/swagger-codegen"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.2,
+        "recallAll": 0.4,
+        "foundEssential": [
+          "apache/apisix"
+        ],
+        "missedEssential": [
+          "kong/kong",
+          "openmeterio/openmeter",
+          "swagger-api/swagger-ui",
+          "unkeyed/unkey"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "animir/node-rate-limiter-flexible",
+          "getlago/lago",
+          "go-redis/redis_rate",
+          "greptimeteam/greptimedb",
+          "swagger-api/swagger-codegen"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 83989,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 12711,
+        "outputTokens": 2476,
+        "costCents": null
+      }
+    },
+    {
+      "briefId": "web-job-queue",
+      "domain": "web-backends-auth",
+      "details": {
+        "decompositionMode": "llm",
+        "requirements": [
+          "Unified Background Job System",
+          "Retry Mechanism with Backoff",
+          "Job Delay and Scheduling",
+          "Job Prioritization",
+          "Web Dashboard for Job Inspection",
+          "Manual Job Retry Functionality",
+          "Redis Integration for Job Storage",
+          "PostgreSQL for Job Metadata and Persistence",
+          "Cross-Language Job Processing",
+          "Job State Management",
+          "Scalability for High Throughput",
+          "Monitoring and Alerts",
+          "Idempotency for Job Processing",
+          "API for Programmatic Job Control",
+          "Job Dependencies and Chaining",
+          "Rate Limiting for Job Enqueuing"
+        ],
+        "queries": [
+          {
+            "query": "unified job queue Redis",
+            "requirement": "Unified Background Job System",
+            "results": 15,
+            "searchedAs": [
+              "unified job queue Redis stars:>=10"
+            ]
+          },
+          {
+            "query": "exponential backoff retry mechanism",
+            "requirement": "Retry Mechanism with Backoff",
+            "results": 15,
+            "searchedAs": [
+              "exponential backoff retry mechanism stars:>=10"
+            ]
+          },
+          {
+            "query": "cron delayed job scheduling",
+            "requirement": "Job Delay and Scheduling",
+            "results": 15,
+            "searchedAs": [
+              "cron delayed job scheduling stars:>=10"
+            ]
+          },
+          {
+            "query": "priority queue scheduling algorithms",
+            "requirement": "Job Prioritization",
+            "results": 15,
+            "searchedAs": [
+              "priority queue scheduling algorithms stars:>=10"
+            ]
+          },
+          {
+            "query": "React job status dashboard",
+            "requirement": "Web Dashboard for Job Inspection",
+            "results": 15,
+            "searchedAs": [
+              "React job status dashboard stars:>=10"
+            ]
+          },
+          {
+            "query": "manual job retry API",
+            "requirement": "Manual Job Retry Functionality",
+            "results": 15,
+            "searchedAs": [
+              "manual job retry API stars:>=10"
+            ]
+          },
+          {
+            "query": "Redis Streams event sourcing",
+            "requirement": "Redis Integration for Job Storage",
+            "results": 15,
+            "searchedAs": [
+              "Redis Streams event sourcing stars:>=10"
+            ]
+          },
+          {
+            "query": "PostgreSQL JSONB job metadata",
+            "requirement": "(overall)",
+            "results": 15,
+            "searchedAs": [
+              "PostgreSQL JSONB job metadata stars:>=10"
+            ]
+          }
+        ],
+        "queryPlanner": "llm",
+        "readmesAssessed": 12,
+        "decompositionMs": 31387
+      },
+      "ranked": [
+        "HangfireIO/Hangfire",
+        "OpenByteInc/QuantDinger",
+        "agronholm/apscheduler",
+        "FoundatioFx/Foundatio",
+        "kelektiv/node-cron",
+        "outsourc-e/hermes-workspace",
+        "wasp-lang/wasp",
+        "influxdata/influxdb",
+        "zoolutions/sidekiq-unique-jobs",
+        "openai/openai-agents-python",
+        "centrifugal/centrifugo",
+        "robfig/cron",
+        "keon/algorithms",
+        "MadsLorentzen/ai-job-search",
+        "openai/openai-python",
+        "ihrwein/backoff",
+        "avast/retry-go",
+        "prakhar1989/Algorithms",
+        "sidequestjs/sidequest",
+        "resque/resque-scheduler",
+        "looplab/eventhorizon",
+        "ThreeDotsLabs/watermill",
+        "danilobatson/ai-trading-agent-gemini",
+        "OptimalBits/bull",
+        "timgit/pg-boss",
+        "danielbayerlein/dashboard",
+        "NikolayS/PgQue",
+        "evolution-foundation/evolution-api",
+        "rholder/guava-retrying",
+        "redis/ioredis",
+        "go-co-op/gocron",
+        "feast-dev/feast",
+        "gojek/heimdall",
+        "jamesmh/coravel",
+        "actionhero/node-resque",
+        "oban-bg/oban",
+        "swoole/swoole-src",
+        "openshift/api",
+        "Kumar-laxmi/Algorithms",
+        "acl-dev/acl"
+      ],
+      "shortlisted": [
+        "HangfireIO/Hangfire",
+        "OpenByteInc/QuantDinger",
+        "agronholm/apscheduler",
+        "FoundatioFx/Foundatio",
+        "kelektiv/node-cron",
+        "outsourc-e/hermes-workspace"
+      ],
+      "scores": {
+        "essentialTotal": 3,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "celery/celery",
+          "felixmosh/bull-board",
+          "taskforcesh/bullmq"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "hangfireio/hangfire",
+          "openbyteinc/quantdinger",
+          "agronholm/apscheduler",
+          "foundatiofx/foundatio",
+          "kelektiv/node-cron",
+          "outsourc-e/hermes-workspace"
+        ],
+        "trapsTotal": 2,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 1,
+        "trapRejectionSurfaced": 1.0,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 83794,
+      "ledger": {
+        "llmCalls": 4,
+        "failedCalls": 0,
+        "inputTokens": 13279,
+        "outputTokens": 2715,
+        "costCents": null
+      }
+    }
+  ],
+  "tuningName": "default"
+}

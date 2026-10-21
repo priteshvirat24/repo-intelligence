@@ -389,17 +389,18 @@ def test_constraints_reach_the_planner_only_when_tuned_to():
     from apps.worker.discovery.planner import _user_prompt
     req = {**REQUIREMENTS, "requirements": REQUIREMENTS["requirements"] + [
         {"name": "Backend in Python", "description": "Python service", "criticality": "MUST", "type": "deployment"}]}
-    assert "Backend in Python" not in _user_prompt(req, 8)
+    assert "Backend in Python" not in _user_prompt(req, 8, list_constraints=False)
     with_constraints = _user_prompt(req, 8, list_constraints=True)
     assert with_constraints.index("Constraints") < with_constraints.index("Backend in Python") < with_constraints.index("Requirements:")
 
 
-def test_category_queries_candidate_is_a_valid_tuning():
+def test_promoted_default_is_exactly_the_measured_candidate():
     from apps.worker.tuning import load_tuning_file, default_tuning
-    candidate = load_tuning_file("eval/candidates/category-queries.json")
-    assert candidate.get("discovery.planner_lists_constraints") is True
-    assert "KIND OF TOOL" in candidate.get("prompts.discovery_planner")
-    assert candidate.version != default_tuning().version
+    # category-queries-fresh was measured on suite-v1 and promoted: the default must be that configuration
+    assert load_tuning_file("eval/candidates/category-queries-fresh.json").version == default_tuning().version
+    assert "KIND OF TOOL" in default_tuning().get("prompts.discovery_planner")
+    assert default_tuning().get("discovery.planner_lists_constraints") is True
+    assert default_tuning().get("discovery.shortlist_max_stale_days") == 730
 
 
 

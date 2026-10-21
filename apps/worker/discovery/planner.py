@@ -9,9 +9,9 @@ from .output import list_from_output
 MAX_QUERIES = 8
 # GitHub ANDs every keyword: long queries return almost nothing
 MAX_QUERY_WORDS = 4
-# Show the planner the brief's constraints so it can name the ecosystem (node, python, postgres). Off by
-# default until the evaluation shows it helps (eval/candidates/category-queries.json).
-PLANNER_LISTS_CONSTRAINTS = False
+# Show the planner the brief's constraints so it can name the ecosystem (node, python, postgres).
+# Promoted 2026-10-21 with the kind-of-tool prompt (eval/results/suite-v1, category-queries-fresh).
+PLANNER_LISTS_CONSTRAINTS = True
 OVERALL = "(overall)"
 
 _STOPWORDS = {
@@ -27,14 +27,14 @@ CONSTRAINT_TYPES = {"deployment", "performance"}
 
 CRITICALITY_ORDER = {"MUST": 0, "SHOULD": 1, "NICE_TO_HAVE": 2}
 
-SYSTEM_PROMPT = """You plan GitHub repository searches that find existing open-source implementations of a project's requirements.
+SYSTEM_PROMPT = """You plan GitHub repository searches that find existing open-source tools a team could build this project on.
 
 Rules:
-1. Each query is 2 or 3 plain keywords. GitHub only returns repositories matching every keyword, so more words means fewer results.
-2. Use the words a repository's name, description or topics would contain: established technical terms, algorithm and format names, library categories (e.g. "sgp4 propagation", "webgl globe", "pdf table extraction"). No marketing words.
-3. Search for capabilities only. Constraints such as programming language, hosting, team or performance targets are not searches.
-4. No GitHub qualifiers (language:, stars:), no quotes, no boolean operators.
-5. Cover every MUST capability; add one query for the overall product (e.g. "satellite tracker").
+1. Each query names the KIND OF TOOL a developer would install, in 2 or 3 words, plus the ecosystem when the brief has one: "job queue node", "task queue python", "documentation generator typescript", "vector tile server", "sgp4 propagation", "saml sso". GitHub matches every word, so more words means fewer results.
+2. Never search for implementation details or features inside a tool (retry backoff, JSONB columns, dark mode, bcrypt, row-level security): READMEs of the established tools describe what kind of tool they are, not those details.
+3. Use the constraints only to choose ecosystem words (node, python, typescript, postgres, nextjs). Never search for a constraint on its own.
+4. One query per distinct kind of tool the project needs; cover every MUST capability; add one query for the whole product (e.g. "satellite tracker").
+5. No GitHub qualifiers, quotes or boolean operators.
 6. "requirement" must be copied exactly from the given requirement names, or be "(overall)".
 7. Output strictly valid JSON."""
 

@@ -1,0 +1,1132 @@
+{
+  "runId": "b0s-record-20261021-122638",
+  "suite": "suite-v1",
+  "labelsStatus": "draft: one AI-drafted label set, not yet independently labelled or reviewed (see eval/README.md)",
+  "system": "b0s",
+  "mode": "record",
+  "tuningVersion": null,
+  "requirementsFrom": null,
+  "commit": "76d0c77",
+  "model": "ministral-8b-latest",
+  "githubAuthenticated": true,
+  "note": "B0s baseline, recorded",
+  "finishedAt": "2026-10-21T12:26:58.373915+00:00",
+  "aggregate": {
+    "briefs": 15,
+    "recallAt10": 0.0633,
+    "recallAll": 0.0633,
+    "shortlistPrecision": 0.0333,
+    "trapRejection": 1.0,
+    "errors": 0,
+    "meanDurationMs": 1244,
+    "llmCalls": 0,
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "costCents": 0.0,
+    "trapsSurfaced": 0,
+    "trapsShortlisted": 0,
+    "trapRejectionSurfaced": null
+  },
+  "snapshot": {
+    "recorded": 30,
+    "replayed": 0
+  },
+  "briefs": [
+    {
+      "briefId": "geo-satellite-tracker",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "githubQuery": "satellite tracker web app",
+        "github": [
+          "przemas11/Sat-Track",
+          "MAMV3x3/space-apps-challenge-2022",
+          "E-STAT/Air-Quality-Web-App",
+          "0xbhoomi/Satellite-tracker",
+          "Sgambe33/Satellite-Track",
+          "Rocky-Dewan/Satellite-Tracking-Web-Application",
+          "Henrycoding-design/SPACEAPPWeb",
+          "abdelrahman18036/Eye-of-Horus",
+          "horazini/agro-gis",
+          "Tajlmao/satellite-tracker"
+        ],
+        "web": [
+          "rt-bishop/Look4Sat",
+          "thkruz/keeptrack.space"
+        ]
+      },
+      "ranked": [
+        "przemas11/Sat-Track",
+        "rt-bishop/Look4Sat",
+        "MAMV3x3/space-apps-challenge-2022",
+        "thkruz/keeptrack.space",
+        "E-STAT/Air-Quality-Web-App",
+        "0xbhoomi/Satellite-tracker",
+        "Sgambe33/Satellite-Track",
+        "Rocky-Dewan/Satellite-Tracking-Web-Application",
+        "Henrycoding-design/SPACEAPPWeb",
+        "abdelrahman18036/Eye-of-Horus"
+      ],
+      "shortlisted": [
+        "przemas11/Sat-Track",
+        "rt-bishop/Look4Sat",
+        "MAMV3x3/space-apps-challenge-2022",
+        "thkruz/keeptrack.space",
+        "E-STAT/Air-Quality-Web-App",
+        "0xbhoomi/Satellite-tracker"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.2,
+        "recallAll": 0.2,
+        "foundEssential": [
+          "thkruz/keeptrack.space"
+        ],
+        "missedEssential": [
+          "brandon-rhodes/python-sgp4",
+          "cesiumgs/cesium",
+          "shashwatak/satellite-js",
+          "vasturiano/globe.gl"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "przemas11/sat-track",
+          "rt-bishop/look4sat",
+          "mamv3x3/space-apps-challenge-2022",
+          "e-stat/air-quality-web-app",
+          "0xbhoomi/satellite-tracker"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 2232,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "geo-vector-tiles",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "githubQuery": "self-hosted vector map tiles",
+        "github": [
+          "joshuafuller/map-room",
+          "Zoestha-UG/vectortiles",
+          "giseity/planisfy",
+          "thiscantbeserious/osm-build-pipeline",
+          "ndenissov/maptiler",
+          "stefanhuber/self-hosted-vector-tiles",
+          "nudopnu/open-map-tiles",
+          "ubikampus/ubilocation-client",
+          "alfaero/alfaero-map-tiles",
+          "atif089/selfmaps"
+        ],
+        "web": []
+      },
+      "ranked": [
+        "joshuafuller/map-room",
+        "Zoestha-UG/vectortiles",
+        "giseity/planisfy",
+        "thiscantbeserious/osm-build-pipeline",
+        "ndenissov/maptiler",
+        "stefanhuber/self-hosted-vector-tiles",
+        "nudopnu/open-map-tiles",
+        "ubikampus/ubilocation-client",
+        "alfaero/alfaero-map-tiles",
+        "atif089/selfmaps"
+      ],
+      "shortlisted": [
+        "joshuafuller/map-room",
+        "Zoestha-UG/vectortiles",
+        "giseity/planisfy",
+        "thiscantbeserious/osm-build-pipeline",
+        "ndenissov/maptiler",
+        "stefanhuber/self-hosted-vector-tiles"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "felt/tippecanoe",
+          "maplibre/maplibre-gl-js",
+          "maptiler/tileserver-gl",
+          "onthegomap/planetiler",
+          "protomaps/pmtiles"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "joshuafuller/map-room",
+          "zoestha-ug/vectortiles",
+          "giseity/planisfy",
+          "thiscantbeserious/osm-build-pipeline",
+          "ndenissov/maptiler",
+          "stefanhuber/self-hosted-vector-tiles"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1204,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "geo-gps-routes",
+      "domain": "geospatial-visualisation",
+      "details": {
+        "githubQuery": "gps trace analysis delivery",
+        "github": [],
+        "web": [
+          "sachnaror/fleet-management-system",
+          "traccar/traccar",
+          "salildz/vehicle-tracking"
+        ]
+      },
+      "ranked": [
+        "sachnaror/fleet-management-system",
+        "traccar/traccar",
+        "salildz/vehicle-tracking"
+      ],
+      "shortlisted": [
+        "sachnaror/fleet-management-system",
+        "traccar/traccar",
+        "salildz/vehicle-tracking"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "graphhopper/graphhopper",
+          "leaflet/leaflet",
+          "project-osrm/osrm-backend",
+          "tkrajina/gpxpy",
+          "valhalla/valhalla"
+        ],
+        "shortlistSize": 3,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "sachnaror/fleet-management-system",
+          "traccar/traccar",
+          "salildz/vehicle-tracking"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 914,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "dev-pr-review-bot",
+      "domain": "developer-tooling",
+      "details": {
+        "githubQuery": "pull request review bot",
+        "github": [
+          "imgbot/Imgbot",
+          "pep8speaks-org/pep8speaks",
+          "markstory/lint-review",
+          "Sfedfcv/redesigned-pancake",
+          "areibman/bottleneck",
+          "felixrieseberg/peer-review-bot",
+          "sj14/review-bot",
+          "antongulin/robin",
+          "MoaKK/AI-Code-Reviewer",
+          "bboe/farcy"
+        ],
+        "web": [
+          "danielma/reviewbot"
+        ]
+      },
+      "ranked": [
+        "imgbot/Imgbot",
+        "danielma/reviewbot",
+        "pep8speaks-org/pep8speaks",
+        "markstory/lint-review",
+        "Sfedfcv/redesigned-pancake",
+        "areibman/bottleneck",
+        "felixrieseberg/peer-review-bot",
+        "sj14/review-bot",
+        "antongulin/robin",
+        "MoaKK/AI-Code-Reviewer"
+      ],
+      "shortlisted": [
+        "imgbot/Imgbot",
+        "danielma/reviewbot",
+        "pep8speaks-org/pep8speaks",
+        "markstory/lint-review",
+        "Sfedfcv/redesigned-pancake",
+        "areibman/bottleneck"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "probot/probot",
+          "reviewdog/reviewdog",
+          "semgrep/semgrep",
+          "super-linter/super-linter"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "imgbot/imgbot",
+          "danielma/reviewbot",
+          "pep8speaks-org/pep8speaks",
+          "markstory/lint-review",
+          "sfedfcv/redesigned-pancake",
+          "areibman/bottleneck"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1649,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "dev-dependency-updates",
+      "domain": "developer-tooling",
+      "details": {
+        "githubQuery": "automated dependency updates monorepo",
+        "github": [
+          "brandhaug/catalog-update-action"
+        ],
+        "web": [
+          "coingaming/moon-design"
+        ]
+      },
+      "ranked": [
+        "brandhaug/catalog-update-action",
+        "coingaming/moon-design"
+      ],
+      "shortlisted": [
+        "brandhaug/catalog-update-action",
+        "coingaming/moon-design"
+      ],
+      "scores": {
+        "essentialTotal": 3,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "changesets/changesets",
+          "dependabot/dependabot-core",
+          "renovatebot/renovate"
+        ],
+        "shortlistSize": 2,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "brandhaug/catalog-update-action",
+          "coingaming/moon-design"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 800,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "dev-docs-site",
+      "domain": "developer-tooling",
+      "details": {
+        "githubQuery": "api documentation site two",
+        "github": [
+          "Sfedfcv/redesigned-pancake",
+          "swati1024/torrents",
+          "BabyJ723/blast-ON",
+          "Briechenstein12/Jerusalem2020j2IL-Repository",
+          "ajay04323/cpanel_CPSP",
+          "VAIXLNS/VAIXLNS",
+          "manojk8/Course_3_project-",
+          "udayansawant/Trends-in-Programming-Languages",
+          "nob788/Android-API-Differences-Report",
+          "Bluesularsawa/moreussignl"
+        ],
+        "web": []
+      },
+      "ranked": [
+        "Sfedfcv/redesigned-pancake",
+        "swati1024/torrents",
+        "BabyJ723/blast-ON",
+        "Briechenstein12/Jerusalem2020j2IL-Repository",
+        "ajay04323/cpanel_CPSP",
+        "VAIXLNS/VAIXLNS",
+        "manojk8/Course_3_project-",
+        "udayansawant/Trends-in-Programming-Languages",
+        "nob788/Android-API-Differences-Report",
+        "Bluesularsawa/moreussignl"
+      ],
+      "shortlisted": [
+        "Sfedfcv/redesigned-pancake",
+        "swati1024/torrents",
+        "BabyJ723/blast-ON",
+        "Briechenstein12/Jerusalem2020j2IL-Repository",
+        "ajay04323/cpanel_CPSP",
+        "VAIXLNS/VAIXLNS"
+      ],
+      "scores": {
+        "essentialTotal": 6,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "facebook/docusaurus",
+          "mkdocstrings/mkdocstrings",
+          "pagefind/pagefind",
+          "sphinx-doc/sphinx",
+          "squidfunk/mkdocs-material",
+          "typestrong/typedoc"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "sfedfcv/redesigned-pancake",
+          "swati1024/torrents",
+          "babyj723/blast-on",
+          "briechenstein12/jerusalem2020j2il-repository",
+          "ajay04323/cpanel_cpsp",
+          "vaixlns/vaixlns"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1313,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "data-postgres-cdc",
+      "domain": "data-pipelines",
+      "details": {
+        "githubQuery": "postgres change data capture",
+        "github": [
+          "sequinstream/sequin",
+          "kuvasz-io/kuvasz-streamer",
+          "mrinalxdev/shadowstream",
+          "semotpan/saga-orchestration",
+          "dariocazas/howto-debezium-to-snowflake",
+          "rieske/postgres-cdc",
+          "JK-97/pikawire",
+          "ranjbaryshahab/postgres-cdc-clickhouse",
+          "rbiedrawa/cdc-postgres",
+          "leartbeqiraj1/cdc-postgresql-clickhouse"
+        ],
+        "web": [
+          "confluentinc/demo-change-data-capture",
+          "juetan/nav"
+        ]
+      },
+      "ranked": [
+        "sequinstream/sequin",
+        "confluentinc/demo-change-data-capture",
+        "kuvasz-io/kuvasz-streamer",
+        "juetan/nav",
+        "mrinalxdev/shadowstream",
+        "semotpan/saga-orchestration",
+        "dariocazas/howto-debezium-to-snowflake",
+        "rieske/postgres-cdc",
+        "JK-97/pikawire",
+        "ranjbaryshahab/postgres-cdc-clickhouse"
+      ],
+      "shortlisted": [
+        "sequinstream/sequin",
+        "confluentinc/demo-change-data-capture",
+        "kuvasz-io/kuvasz-streamer",
+        "juetan/nav",
+        "mrinalxdev/shadowstream",
+        "semotpan/saga-orchestration"
+      ],
+      "scores": {
+        "essentialTotal": 2,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "debezium/debezium",
+          "peerdb-io/peerdb"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "sequinstream/sequin",
+          "confluentinc/demo-change-data-capture",
+          "kuvasz-io/kuvasz-streamer",
+          "juetan/nav",
+          "mrinalxdev/shadowstream",
+          "semotpan/saga-orchestration"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1122,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "data-etl-quality",
+      "domain": "data-pipelines",
+      "details": {
+        "githubQuery": "nightly etl data quality",
+        "github": [
+          "AnbriSamir/Strofe_ProspectionAgent",
+          "simiyu-brian/inventory-forecasting-system"
+        ],
+        "web": [
+          "fhuthmacher/data-quality-automation"
+        ]
+      },
+      "ranked": [
+        "AnbriSamir/Strofe_ProspectionAgent",
+        "fhuthmacher/data-quality-automation",
+        "simiyu-brian/inventory-forecasting-system"
+      ],
+      "shortlisted": [
+        "AnbriSamir/Strofe_ProspectionAgent",
+        "fhuthmacher/data-quality-automation",
+        "simiyu-brian/inventory-forecasting-system"
+      ],
+      "scores": {
+        "essentialTotal": 6,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "apache/airflow",
+          "dagster-io/dagster",
+          "dbt-labs/dbt",
+          "dlt-hub/dlt",
+          "fivetran/great_expectations",
+          "prefecthq/prefect"
+        ],
+        "shortlistSize": 3,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "anbrisamir/strofe_prospectionagent",
+          "fhuthmacher/data-quality-automation",
+          "simiyu-brian/inventory-forecasting-system"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 869,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "data-log-pipeline",
+      "domain": "data-pipelines",
+      "details": {
+        "githubQuery": "container log collection search",
+        "github": [
+          "zszszszsz/.config",
+          "Sfedfcv/redesigned-pancake"
+        ],
+        "web": [
+          "IBM/kmodels"
+        ]
+      },
+      "ranked": [
+        "zszszszsz/.config",
+        "IBM/kmodels",
+        "Sfedfcv/redesigned-pancake"
+      ],
+      "shortlisted": [
+        "zszszszsz/.config",
+        "IBM/kmodels",
+        "Sfedfcv/redesigned-pancake"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "fluent/fluent-bit",
+          "grafana/grafana",
+          "grafana/loki",
+          "vectordotdev/vector"
+        ],
+        "shortlistSize": 3,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "zszszszsz/.config",
+          "ibm/kmodels",
+          "sfedfcv/redesigned-pancake"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 883,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "llm-rag-citations",
+      "domain": "llm-applications",
+      "details": {
+        "githubQuery": "internal document citations",
+        "github": [
+          "Obaid38/KnowledgeHub---A-Production-Level-RAG-System-Ready-to-Use",
+          "aarizah/AI-Enterprise-Knowledge-Assistant",
+          "mahmoudrabbas/documind-ai",
+          "jiazz197-cmyk/Project_NBHX_RAGbot",
+          "parimalvwadhai/RAG-Based-Company-Policy-Q-A-System",
+          "matthewvallecera/internal-document-assistant",
+          "VuNguyen123456/MediQuery-Internal-Medical-Knowledge-RAG-Assistant",
+          "afras23/rag-knowledge-base-assistant",
+          "Hakim-CS/teamDocs-ai",
+          "noki8188/team-knowledge-copilot-v1"
+        ],
+        "web": [
+          "future-house/paper-qa",
+          "amphora/patentsafe-checker"
+        ]
+      },
+      "ranked": [
+        "Obaid38/KnowledgeHub---A-Production-Level-RAG-System-Ready-to-Use",
+        "future-house/paper-qa",
+        "aarizah/AI-Enterprise-Knowledge-Assistant",
+        "amphora/patentsafe-checker",
+        "mahmoudrabbas/documind-ai",
+        "jiazz197-cmyk/Project_NBHX_RAGbot",
+        "parimalvwadhai/RAG-Based-Company-Policy-Q-A-System",
+        "matthewvallecera/internal-document-assistant",
+        "VuNguyen123456/MediQuery-Internal-Medical-Knowledge-RAG-Assistant",
+        "afras23/rag-knowledge-base-assistant"
+      ],
+      "shortlisted": [
+        "Obaid38/KnowledgeHub---A-Production-Level-RAG-System-Ready-to-Use",
+        "future-house/paper-qa",
+        "aarizah/AI-Enterprise-Knowledge-Assistant",
+        "amphora/patentsafe-checker",
+        "mahmoudrabbas/documind-ai",
+        "jiazz197-cmyk/Project_NBHX_RAGbot"
+      ],
+      "scores": {
+        "essentialTotal": 7,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "deepset-ai/haystack",
+          "docling-project/docling",
+          "langchain-ai/langchain",
+          "pgvector/pgvector",
+          "qdrant/qdrant",
+          "run-llama/llama_index",
+          "unstructured-io/unstructured"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "obaid38/knowledgehub---a-production-level-rag-system-ready-to-use",
+          "future-house/paper-qa",
+          "aarizah/ai-enterprise-knowledge-assistant",
+          "amphora/patentsafe-checker",
+          "mahmoudrabbas/documind-ai",
+          "jiazz197-cmyk/project_nbhx_ragbot"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1098,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "llm-prompt-evals",
+      "domain": "llm-applications",
+      "details": {
+        "githubQuery": "regression tests llm prompts",
+        "github": [
+          "cloudguruab/modsysML",
+          "Eval-core/evalcore",
+          "Andrew-most-likely/prompt-ci",
+          "Yeachan-Heo/prompt-replay",
+          "yotambraun/flowprompt",
+          "sanmaxdev/ragproof",
+          "Topsailpediculati120/litmux",
+          "promptry/promptry",
+          "rufus-SD/lrts",
+          "sazed5055/llmtest"
+        ],
+        "web": [
+          "CaptVarn/prompt-regression-tester"
+        ]
+      },
+      "ranked": [
+        "cloudguruab/modsysML",
+        "CaptVarn/prompt-regression-tester",
+        "Eval-core/evalcore",
+        "Andrew-most-likely/prompt-ci",
+        "Yeachan-Heo/prompt-replay",
+        "yotambraun/flowprompt",
+        "sanmaxdev/ragproof",
+        "Topsailpediculati120/litmux",
+        "promptry/promptry",
+        "rufus-SD/lrts"
+      ],
+      "shortlisted": [
+        "cloudguruab/modsysML",
+        "CaptVarn/prompt-regression-tester",
+        "Eval-core/evalcore",
+        "Andrew-most-likely/prompt-ci",
+        "Yeachan-Heo/prompt-replay",
+        "yotambraun/flowprompt"
+      ],
+      "scores": {
+        "essentialTotal": 2,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "confident-ai/deepeval",
+          "promptfoo/promptfoo"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "cloudguruab/modsysml",
+          "captvarn/prompt-regression-tester",
+          "eval-core/evalcore",
+          "andrew-most-likely/prompt-ci",
+          "yeachan-heo/prompt-replay",
+          "yotambraun/flowprompt"
+        ],
+        "trapsTotal": 1,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1168,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "llm-voice-agent",
+      "domain": "llm-applications",
+      "details": {
+        "githubQuery": "real-time voice assistant",
+        "github": [
+          "Intent-Lab/VisionClaw",
+          "fluxions-ai/vui",
+          "andyhuo520/openclaw-assistant-mvp",
+          "AnubhavChaturvedi-GitHub/jarvis-ai-assistant",
+          "livekit-examples/kitt",
+          "serkandyck/realtime-voice-assistant-groq",
+          "tarun7r/Vocal-Agent",
+          "theboringhumane/echoOLlama",
+          "taresh18/conversify",
+          "Intent-Lab/GlassFlow"
+        ],
+        "web": [
+          "Arm-Examples/Real-Time-Voice-Assistant",
+          "uday68/VyaparMitra",
+          "pipecat-ai/pipecat",
+          "livekit/agents",
+          "KoljaB/RealtimeVoiceChat",
+          "Tech-Smiths/Voix-It",
+          "Magma4/susu_books"
+        ]
+      },
+      "ranked": [
+        "Intent-Lab/VisionClaw",
+        "Arm-Examples/Real-Time-Voice-Assistant",
+        "fluxions-ai/vui",
+        "uday68/VyaparMitra",
+        "andyhuo520/openclaw-assistant-mvp",
+        "pipecat-ai/pipecat",
+        "AnubhavChaturvedi-GitHub/jarvis-ai-assistant",
+        "livekit/agents",
+        "livekit-examples/kitt",
+        "KoljaB/RealtimeVoiceChat"
+      ],
+      "shortlisted": [
+        "Intent-Lab/VisionClaw",
+        "Arm-Examples/Real-Time-Voice-Assistant",
+        "fluxions-ai/vui",
+        "uday68/VyaparMitra",
+        "andyhuo520/openclaw-assistant-mvp",
+        "pipecat-ai/pipecat"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.5,
+        "recallAll": 0.5,
+        "foundEssential": [
+          "livekit/agents",
+          "pipecat-ai/pipecat"
+        ],
+        "missedEssential": [
+          "snakers4/silero-vad",
+          "systran/faster-whisper"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "intent-lab/visionclaw",
+          "arm-examples/real-time-voice-assistant",
+          "fluxions-ai/vui",
+          "uday68/vyaparmitra",
+          "andyhuo520/openclaw-assistant-mvp"
+        ],
+        "trapsTotal": 2,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1139,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "web-saas-auth",
+      "domain": "web-backends-auth",
+      "details": {
+        "githubQuery": "multi-tenant saas authentication",
+        "github": [
+          "juicycleff/ultimate-backend",
+          "niledatabase/niledatabase",
+          "Ibrahem3/burhan-platform",
+          "MahmoudFarouk2479/Arab-Enterprise-Kit-Lite",
+          "rcrdk/nextjs-fastify-saas-rbac",
+          "World-eSports-LLC/laravel-auto-tenancy",
+          "PkLavc/saas-backend-platform",
+          "mzntaka0/saasinit",
+          "victorpreston/multi-tenant-saas-gateway",
+          "KhaledSaeed18/team-flow"
+        ],
+        "web": [
+          "juicycleff/ultimate-backend",
+          "better-auth/better-auth",
+          "logto-io/multi-tenant-saas-sample",
+          "MrEliotA/modelops_studio_saas"
+        ]
+      },
+      "ranked": [
+        "juicycleff/ultimate-backend",
+        "niledatabase/niledatabase",
+        "better-auth/better-auth",
+        "Ibrahem3/burhan-platform",
+        "logto-io/multi-tenant-saas-sample",
+        "MahmoudFarouk2479/Arab-Enterprise-Kit-Lite",
+        "MrEliotA/modelops_studio_saas",
+        "rcrdk/nextjs-fastify-saas-rbac",
+        "World-eSports-LLC/laravel-auto-tenancy",
+        "PkLavc/saas-backend-platform"
+      ],
+      "shortlisted": [
+        "juicycleff/ultimate-backend",
+        "niledatabase/niledatabase",
+        "better-auth/better-auth",
+        "Ibrahem3/burhan-platform",
+        "logto-io/multi-tenant-saas-sample",
+        "MahmoudFarouk2479/Arab-Enterprise-Kit-Lite"
+      ],
+      "scores": {
+        "essentialTotal": 4,
+        "recallAt10": 0.25,
+        "recallAll": 0.25,
+        "foundEssential": [
+          "better-auth/better-auth"
+        ],
+        "missedEssential": [
+          "keycloak/keycloak",
+          "nextauthjs/next-auth",
+          "ory/polis"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.1667,
+        "shortlistUnlabelled": [
+          "juicycleff/ultimate-backend",
+          "niledatabase/niledatabase",
+          "ibrahem3/burhan-platform",
+          "logto-io/multi-tenant-saas-sample",
+          "mahmoudfarouk2479/arab-enterprise-kit-lite"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1469,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "web-public-api",
+      "domain": "web-backends-auth",
+      "details": {
+        "githubQuery": "public api keys rate",
+        "github": [
+          "bradtraversy/node-api-proxy-server",
+          "Sfedfcv/redesigned-pancake",
+          "jettbrains/-L-",
+          "sonicmountain/Trade-Bot-Hyperliquid",
+          "Rastaman4e/-1",
+          "masterofthechaos/ProxyPilot-public",
+          "amir2510/script",
+          "nirholas/kol-mcp",
+          "eduair94/cambio-uruguay",
+          "eliac7/node-openweather-proxy-server"
+        ],
+        "web": [
+          "api-evangelist/rightmove"
+        ]
+      },
+      "ranked": [
+        "bradtraversy/node-api-proxy-server",
+        "api-evangelist/rightmove",
+        "Sfedfcv/redesigned-pancake",
+        "jettbrains/-L-",
+        "sonicmountain/Trade-Bot-Hyperliquid",
+        "Rastaman4e/-1",
+        "masterofthechaos/ProxyPilot-public",
+        "amir2510/script",
+        "nirholas/kol-mcp",
+        "eduair94/cambio-uruguay"
+      ],
+      "shortlisted": [
+        "bradtraversy/node-api-proxy-server",
+        "api-evangelist/rightmove",
+        "Sfedfcv/redesigned-pancake",
+        "jettbrains/-L-",
+        "sonicmountain/Trade-Bot-Hyperliquid",
+        "Rastaman4e/-1"
+      ],
+      "scores": {
+        "essentialTotal": 5,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "apache/apisix",
+          "kong/kong",
+          "openmeterio/openmeter",
+          "swagger-api/swagger-ui",
+          "unkeyed/unkey"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "bradtraversy/node-api-proxy-server",
+          "api-evangelist/rightmove",
+          "sfedfcv/redesigned-pancake",
+          "jettbrains/-l-",
+          "sonicmountain/trade-bot-hyperliquid",
+          "rastaman4e/-1"
+        ],
+        "trapsTotal": 0,
+        "trapRejection": null,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1707,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    },
+    {
+      "briefId": "web-job-queue",
+      "domain": "web-backends-auth",
+      "details": {
+        "githubQuery": "background jobs retries dashboard",
+        "github": [
+          "GiampaoloGabba/EverTask",
+          "hackf5/sheddueller",
+          "rithika-IO/JobEngine",
+          "zub-bee/background-job-scheduler",
+          "kododo-dev/RunWay",
+          "inemtsev/klokka",
+          "NicoCodesCode/job-forge-api",
+          "bismarkkoima/Job-scheduler-",
+          "VyomShah28/Forge",
+          "naveen-cs50-cse/TaskFlow"
+        ],
+        "web": [
+          "bensheldon/good_job",
+          "webrecorder/browsertrix",
+          "IBM/aiops-ui-extension-toolkit"
+        ]
+      },
+      "ranked": [
+        "GiampaoloGabba/EverTask",
+        "bensheldon/good_job",
+        "hackf5/sheddueller",
+        "webrecorder/browsertrix",
+        "rithika-IO/JobEngine",
+        "IBM/aiops-ui-extension-toolkit",
+        "zub-bee/background-job-scheduler",
+        "kododo-dev/RunWay",
+        "inemtsev/klokka",
+        "NicoCodesCode/job-forge-api"
+      ],
+      "shortlisted": [
+        "GiampaoloGabba/EverTask",
+        "bensheldon/good_job",
+        "hackf5/sheddueller",
+        "webrecorder/browsertrix",
+        "rithika-IO/JobEngine",
+        "IBM/aiops-ui-extension-toolkit"
+      ],
+      "scores": {
+        "essentialTotal": 3,
+        "recallAt10": 0.0,
+        "recallAll": 0.0,
+        "foundEssential": [],
+        "missedEssential": [
+          "celery/celery",
+          "felixmosh/bull-board",
+          "taskforcesh/bullmq"
+        ],
+        "shortlistSize": 6,
+        "shortlistPrecision": 0.0,
+        "shortlistUnlabelled": [
+          "giampaologabba/evertask",
+          "bensheldon/good_job",
+          "hackf5/sheddueller",
+          "webrecorder/browsertrix",
+          "rithika-io/jobengine",
+          "ibm/aiops-ui-extension-toolkit"
+        ],
+        "trapsTotal": 2,
+        "trapRejection": 1.0,
+        "trapsSurfaced": 0,
+        "trapRejectionSurfaced": null,
+        "trapsShortlisted": [],
+        "trapsInTop10": []
+      },
+      "durationMs": 1102,
+      "ledger": {
+        "llmCalls": 0,
+        "failedCalls": 0,
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "costCents": 0.0
+      }
+    }
+  ]
+}
