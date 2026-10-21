@@ -41,11 +41,12 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     t = resolve(tuning)
     max_queries, max_words = t.get("discovery.max_queries"), t.get("discovery.max_query_words")
     names = [r["name"] for r in capability_requirements(requirements_json)]
+    constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
         prompt = _user_prompt(requirements_json, max_queries)
         with ledger_scope(purpose="discovery_planner"):
             raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
-        planned = validate_queries(raw, names, max_queries, max_words)
+        planned = validate_queries(raw, names, max_queries, max_words, constraint_names)
         if len(planned) >= 2:
             return planned, "llm"
         print(f"[DiscoveryPlanner] LLM returned {len(planned)} usable queries; using requirement keywords instead")
@@ -95,10 +96,30 @@ def clean_query(text: Any, max_words: int = MAX_QUERY_WORDS) -> str:
     return " ".join(words[:max_words])
 
 
-def validate_queries(raw: Any, requirement_names: List[str], max_queries: int = MAX_QUERIES, max_words: int = MAX_QUERY_WORDS) -> List[Dict[str, str]]:
-    """requirement_names are the capability requirements: a query the model wrote for any other
-    requirement (a constraint it was told not to search for) is dropped."""
-    by_lower = {name.lower(): name for name in requirement_names}
+def _match_requirement(named: str, names: List[str]) -> Optional[str]:
+    """The requirement the model meant: exact (ignoring case), or one name containing the other. Models
+    often shorten or reword long names ("Project brief: X" -> "X"); an exact-only match loses those."""
+    named = named.strip().lower()
+    for name in names:
+        if name.lower() == named:
+            return name
+    if len(named) >= 8:
+        for name in names:
+            if named in name.lower() or name.lower() in named:
+                return name
+    return None
+
+
+def validate_queries(
+    raw: Any,
+    requirement_names: List[str],
+    max_queries: int = MAX_QUERIES,
+    max_words: int = MAX_QUERY_WORDS,
+    constraint_names: Optional[List[str]] = None,
+) -> List[Dict[str, str]]:
+    """requirement_names are the capability requirements. A query the model wrote for a constraint (which
+    it was told not to search for) is dropped; a query whose requirement cannot be identified still runs,
+    attributed to the problem as a whole."""
     planned, seen = [], set()
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
@@ -106,10 +127,12 @@ def validate_queries(raw: Any, requirement_names: List[str], max_queries: int = 
         query = clean_query(item.get("query"), max_words)
         if len(query.split()) < 1 or len(query) < 3 or query.lower() in seen:
             continue
-        named = str(item.get("requirement", "")).strip().lower()
-        if named != OVERALL and named not in by_lower:
-            continue
-        requirement = by_lower.get(named, OVERALL)
+        named = str(item.get("requirement", "")).strip()
+        requirement = _match_requirement(named, requirement_names)
+        if requirement is None:
+            if named.lower() != OVERALL and _match_requirement(named, constraint_names or []):
+                continue
+            requirement = OVERALL
         seen.add(query.lower())
         planned.append({"query": query, "requirement": requirement})
         if len(planned) >= max_queries:

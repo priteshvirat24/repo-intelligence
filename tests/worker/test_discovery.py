@@ -91,13 +91,19 @@ def test_validate_queries_maps_requirement_names_case_insensitively():
         {"query": "sgp4 propagation", "requirement": "orbit PROPAGATION"},
         {"query": "SGP4 propagation", "requirement": "Orbit propagation"},  # duplicate query
         {"query": "webgl globe", "requirement": "(overall)"},
-        {"query": "fastapi backend", "requirement": "Backend in Python"},  # not a capability: dropped
+        {"query": "fastapi backend", "requirement": "Backend in Python"},  # a constraint: dropped
+        {"query": "tle parser", "requirement": "Something the model made up"},  # unknown: kept as overall
+        {"query": "globe rendering", "requirement": "map"},  # too short to match by containment
+        {"query": "cesium globe", "requirement": "Project brief: Map rendering in the browser"},  # contains a name
         "not a dict",
     ]
-    planned = validate_queries(raw, ["Orbit propagation", "Map rendering"])
+    planned = validate_queries(raw, ["Orbit propagation", "Map rendering"], constraint_names=["Backend in Python"])
     assert planned == [
         {"query": "sgp4 propagation", "requirement": "Orbit propagation"},
         {"query": "webgl globe", "requirement": OVERALL},
+        {"query": "tle parser", "requirement": OVERALL},
+        {"query": "globe rendering", "requirement": OVERALL},
+        {"query": "cesium globe", "requirement": "Map rendering"},
     ]
 
 

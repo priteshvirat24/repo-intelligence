@@ -13,6 +13,12 @@ import {
   dropInvalidDecompositionItems
 } from './validation/schema';
 
+const COMPACT_RETRY_INSTRUCTION = `
+
+Your previous answer was not valid JSON matching the schema. Answer again with compact, strictly valid JSON:
+at most 10 requirements with descriptions under 25 words, at most 3 ambiguities, at most 8 queryExpansions,
+and no text outside the JSON object.`;
+
 export class OpenProblemDecomposer {
   constructor(private llm: LLMProvider) {}
 
@@ -84,48 +90,56 @@ Return JSON matching:
   "queryExpansions": ["technical synonym 1", "algorithm name", "domain keyword"]
 }`;
 
-    try {
-      const response = await this.llm.complete(userPrompt, systemPrompt);
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const rawJson = JSON.parse(jsonMatch[0]);
-        const parseResult = ProblemDecompositionSchema.safeParse(dropInvalidDecompositionItems(rawJson));
+    // Small models sometimes break the JSON of a long answer (seen at 8-9 KB on full briefs): the second
+    // attempt asks for a compact answer instead of falling back to keyword rules straight away
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const prompt = attempt === 0 ? userPrompt : `${userPrompt}${COMPACT_RETRY_INSTRUCTION}`;
+        const response = await this.llm.complete(prompt, systemPrompt);
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const rawJson = JSON.parse(jsonMatch[0]);
+          const parseResult = ProblemDecompositionSchema.safeParse(dropInvalidDecompositionItems(rawJson));
 
-        if (parseResult.success) {
-          const valid = parseResult.data;
-          const requirements: OpenRequirement[] = valid.requirements.map(r => ({
-            name: r.name,
-            description: r.description,
-            type: r.type as RequirementType,
-            criticality: r.criticality as RequirementCriticality,
-            confidence: r.confidence,
-            confidenceLevel: (typeof r.confidence === 'string' ? r.confidence : 'inferred') as RequirementConfidence,
-            canonicalSlug: r.canonicalSlug || undefined,
-            isAmbiguous: r.isAmbiguous,
-            ambiguousInterpretations: r.ambiguousInterpretations
-          }));
+          if (parseResult.success) {
+            const valid = parseResult.data;
+            const requirements: OpenRequirement[] = valid.requirements.map(r => ({
+              name: r.name,
+              description: r.description,
+              type: r.type as RequirementType,
+              criticality: r.criticality as RequirementCriticality,
+              confidence: r.confidence,
+              confidenceLevel: (typeof r.confidence === 'string' ? r.confidence : 'inferred') as RequirementConfidence,
+              canonicalSlug: r.canonicalSlug || undefined,
+              isAmbiguous: r.isAmbiguous,
+              ambiguousInterpretations: r.ambiguousInterpretations
+            }));
 
-          return {
-            mode: 'llm',
-            requirements: {
-              problemSummary: valid.problemSummary,
-              domains: valid.domains,
-              intents: valid.intents as QueryIntent[],
-              requirements,
-              ambiguities: valid.ambiguities,
-              constraints: valid.constraints,
-              desiredOutputs: valid.desiredOutputs,
-              queryExpansions: valid.queryExpansions
-            }
-          };
+            return {
+              mode: 'llm',
+              requirements: {
+                problemSummary: valid.problemSummary,
+                domains: valid.domains,
+                intents: valid.intents as QueryIntent[],
+                requirements,
+                ambiguities: valid.ambiguities,
+                constraints: valid.constraints,
+                desiredOutputs: valid.desiredOutputs,
+                queryExpansions: valid.queryExpansions
+              }
+            };
+          } else {
+            console.warn(`[OpenProblemDecomposer] Attempt ${attempt + 1}: output failed schema validation:`, parseResult.error.format());
+          }
         } else {
-          console.warn('[OpenProblemDecomposer] Schema validation warning, attempting partial recovery:', parseResult.error.format());
+          console.warn(`[OpenProblemDecomposer] Attempt ${attempt + 1}: no JSON object in model output`);
         }
+      } catch (err) {
+        console.warn(`[OpenProblemDecomposer] Attempt ${attempt + 1}: could not use model output:`, err);
       }
-    } catch (err) {
-      console.warn('[OpenProblemDecomposer] LLM problem decomposition fallback engaged:', err);
     }
 
+    console.warn('[OpenProblemDecomposer] LLM decomposition unusable after retry; using keyword rules');
     return { mode: 'heuristic', requirements: this.fallbackDecompose(query) };
   }
 
