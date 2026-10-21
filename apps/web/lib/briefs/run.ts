@@ -6,7 +6,9 @@ export const PIPELINE: Record<string, string[]> = {
   understand: [],
   discover: ['understand'],
   verify: ['discover'],
-  blueprint: ['verify']
+  // Phase 2: official docs, registry and advisory facts for the shortlist
+  docs: ['discover'],
+  blueprint: ['verify', 'docs']
 };
 const ORDER = Object.keys(PIPELINE);
 
@@ -55,6 +57,8 @@ export async function createRun(client: PoolClient, briefId: string) {
  */
 export async function invalidate(client: PoolClient, briefId: string, fromType: string, options: { force?: boolean; resetBudget?: boolean } = {}) {
   const types = [fromType, ...downstream(fromType)];
+  // Runs created before a task type existed (Phase 2 added docs) get it now, with current dependencies
+  await createRun(client, briefId);
   await client.query(
     `UPDATE tasks SET status = 'stale', locked_at = NULL, locked_by = NULL, attempts = 0, not_before = NULL,
        error_message = NULL, updated_at = NOW(),

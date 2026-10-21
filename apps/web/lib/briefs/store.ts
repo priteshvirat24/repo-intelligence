@@ -1,6 +1,9 @@
 import { query } from '@repo/database';
-import { BlueprintVerification, BriefBlueprint, BriefCandidate, BriefDetail, BriefSummary, BriefUsage } from '@repo/shared';
+import { BlueprintVerification, BriefBlueprint, BriefCandidate, BriefDetail, BriefSummary, BriefUsage, CandidateClaim } from '@repo/shared';
 import { DEFAULT_BUDGET } from './constraints';
+
+// Connector providers metered against sourceRequests; keep in step with apps/worker/providers/ledger.py SOURCE_PROVIDERS
+const SOURCE_PROVIDERS = ['depsdev', 'osv', 'npm', 'crates', 'stackexchange', 'tavily', 'arxiv', 'docs'];
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -60,7 +63,7 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
      FROM tasks WHERE brief_id = $1`,
     [id]
   );
-  const order = ['understand', 'discover', 'verify', 'blueprint'];
+  const order = ['understand', 'discover', 'verify', 'docs', 'blueprint'];
   brief.tasks = tasksRes.rows.sort((a: any, b: any) => order.indexOf(a.type) - order.indexOf(b.type));
   brief.budget = await getBudget(id, brief.budgetJson || {});
   delete brief.budgetJson;
@@ -88,25 +91,63 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
        rank,
        shortlisted,
        duplicate_of as "duplicateOf",
-       assessment_json as "assessment"
+       assessment_json as "assessment",
+       sources,
+       packages_json as "packages",
+       homepage
      FROM brief_candidates
      WHERE brief_id = $1
      ORDER BY rank ASC`,
     [id]
   );
 
+  const candidates = candidatesRes.rows as BriefCandidate[];
+  await attachEvidence(candidates);
   const { contentHash, ...rest } = brief;
-  return { ...rest, candidates: candidatesRes.rows as BriefCandidate[], blueprint: await getBlueprint(id), usage: await getUsage(id, contentHash) };
+  return { ...rest, candidates, blueprint: await getBlueprint(id), usage: await getUsage(id, contentHash) };
+}
+
+/** Phase 2: registry, advisory, docs and forum claims about the shortlisted candidates (global claims from
+ * the docs task). Capabilities are shown only when quoted from official docs; code-located ones belong to the
+ * verification view. */
+async function attachEvidence(candidates: BriefCandidate[]) {
+  const shortlisted = candidates.filter((c) => c.shortlisted);
+  if (shortlisted.length === 0) return;
+  const subjects = shortlisted.map((c) => `github:${c.fullName.toLowerCase()}`);
+  const res = await query(
+    `SELECT id, subject, kind, statement, grade, status,
+            evidence_json->-1->>'sourceUrl' AS "sourceUrl",
+            evidence_json->-1->>'excerpt' AS excerpt,
+            evidence_json->-1->'locator'->>'section' AS section,
+            evidence_json->-1->'advisoryIds' AS "advisoryIds",
+            evidence_json->-1->>'severity' AS severity
+     FROM claims
+     WHERE subject = ANY($1) AND brief_id IS NULL AND status <> 'refuted'
+       AND (kind IN ('vulnerability', 'known_issue', 'licence_conflict')
+            OR (kind = 'capability' AND evidence_json @> '[{"method": "docs_quote"}]'::jsonb)
+            OR (kind = 'maintenance' AND evidence_json @> '[{"method": "scorecard"}]'::jsonb))
+     ORDER BY subject, kind, grade, statement
+     LIMIT 400`,
+    [subjects]
+  );
+  const bySubject = new Map<string, CandidateClaim[]>();
+  for (const row of res.rows as any[]) {
+    const { subject, ...claim } = row;
+    if (!bySubject.has(subject)) bySubject.set(subject, []);
+    bySubject.get(subject)!.push(claim as CandidateClaim);
+  }
+  for (const c of shortlisted) c.evidence = bySubject.get(`github:${c.fullName.toLowerCase()}`) || [];
 }
 
 async function getBudget(briefId: string, budgetJson: any) {
   const res = await query(
-    `SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND operation <> 'embedding')::int AS "llmCalls",
-            COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github'), 0)::int AS tokens,
-            COUNT(*) FILTER (WHERE provider = 'github')::int AS "githubRequests"
+    `SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND provider <> ALL($3) AND operation <> 'embedding')::int AS "llmCalls",
+            COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github' AND provider <> ALL($3)), 0)::int AS tokens,
+            COUNT(*) FILTER (WHERE provider = 'github')::int AS "githubRequests",
+            COUNT(*) FILTER (WHERE provider = ANY($3))::int AS "sourceRequests"
      FROM provider_usage
      WHERE scope_type = 'brief' AND scope_id = $1::text AND ($2::timestamptz IS NULL OR created_at >= $2::timestamptz)`,
-    [briefId, budgetJson.resetAt || null]
+    [briefId, budgetJson.resetAt || null, SOURCE_PROVIDERS]
   );
   return { limits: { ...DEFAULT_BUDGET, ...(budgetJson.limits || {}) }, used: res.rows[0] };
 }
@@ -134,12 +175,12 @@ async function getUsage(briefId: string, contentHash: string): Promise<BriefUsag
             SUM(u.cost_cents)::float AS cost,
             COUNT(*) FILTER (WHERE u.cost_cents IS NULL)::int AS unpriced
      FROM provider_usage u
-     WHERE (u.scope_type = 'brief_upload' AND u.scope_id = left($2, 16))
+     WHERE u.provider <> ALL($3) AND ((u.scope_type = 'brief_upload' AND u.scope_id = left($2, 16))
         OR (u.scope_type = 'brief' AND u.scope_id = $1::text)
         OR (u.scope_type = 'blueprint' AND u.scope_id IN (SELECT id::text FROM bp))
-        OR (u.scope_type = 'repository_job' AND u.scope_id IN (SELECT id FROM jobs))
+        OR (u.scope_type = 'repository_job' AND u.scope_id IN (SELECT id FROM jobs)))
      GROUP BY 1`,
-    [briefId, contentHash]
+    [briefId, contentHash, SOURCE_PROVIDERS]
   );
   const order = ['understanding', 'discovery', 'verification', 'blueprint'];
   const rows = [...res.rows].sort((a: any, b: any) => order.indexOf(a.stage) - order.indexOf(b.stage));

@@ -10,6 +10,7 @@ const TASK_LABEL: Record<BriefTask['type'], string> = {
   understand: 'Understand the brief',
   discover: 'Discover existing solutions',
   verify: 'Verify against code',
+  docs: 'Check docs, advisories and forums',
   blueprint: 'Write the blueprint'
 };
 
@@ -216,6 +217,13 @@ export const ConstraintsEditor: React.FC<{ brief: BriefDetail; onChanged: () => 
   );
 };
 
+const BUDGET_LABEL: Record<keyof BriefBudget['limits'], string> = {
+  llmCalls: 'AI calls',
+  tokens: 'Tokens',
+  githubRequests: 'GitHub requests',
+  sourceRequests: 'Source requests'
+};
+
 function meter(used: number, limit: number) {
   return `${compactNumber(used)} / ${compactNumber(limit)}`;
 }
@@ -229,7 +237,8 @@ export const BudgetPanel: React.FC<{ briefId: string; budget: BriefBudget; stopp
     <div className="stack gap-2 small">
       <span className="muted">
         Budget used: AI calls {meter(budget.used.llmCalls, budget.limits.llmCalls)} · tokens {meter(budget.used.tokens, budget.limits.tokens)} ·
-        GitHub requests {meter(budget.used.githubRequests, budget.limits.githubRequests)}
+        GitHub requests {meter(budget.used.githubRequests, budget.limits.githubRequests)} ·
+        source requests {meter(budget.used.sourceRequests ?? 0, budget.limits.sourceRequests ?? 0)}
       </span>
       {stopped && (
         <div className="stack gap-2">
@@ -238,9 +247,9 @@ export const BudgetPanel: React.FC<{ briefId: string; budget: BriefBudget; stopp
             <div>The run stopped because its budget was used up. Raise the limits to continue from where it stopped.</div>
           </div>
           <div className="row wrap gap-2">
-            {(['llmCalls', 'tokens', 'githubRequests'] as const).map((key) => (
+            {(['llmCalls', 'tokens', 'githubRequests', 'sourceRequests'] as const).map((key) => (
               <label key={key} className="stack gap-1 xsmall">
-                <span className="label">{key === 'llmCalls' ? 'AI calls' : key === 'tokens' ? 'Tokens' : 'GitHub requests'}</span>
+                <span className="label">{BUDGET_LABEL[key]}</span>
                 <input className="field" type="number" min={1} value={limits[key]} onChange={(e) => setLimits({ ...limits, [key]: Number(e.target.value) })} style={{ width: 140 }} />
               </label>
             ))}

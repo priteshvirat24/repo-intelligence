@@ -16,15 +16,17 @@ export interface BudgetLimits {
   llmCalls?: number;
   tokens?: number;
   githubRequests?: number;
+  /** Package registry, advisory, docs, forum and search requests (connector gateway) */
+  sourceRequests?: number;
 }
 
 const TEXT_FIELDS: Array<keyof BriefConstraints> = ['languages', 'infrastructure', 'prefer', 'avoid', 'notes'];
 const LICENCE_POLICIES: LicencePolicy[] = ['copyleft-flagged', 'permissive-only', 'any'];
 // Defaults per brief run; keep in step with apps/worker/orchestrator/store.py DEFAULT_BUDGET
-export const DEFAULT_BUDGET: Required<BudgetLimits> = { llmCalls: 60, tokens: 400_000, githubRequests: 250 };
+export const DEFAULT_BUDGET: Required<BudgetLimits> = { llmCalls: 60, tokens: 400_000, githubRequests: 250, sourceRequests: 300 };
 
 // Upper bounds keep a typo from authorising an unbounded run
-const BUDGET_MAX: Required<BudgetLimits> = { llmCalls: 500, tokens: 5_000_000, githubRequests: 2000 };
+const BUDGET_MAX: Required<BudgetLimits> = { llmCalls: 500, tokens: 5_000_000, githubRequests: 2000, sourceRequests: 3000 };
 
 export function safeJson(value: unknown): unknown {
   if (typeof value !== 'string' || !value.trim()) return undefined;
