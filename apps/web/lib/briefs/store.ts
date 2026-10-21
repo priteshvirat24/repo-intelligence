@@ -49,7 +49,9 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
        b.answers_json as "answers",
        NULLIF(b.understanding_json, '{}'::jsonb) as "understanding",
        b.budget_json as "budgetJson",
-       b.stop_reason as "stopReason"
+       b.stop_reason as "stopReason",
+       b.challenges_json as "challenges",
+       b.focus_json as "focus"
      FROM briefs b WHERE b.id = $1 AND b.workspace_id = $2`,
     [id, workspaceId]
   );

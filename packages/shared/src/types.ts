@@ -816,3 +816,221 @@ export interface BriefCandidate {
     assessedFromBrief?: string | null;
   };
 }
+
+// Phase 3: the complete engineering blueprint (PRODUCT_DEFINITION 5) and iterating on it (4.1 step 6).
+// BlueprintComponent, BlueprintItem, EngineeringBlueprint and BriefDetail below MERGE with the declarations
+// above (TypeScript declaration merging). Every Phase 3 field is optional, so blueprints written before
+// Phase 3 still type-check and render.
+
+export type EvidenceGrade = 'E1' | 'E2' | 'E3' | 'E4' | 'E5';
+/** PRODUCT_DEFINITION 5.4: 1 available and verified, 2 needs configuration or integration, 3 needs modification,
+ * 4 partially solved, 5 missing (must be built), 6 unresolved */
+export type BuildReuseClass = 1 | 2 | 3 | 4 | 5 | 6;
+export type InventoryAction = 'reuse' | 'adapt' | 'investigate' | 'reject';
+export type LicencePolicyName = 'copyleft-flagged' | 'permissive-only' | 'any';
+export type LicenceStatus = 'compatible' | 'flagged' | 'conflict' | 'missing' | 'unknown';
+export type BlueprintStageName = 'classify' | 'inventory' | 'architecture' | 'guide' | 'roadmap' | 'executive';
+export type BlueprintStageMode = 'llm' | 'fallback' | 'single-call';
+
+export interface BlueprintComponent {
+  class?: BuildReuseClass;
+  classLabel?: string;
+  reason?: string;
+  /** class 2: the configuration or glue work */
+  setup?: string;
+  /** class 3: the modification needed */
+  change?: string;
+  /** class 4: the part no candidate covers */
+  uncovered?: string;
+  /** class 6: the evidence that would resolve it */
+  resolveBy?: string;
+  /** class 5: the discovery queries attributed to this requirement */
+  searched?: string[];
+  evidenceGrades?: EvidenceGrade[];
+  generated?: boolean;
+}
+
+/** Integration guide steps are BlueprintItems with these fields (PRODUCT_DEFINITION 5.6) */
+export interface BlueprintItem {
+  phase?: 'prerequisites' | 'install' | 'configuration' | 'integration' | 'verification';
+  /** Environment variable names only, never values */
+  envVars?: string[];
+  /** Names no cited source mentions: proposed by the model */
+  envVarsProposed?: string[];
+  /** Only when a cited source states it */
+  version?: string;
+  code?: string;
+  /** No step has been executed until build mode (Phase 6) */
+  executed?: boolean;
+  basis?: 'cited' | 'inferred';
+  id?: string;
+}
+
+export interface BlueprintLicenceCheck {
+  licence: string | null;
+  family: 'permissive' | 'copyleft' | 'none' | 'unknown';
+  policy: LicencePolicyName;
+  status: LicenceStatus;
+  note: string;
+  grade?: EvidenceGrade;
+  claimId?: string;
+}
+
+export interface BlueprintInventoryEntry {
+  repo: string;
+  url?: string;
+  kind?: string;
+  version: { commit: string | null; basis: string };
+  verification: 'verified' | 'failed' | 'skipped' | 'not-verified';
+  /** Source ids of cited capabilities */
+  capabilities: string[];
+  modules: Array<{ filePath: string; symbol?: string | null; source: string; url?: string }>;
+  licence: BlueprintLicenceCheck;
+  maintenance: { lastPush: string | null; risk: 'low' | 'medium' | 'high' | 'unknown'; detail: string; grade: EvidenceGrade; dependencies: string[]; basis: string };
+  /** Source ids of located limitations */
+  limitations: string[];
+  limitationsNote?: string;
+  /** Requirements its README assessment says it does not cover */
+  missing: string[];
+  action: InventoryAction;
+  reason: string;
+  requirements: string[];
+  generated?: boolean;
+}
+
+export interface BlueprintArchitectureComponent {
+  name: string;
+  responsibility: string;
+  origin: 'reused' | 'adapted' | 'new';
+  repo: string | null;
+  requirements: string[];
+  sources: string[];
+  generated?: boolean;
+}
+
+export interface BlueprintArchitecture {
+  components: BlueprintArchitectureComponent[];
+  dataFlows: Array<{ from: string; to: string; data: string; contract: string }>;
+  interfaces: Array<{ name: string; provider: string; consumer: string; contract: string; sources: string[] }>;
+  storage: Array<{ name: string; purpose: string; technology: string }>;
+  externalDependencies: Array<{ name: string; purpose: string; sources: string[] }>;
+  auth: string;
+  failureHandling: string;
+  observability: string;
+  deployment: string;
+  scaling: string;
+  tradeoffs: Array<{ decision: string; reason: string; alternatives: string[] }>;
+  rejectedAlternatives: Array<{ option: string; reason: string; generated?: boolean }>;
+  basis: string;
+}
+
+export interface BlueprintRoadmapTask {
+  id: string;
+  order: number;
+  priority: 1 | 2 | 3;
+  title: string;
+  description: string;
+  requirements: string[];
+  dependsOn: string[];
+  output: string;
+  /** Estimates, not facts */
+  complexity: 'S' | 'M' | 'L';
+  uncertainty: 'low' | 'medium' | 'high';
+  estimate: true;
+  estimateBasis: string;
+  risks: Array<{ risk: string; mitigation: string }>;
+  acceptanceCriteria: string[];
+  tests: string[];
+  acceptanceGenerated?: boolean;
+  testsGenerated?: boolean;
+  generated?: boolean;
+}
+
+export interface BlueprintHumanDecision {
+  id: string;
+  title: string;
+  detail: string;
+  requirement?: string;
+  repo?: string;
+}
+
+export interface BlueprintUncertainty {
+  traceability: Array<{ recommendation: string; requirement?: string; sources: string[]; grades: EvidenceGrade[] }>;
+  conflicts: Array<{ title: string; detail: string; requirement?: string; sources: string[] }>;
+  stale: Array<{ title: string; detail: string; sources: string[] }>;
+  weakDependencies: Array<{ requirement: string | null; detail: string; sources: string[]; grades: EvidenceGrade[] }>;
+  missingVerification: Array<{ repo: string | null; detail: string }>;
+  incompleteResearch: Array<{ title: string; detail: string; requirement?: string }>;
+  humanDecisions: BlueprintHumanDecision[];
+  basis: string;
+}
+
+export interface BlueprintExecutive {
+  strategy: string;
+  buildingBlocks: string[];
+  challenges: string[];
+  remainingWork: { estimate: string; taskCounts: { S: number; M: number; L: number }; label: 'estimate' };
+  topRisks: Array<BlueprintItem & { id: string }>;
+  humanDecisions: BlueprintHumanDecision[];
+  mode: 'llm' | 'fallback';
+}
+
+/** How the blueprint answered a challenge */
+export interface BlueprintChallengeResponse {
+  id?: string;
+  ref: string;
+  requirement: string;
+  repo?: string | null;
+  note: string;
+  /** Computed from the previous and new classification, not taken from the model */
+  outcome: 'changed' | 'upheld';
+  previousClass?: BuildReuseClass | null;
+  newClass: BuildReuseClass;
+  response: string;
+  repoEvidence?: 'verified' | 'readme-only' | 'none' | 'not-a-candidate';
+  evidenceNote?: string;
+  sources?: string[];
+}
+
+export interface BlueprintChange {
+  requirement: string;
+  from: { class: BuildReuseClass | null; decision: BlueprintDecision; repo: string | null } | null;
+  to: { class: BuildReuseClass; decision: BlueprintDecision; repo: string | null };
+  reason: string;
+}
+
+export interface EngineeringBlueprint {
+  schemaVersion?: number;
+  executive?: BlueprintExecutive;
+  classCounts?: Record<string, number>;
+  inventory?: BlueprintInventoryEntry[];
+  architecture?: BlueprintArchitecture;
+  roadmap?: BlueprintRoadmapTask[];
+  uncertainty?: BlueprintUncertainty;
+  challenges?: BlueprintChallengeResponse[];
+  changes?: BlueprintChange[];
+  licencePolicy?: LicencePolicyName;
+  stages?: Partial<Record<BlueprintStageName, BlueprintStageMode>>;
+  revision?: number;
+}
+
+/** A challenge stored on the brief (POST /api/briefs/[id]/challenge) */
+export interface BlueprintChallenge {
+  id: string;
+  requirement: string;
+  repo: string | null;
+  note: string;
+  createdAt: string;
+  createdBy?: string | null;
+}
+
+/** A requirement to investigate deeper (POST /api/briefs/[id]/deepen) */
+export interface BlueprintFocus {
+  requirement: string;
+  createdAt: string;
+}
+
+export interface BriefDetail {
+  challenges?: BlueprintChallenge[];
+  focus?: BlueprintFocus[];
+}

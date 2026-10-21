@@ -149,7 +149,7 @@ class TaskStore:
                 cur.execute(
                     """
                     SELECT id, workspace_id, title, brief_text, constraints_json, answers_json, budget_json,
-                           requirements_json, understanding_json
+                           requirements_json, understanding_json, challenges_json, focus_json
                     FROM briefs WHERE id = %s
                     """,
                     (brief_id,)

@@ -13,6 +13,9 @@ MAX_QUERY_WORDS = 4
 # Promoted 2026-10-21 with the kind-of-tool prompt (eval/results/suite-v1, category-queries-fresh).
 PLANNER_LISTS_CONSTRAINTS = True
 OVERALL = "(overall)"
+# Phase 3, investigate deeper: extra planned queries per focus requirement, and at most this many focus requirements
+FOCUS_EXTRA_QUERIES = 2
+MAX_FOCUS = 3
 
 _STOPWORDS = {
     "a", "an", "and", "the", "of", "for", "to", "in", "on", "with", "using", "via", "from", "by", "or",
@@ -45,6 +48,7 @@ def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning
     procedures: active learned procedures matching the brief (procedural memory), shown to the planner."""
     t = resolve(tuning)
     max_queries, max_words = t.get("discovery.max_queries"), t.get("discovery.max_query_words")
+    max_queries += len(focus_names(requirements_json)) * FOCUS_EXTRA_QUERIES
     names = [r["name"] for r in capability_requirements(requirements_json)]
     constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
@@ -78,6 +82,13 @@ def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERI
     expansions = requirements_json.get("queryExpansions") or []
     if expansions:
         lines.append(f"Related terms: {', '.join(expansions[:10])}")
+    # --- Phase 3: investigate deeper (focus requirements) ---
+    focus = focus_names(requirements_json)
+    if focus:
+        lines.append(f"Investigate deeper: spend {FOCUS_EXTRA_QUERIES} extra queries on each of these, naming other kinds of tool or "
+                     "synonyms than the obvious one:")
+        lines += [f"- {name}" for name in focus]
+    # --- end Phase 3 ---
     lines.append(f"""
 Return JSON: {{"queries": [{{"query": "2-3 keywords", "requirement": "exact requirement name or (overall)"}}]}} with at most {max_queries} queries.""")
     return "\n".join(lines)
@@ -99,6 +110,12 @@ def procedures_block(procedures: Optional[List[Dict[str, Any]]]) -> str:
         return ""
     block = "\n".join(lines)[:MAX_PROCEDURES_CHARS]
     return f"\n\nQueries that worked for similar requirements before (use them when they fit; still follow the rules):\n{block}"
+def focus_names(requirements_json: Dict[str, Any]) -> List[str]:
+    """Phase 3: requirements the user asked to investigate deeper (handlers.run_discover sets
+    focusRequirements), kept only when they name a requirement of the brief; at most MAX_FOCUS."""
+    known = {r["name"].lower(): r["name"] for r in requirements_json.get("requirements", []) if r.get("name")}
+    names = [known[n.lower()] for n in (str(x) for x in requirements_json.get("focusRequirements") or []) if n.lower() in known]
+    return list(dict.fromkeys(names))[-MAX_FOCUS:]
 
 
 def sorted_requirements(requirements_json: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -185,6 +202,11 @@ def heuristic_queries(requirements_json: Dict[str, Any], max_queries: int = MAX_
             seen.add(query.lower())
             planned.append({"query": query, "requirement": requirement})
 
+    # Phase 3: a focus requirement also gets a query from its description, before the others fill the plan
+    for name in focus_names(requirements_json):
+        r = next(r for r in requirements_json["requirements"] if r.get("name") == name)
+        add(keywords(r["name"], 3), name)
+        add(keywords(r.get("description", ""), 3), name)
     for r in capability_requirements(requirements_json):
         add(keywords(r["name"], 3), r["name"])
     for expansion in requirements_json.get("queryExpansions") or []:

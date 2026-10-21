@@ -59,12 +59,24 @@ def fingerprint(ctx: TaskContext) -> str:
         parts = {"requirements": o.get("understand", {}).get("requirements"), "constraints": b["constraints_json"], "tuning": ctx.tuning.version}
         if o.get("recall"):
             parts["memory"] = _memory_inputs(o["recall"])
+        if focus_requirements(b):
+            parts["focus"] = focus_requirements(b)
     elif t == "verify":
         parts = {"shortlist": o.get("discover", {}).get("shortlist"), "count": config.BRIEF_VERIFY_COUNT}
     else:
         parts = {"verification": o.get("verify", {}).get("verification"), "candidates": o.get("discover", {}).get("shortlist"),
                  "tuning": ctx.tuning.version}
+        # Phase 3: the user's challenges and the licence policy change the blueprint
+        if b.get("challenges_json"):
+            parts["challenges"] = b["challenges_json"]
+        if (b.get("constraints_json") or {}).get("licencePolicy"):
+            parts["licencePolicy"] = b["constraints_json"]["licencePolicy"]
     return digest(parts)
+
+
+def focus_requirements(brief: Dict[str, Any]) -> list:
+    """Requirements the user asked to investigate deeper (POST /api/briefs/[id]/deepen), oldest first."""
+    return [f["requirement"] for f in brief.get("focus_json") or [] if isinstance(f, dict) and f.get("requirement")]
 
 
 def run_understand(ctx: TaskContext) -> Outcome:
@@ -118,6 +130,11 @@ def run_discover(ctx: TaskContext) -> Outcome:
     recall = ctx.outputs.get("recall") or {}
     skip = {s["requirement"] for s in recall.get("skipRequirements") or []}
     procedures = recall.get("procedures") or []
+    if focus_requirements(ctx.brief):
+        # Phase 3: the planner spends extra queries on these (discovery/planner.py, FOCUS_EXTRA_QUERIES)
+        requirements = {**requirements, "focusRequirements": focus_requirements(ctx.brief)}
+        # A requirement the user asked to investigate deeper is searched even when memory covers it
+        skip -= set(focus_requirements(ctx.brief))
     github = GitHubSearchClient()
     try:
         runner = DiscoveryRunner(ctx.llm_for("models.discovery"), github, on_step=_step(ctx), tuning=ctx.tuning,
@@ -205,7 +222,8 @@ def run_blueprint(ctx: TaskContext) -> Outcome:
         BriefStore.save_blueprint_state(cur, ctx.brief["id"], "COMPLETED", "DONE", verification, blueprint=blueprint)
 
     decisions = [c["decision"] for c in blueprint["components"]]
-    return Outcome("done", {"decisions": {d: decisions.count(d) for d in set(decisions)}, "sources": len(blueprint["sources"])}, persist=persist)
+    return Outcome("done", {"decisions": {d: decisions.count(d) for d in set(decisions)}, "classes": blueprint.get("classCounts"),
+                            "stages": blueprint.get("stages"), "sources": len(blueprint["sources"])}, persist=persist)
 
 
 HANDLERS = {"understand": run_understand, "recall": run_recall, "discover": run_discover, "verify": run_verify, "blueprint": run_blueprint}

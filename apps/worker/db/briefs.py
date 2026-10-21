@@ -159,14 +159,16 @@ class BriefStore:
     @staticmethod
     def save_blueprint_state(cur, brief_id: str, status: str, step: str, verification: List[Dict[str, Any]],
                              blueprint: Optional[Dict[str, Any]] = None, error: Optional[str] = None):
-        """The brief's blueprint row, read by the web app: verification progress, then the written blueprint."""
+        """The brief's blueprint row, read by the web app: verification progress, then the written blueprint.
+        The previous blueprint stays in place while a new one is prepared (the web app shows it as being
+        revised), so that iterating never blanks the page and the new one can say what changed."""
         cur.execute(
             """
             INSERT INTO brief_blueprints (brief_id, status, step, verification_json, blueprint_json, error_message, completed_at)
             VALUES (%s, %s, %s, %s, %s, %s, CASE WHEN %s = 'COMPLETED' THEN NOW() END)
             ON CONFLICT (brief_id) DO UPDATE SET
                 status = EXCLUDED.status, step = EXCLUDED.step, verification_json = EXCLUDED.verification_json,
-                blueprint_json = COALESCE(EXCLUDED.blueprint_json, CASE WHEN EXCLUDED.status = 'COMPLETED' THEN brief_blueprints.blueprint_json ELSE '{}'::jsonb END),
+                blueprint_json = COALESCE(EXCLUDED.blueprint_json, brief_blueprints.blueprint_json),
                 error_message = EXCLUDED.error_message, completed_at = EXCLUDED.completed_at, updated_at = NOW()
             """,
             (brief_id, status, step, Json(verification), Json(blueprint) if blueprint is not None else None, error, status)
@@ -176,9 +178,20 @@ class BriefStore:
     def load_blueprint_inputs(conn, brief_id: str, verification: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Everything the blueprint is written from: the brief's requirements, its shortlisted candidates
         with their README assessments, and for each verification repository its indexing outcome and
-        verified capabilities (one verified evidence location each), limitations and runtime dependencies."""
+        verified capabilities (one verified evidence location each), limitations and runtime dependencies.
+        Also the constraints (licence policy), the user's challenges, the discovery queries (what was searched),
+        the acceptance criteria and the previous blueprint (what changed)."""
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT title, requirements_json FROM briefs WHERE id = %s", (brief_id,))
+            cur.execute(
+                """
+                SELECT b.title, b.requirements_json, b.constraints_json, b.challenges_json,
+                       b.discovery_json->'queries' AS queries, b.understanding_json->'acceptanceCriteria' AS acceptance,
+                       bp.blueprint_json AS previous
+                FROM briefs b LEFT JOIN brief_blueprints bp ON bp.brief_id = b.id
+                WHERE b.id = %s
+                """,
+                (brief_id,)
+            )
             brief = cur.fetchone()
             cur.execute(
                 """
@@ -242,4 +255,9 @@ class BriefStore:
                         )
                         result["dependencies"] = [dict(r) for r in cur.fetchall()]
                 verified.append(result)
-            return {"title": brief["title"], "requirements": brief["requirements_json"] or {}, "candidates": candidates, "verification": verified}
+            return {
+                "title": brief["title"], "requirements": brief["requirements_json"] or {}, "candidates": candidates, "verification": verified,
+                "constraints": brief["constraints_json"] or {}, "challenges": brief["challenges_json"] or [],
+                "discoveryQueries": brief["queries"] or [], "acceptanceCriteria": brief["acceptance"] or [],
+                "previous": brief["previous"] or {},
+            }
