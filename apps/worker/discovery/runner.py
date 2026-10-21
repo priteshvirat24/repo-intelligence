@@ -117,6 +117,8 @@ class DiscoveryRunner:
         metrics = {
             "queryPlanner": planner_mode,
             "tuningVersion": t.version,
+            # The clock the health and staleness scores used, so a stored run can be re-ranked exactly
+            "rankedAt": now.isoformat(),
             "queries": [
                 {"query": q["query"], "requirement": q["requirement"], "results": query_counts[q["query"]], "searchedAs": searched_as[q["query"]]}
                 for q in planned
@@ -127,4 +129,6 @@ class DiscoveryRunner:
             "githubAuthenticated": self.github.authenticated,
             "durationMs": int((time.time() - started) * 1000),
         }
-        return {"candidates": stored, "metrics": metrics}
+        # pool: every candidate in final order, the kept ones first; the evaluation harness stores their ranking
+        # inputs so a run can be re-ranked offline (apps/worker/evolution/offline.py)
+        return {"candidates": stored, "metrics": metrics, "pool": merged}
