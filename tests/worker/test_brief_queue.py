@@ -327,3 +327,19 @@ def test_verification_queues_then_reuses_an_indexed_repository(clean_target):
     assert sql(db, "SELECT COUNT(*) FROM ingestion_jobs WHERE repository_id = %s", (first["repositoryId"],)) == [(1,)]
     skipped = BriefStore.queue_verification(None, {"fullName": "x/y", "url": "u", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"})
     assert skipped == {"fullName": "x/y", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"}
+
+
+def test_worker_heartbeat_reports_busy_during_long_work():
+    # A long indexing pass or blueprint must not make a working worker look OFFLINE on /api/health
+    import time as _time
+    from types import SimpleNamespace
+    from apps.worker.worker import IngestionWorker
+    beats = []
+    stub = SimpleNamespace(worker_id="w-test", running=True, active_job=None, active_build=None,
+                           active_task={"brief_id": "b1", "type": "blueprint"},
+                           db=SimpleNamespace(record_heartbeat=lambda worker_id, **kw: beats.append(kw)))
+    stop = IngestionWorker._start_worker_heartbeat(stub, interval=0.01)
+    _time.sleep(0.1)
+    stub.running = False
+    stop.set()
+    assert beats and beats[0]["status"] == "BUSY" and beats[0]["metadata"] == {"briefId": "b1", "task": "blueprint"}
