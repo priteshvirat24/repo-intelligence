@@ -1,6 +1,10 @@
 # Open Eye: System Design
 
-**Status:** v0.1, derived from [PRODUCT_DEFINITION.md](PRODUCT_DEFINITION.md) v1.0 (approved with defaults). Each decision here cites the section of the definition it serves, written as **[D§n]**. A design element that cannot cite a requirement does not belong in this document.
+**Status:** v1.0 draft, 2026-10-22. Derived from PRODUCT_DEFINITION.md v2.0.
+
+This is artifact B, the end-state architecture. It describes the system as built after phases P0–P6 and what remains to reach the end state. Each design element cites the requirement it serves in [PRODUCT_DEFINITION.md](PRODUCT_DEFINITION.md), written **[D§n]** (decisions as **[D§14.n]**). An element that cannot cite a requirement does not belong here [D§13]. Delivery order is in [ROADMAP.md](ROADMAP.md); the checklist is in [ACCEPTANCE.md](ACCEPTANCE.md).
+
+Each table marks what exists as **built**, and what does not yet exist as **gap** (section 15).
 
 Contents:
 1. [Requirements that shape the architecture](#1-requirements-that-shape-the-architecture)
@@ -9,15 +13,15 @@ Contents:
 4. [Orchestration: the run graph](#4-orchestration-the-run-graph)
 5. [Discovery and extraction layer](#5-discovery-and-extraction-layer)
 6. [Verification and evidence grading](#6-verification-and-evidence-grading)
-7. [Blueprint generation](#7-blueprint-generation)
+7. [Blueprint and report](#7-blueprint-and-report)
 8. [Memory](#8-memory)
 9. [Controlled evolution](#9-controlled-evolution)
-10. [Evaluation plan](#10-evaluation-plan)
+10. [Evaluation](#10-evaluation)
 11. [Safety, budgets and security](#11-safety-budgets-and-security)
 12. [Technology choices](#12-technology-choices)
-13. [Implementation phases](#13-implementation-phases)
-14. [Risks to this plan](#14-risks-to-this-plan)
-15. [What changes in the current code](#15-what-changes-in-the-current-code)
+13. [Delivery](#13-delivery)
+14. [Risks to this design](#14-risks-to-this-design)
+15. [Gaps between the built system and this design](#15-gaps-between-the-built-system-and-this-design)
 
 ---
 
@@ -27,397 +31,515 @@ Most of the definition can be met by many designs. These requirements cannot, an
 
 | # | Requirement | From | Consequence for the design |
 |---|---|---|---|
-| A1 | Runs take minutes to hours, survive deploys and crashes, and pause for human input | D§4.1, D§6.4, D§7.1 | Durable, resumable execution with an explicit "waiting for a person" state. No work may live only in a web request or process memory. |
-| A2 | Changing a constraint re-runs only what depends on it | D§4.1 step 6, D§4.3 | Every intermediate result is a versioned artifact with known inputs. Recomputation follows dependencies, like a build system. |
-| A3 | Every claim carries an evidence grade, traceable to a source location | D§5.1, D§5.9 | Claims and evidence are first-class records, not text inside reports. Blueprints reference claim ids. |
-| A4 | Budgets, retry limits and delegation limits are enforced, not advisory | D§7.2 | Every external call goes through one gateway that meters cost and refuses calls over budget. |
-| A5 | Improvement must be shown on a fixed benchmark, reproducibly | D§9, D§10 | All tunable behaviour is versioned configuration. External responses can be recorded and replayed, so two configurations are compared on identical inputs. |
-| A6 | Sources and tools are interchangeable | D§3 "not a crawler" | Discovery tools sit behind one connector contract and a registry. The orchestrator never calls a tool directly. |
-| A7 | Third-party code runs only in isolation; build mode is gated | D§7.1, D§11 | A separate sandbox service, reachable only through an interface. The application hosts never execute third-party code. |
-| A8 | Team workspaces with per-project privacy | D§12.1 | Authentication and a workspace id on every record. Memory is scoped (section 8.2). |
-| A9 | Memory with freshness and audit | D§8 | Structured memory tables with provenance, plus a semantic index over them, never the other way round. |
+| A1 | Missions take minutes to hours, survive deploys and crashes, and pause for a person | D§3.3 interruptible, D§5.1, D§7 | Durable, resumable tasks with an explicit "waiting for a person" state. No work lives only in a web request or in process memory. |
+| A2 | Changing a constraint re-runs only what depends on it; later evidence can send work back | D§3.3 incremental, D§5 | Every task output has known inputs and a fingerprint. Recomputation follows dependencies, like a build system. |
+| A3 | Every claim carries a grade and resolves to a source location | D§6.1, D§3.3 inspectable | Claims and evidence are records, not text inside reports. The report cites claim and source ids. |
+| A4 | Budgets, retries and delegation depth are enforced, not advisory | D§11 bounded, D§7 | Every LLM and source call is authorised against the mission budget before it leaves the process. |
+| A5 | Improvement is shown on a fixed benchmark, reproducibly | D§10.2, D§12 | All tunable behaviour is versioned configuration. External responses are recorded and replayed. |
+| A6 | Tools are described in a registry, selected by the planner, and replaceable | D§8, D§2.4 | Sources sit behind one connector contract and a registry. Tasks never open sockets themselves. |
+| A7 | Third-party code runs only in isolation, and only when authorised | D§5.4, D§7, D§11, D§14.4 | A sandbox reached through one interface. Application hosts never execute third-party code. |
+| A8 | Team workspaces, per-project privacy, maintainers who govern | D§9.1, D§11, D§14.1, D§14.9–11 | Sign-in, a workspace id on every private record, roles, and scoped memory. |
+| A9 | Memory with provenance, freshness, correction and audit | D§9.2 | Structured memory tables with provenance; any semantic index sits over them, never the other way round. |
+| A10 | One completion status per mission, never better than the evidence | D§4, D§11 honest | The status is computed from recorded data by rules, not written by a model. |
+| A11 | Every mission is auditable and reproducible | D§11, D§9.2 | An append-only audit log plus an execution record: inputs, configuration version, tool calls, outputs. |
 
 ## 2. Architecture overview
 
 ```mermaid
 flowchart LR
-    U(["User"]) --> WEB
-
-    subgraph App["Open Eye (Railway)"]
-        WEB["Web app<br/>Next.js: UI, API, auth, enqueue only"]
-        ORCH["Orchestrator<br/>run graph scheduler (Python)"]
-        WK["Task workers (Python)<br/>planning, discovery, verification, design, learning"]
-        IDX["Indexing workers (Python)<br/>clone, parse, evidence gate"]
-        GW["Gateway<br/>LLM + connector calls: budget, cache, provenance, record/replay"]
-        DB[("PostgreSQL + pgvector<br/>system of record")]
-        OBJ[("Object storage<br/>raw content, snapshots")]
+    U["User"]
+    subgraph RW["Railway"]
+        WEB["Web app<br>Next.js: UI, API, sign-in, approvals"]
+        DB["PostgreSQL and pgvector<br>system of record and queues"]
+        subgraph WK["Worker service, Python"]
+            IDX["Indexer<br>clone, analysis, evidence gate"]
+            RG["Run graph<br>claims and runs mission tasks"]
+            BLD["Build runner<br>bounded coding loop"]
+            IDLE["Idle jobs<br>revalidation, distillation, monitor"]
+            GW["Connector gateway<br>cache, budget, SSRF, untrusted tag"]
+            SCR["Scraper service<br>page rendering, loopback only"]
+        end
     end
-
-    subgraph Ext["External"]
+    subgraph EXT["External"]
         LLM["LLM providers"]
-        SRC["Sources: GitHub, deps.dev, OSV,<br/>registries, Stack Exchange, search, docs sites"]
-        SBX["Sandbox service<br/>microVMs (E1, build mode)"]
-        GHAPP["GitHub App<br/>(build mode PRs)"]
+        SRC["Sources<br>GitHub, deps.dev, OSV, npm, crates.io,<br>Stack Exchange, Tavily, arXiv, docs sites"]
+        SBX["Sandbox<br>E2B hosted, Docker local"]
+        GH["GitHub<br>branch and pull request after approval"]
     end
-
-    WEB -->|"SQL: create project/run, read state"| DB
-    ORCH -->|"schedules tasks"| DB
-    WK -->|"claim tasks, write artifacts/claims"| DB
+    U --> WEB
+    WEB -->|"write requests, read state"| DB
+    RG -->|"claim tasks, write outputs and claims"| DB
     IDX --> DB
-    WK --> GW
-    IDX --> GW
-    GW --> LLM
+    BLD --> DB
+    IDLE --> DB
+    RG --> GW
     GW --> SRC
-    GW --> OBJ
-    WK -->|"execute, test"| SBX
-    WK -->|"after approval"| GHAPP
+    GW --> SCR
+    RG -->|"metered calls"| LLM
+    RG -->|"E1 checks"| SBX
+    BLD -->|"install and test"| SBX
+    WEB -->|"deliver after approval"| GH
 ```
 
-The rule that holds today stays: **the database is the only contract between processes.** The web app writes requests and reads state. Workers claim tasks. Nothing calls another process directly. (A1, A2)
+In words: the web app and the worker never call each other and share only the database; the worker meters every LLM and source call against the mission budget and runs third-party code only in the sandbox.
 
-| Component | Responsibility | Defined by |
-|---|---|---|
-| Web app | Workspace UI, project and run API, authentication, live status, approvals, evidence panel. It never runs pipeline work. | D§4.2, A1, A8 |
-| Orchestrator | Expands a run into a task graph, schedules ready tasks, invalidates dependents on change, enforces stopping conditions and budgets | D§6.1, D§6.4, A2 |
-| Task workers | Execute one task type each (the roles in D§6.2), as bounded steps | D§6.2 |
-| Indexing workers | The existing repository pipeline (clone, analysis passes, evidence gate), scheduled as tasks; a separate pool so long indexing does not starve research | D§6.2 repository intelligence |
-| Gateway | The single exit for LLM and connector calls: metering, budget refusal, caching, untrusted-content tagging, provenance, record/replay | A4, A5, A6, D§7.3 |
-| PostgreSQL + pgvector | Projects, runs, tasks, artifacts, claims, evidence, memory, configuration versions, evaluation results | A3, A9 |
-| Object storage | Raw fetched content, repository snapshots, benchmark recordings, all content-addressed | A5, D§8.2 provenance |
-| Sandbox service | Ephemeral isolated environments for executing third-party code and build mode | A7 |
+The rule that has held since P0 stays: **the database is the only contract between processes** (A1, A2). The web app writes requests and reads state. Workers claim work with `FOR UPDATE SKIP LOCKED`.
+
+| Component | Responsibility | State | Serves |
+|---|---|---|---|
+| Web app (`apps/web`) | Workspaces A–F, API, sign-in, approvals, evidence drawer. Never runs mission work. | Built; still runs non-GitHub resource ingestion in-process (gap) | D§3.2, A1, A8 |
+| Run graph (`apps/worker/orchestrator`) | Creates a mission's tasks, claims ready ones, fingerprints inputs, invalidates dependents, enforces budgets | Built | D§5, A1, A2, A4 |
+| Indexer (`apps/worker/worker.py`, `analyzer/`) | Clone, analysis passes, evidence gate (E2); partial analysis of large repositories | Built | D§5.4, D§6.1 |
+| Connector gateway and registry (`apps/worker/connectors`) | The single exit for source calls: cache, budget, SSRF check, pacing, untrusted tagging, provenance | Built; GitHub search uses its own metered client outside it (gap) | D§8, A4, A6 |
+| Scraper service (`apps/worker/scraper`) | Renders permitted pages that need a browser | Built; uses a stealth browser that conflicts with D§2.4 (gap) | D§8 layer 4 |
+| Sandbox (`apps/worker/sandbox`) | Ephemeral isolated environments for E1 checks and builds | Built; E2B adapter not yet run against the live service (gap) | A7 |
+| Build runner (`apps/worker/builder`) | Authorised builds, separate from the run graph | Built | D§5.8, D§6.3 |
+| Idle jobs | Memory revalidation and distillation; evolution monitor and rollback | Built | D§9.2, D§10.2 |
+| PostgreSQL with pgvector | Missions, tasks, claims, memory, configuration versions, ledger, evolution history | Built | A3, A9 |
+| Object storage | Replay snapshots and execution records, content-addressed | Gap: snapshots live on the recording machine only | A5, A11 |
+
+### 2.1 Workspaces, routes and APIs
+
+The six workspaces of D§3.2, as they exist today and what each still lacks.
+
+| Workspace | Route today | APIs | Missing for D§3.2 |
+|---|---|---|---|
+| **A. Mission** | `/briefs`, `/briefs/[id]` (run, understanding, requirements) | `POST /api/briefs`; `GET`, `PATCH` (constraints, answers, budget), `DELETE /api/briefs/[id]`; `POST .../discover`, `.../deepen` | The active research plan and its changes; decisions log; pause, resume and stop; completion status and stopping condition |
+| **B. Live research** | Run panel and "How the search ran" on `/briefs/[id]` | `GET /api/briefs/[id]` (polled) | Events labelled actual, planned or example; open questions; sources as they are discovered |
+| **C. Solution comparison** | "Best starting points", "Other candidates", evidence drawer | `GET /api/briefs/[id]`, `POST /api/feedback` | The criteria and weights used; trade-offs in words |
+| **D. Architecture** | "Recommended architecture" with the architecture graph | `POST /api/briefs/[id]/challenge` | Integration order and interfaces as a map (report section 7) |
+| **E. Deliverable** | Blueprint sections and the Build panel | `.../build`, `.../build/[buildId]`, `.../deliver` | The 16-section report, the completion status, a machine-readable export |
+| **F. Memory and evolution** | `/memory`, `/evolution`, `/evaluation` | `/api/memory/*`, `/api/claims/[id]/refute` and `confirm`, `/api/evolution/*` | Findings that failed revalidation per mission; team sharing controls |
+
+**The root route** opens on the Studio (chat over the indexed library), with `/resources`, `/repositories/[id]` and `/capabilities` beside it. D§3.1 requires the product to open on "What do you want to build?". In the end state `/` opens on the brief form. Repository pages remain only as the source-location view behind evidence [D§3.3 inspectable]; the chat surface answers no workspace question and is retired or folded into evidence drill-down [D§3.2, D§2.4].
 
 ## 3. Core data model
 
 ```mermaid
 erDiagram
-    WORKSPACE ||--o{ PROJECT : owns
-    PROJECT ||--o{ RUN : has
-    RUN ||--o{ TASK : "expands into"
-    TASK ||--o{ ARTIFACT : produces
-    ARTIFACT }o--o{ TASK : "consumed by"
-    RESOURCE ||--o{ RESOURCE_VERSION : "observed at"
-    RESOURCE_VERSION ||--o{ CLAIM : "is about"
-    CLAIM ||--o{ EVIDENCE : "supported by"
-    ARTIFACT }o--o{ CLAIM : cites
-    PROJECT ||--o{ DECISION : records
-    DECISION }o--o{ CLAIM : "based on"
-    RUN ||--o{ LEDGER_ENTRY : spends
-    RUN }o--|| CONFIG_VERSION : "runs with"
-    EVAL_RUN }o--|| CONFIG_VERSION : measures
+    WORKSPACE ||--o{ WORKSPACE_MEMBER : "has"
+    USERS ||--o{ WORKSPACE_MEMBER : "joins"
+    WORKSPACE ||--o{ BRIEF : "owns"
+    BRIEF ||--o{ TASK : "runs as"
+    BRIEF ||--o{ BRIEF_CANDIDATE : "finds"
+    BRIEF ||--o| BRIEF_BLUEPRINT : "delivers"
+    BRIEF ||--o{ BUILD : "authorises"
+    BRIEF_CANDIDATE }o--o| REPOSITORY : "indexed as"
+    REPOSITORY ||--o{ CLAIM : "is subject of"
+    BRIEF ||--o{ EPISODE : "remembered as"
+    WORKSPACE ||--o{ PROCEDURE : "learns"
+    CONFIG_VERSION ||--o{ BRIEF : "tunes"
+    CONFIG_VERSION ||--o{ EVOLUTION_EVENT : "records"
+    BRIEF ||--o{ FEEDBACK : "receives"
+    BRIEF ||--o{ PROVIDER_USAGE : "spends"
 ```
 
-| Entity | Purpose | Key fields |
-|---|---|---|
-| **Workspace, Project** | Tenancy and the user's long-lived project | workspace_id, members, licence policy, budgets, constraints |
-| **Run** | One execution of the loop for a project (research or build) | mode, status, stop_reason, config_version, budget_limits, budget_used |
-| **Task** | One unit of work in the run graph | type (role), inputs_fingerprint, depends_on, status (`pending`, `ready`, `running`, `awaiting_input`, `done`, `failed`, `stale`), attempts, lock, budget_reservation |
-| **Artifact** | A versioned output of a task: requirement set, research plan, candidate set, comparison, architecture, blueprint section | kind, version, content (JSON), produced_by_task, input artifact versions |
-| **Resource / ResourceVersion** | Something in the world (repository, package, API, doc page) and the exact state observed | canonical id (e.g. `github:owner/repo`, `pypi:name`), commit, release or content hash, observed_at |
-| **Claim** | One factual statement about a resource version | statement, kind (capability, licence, version, compatibility, maintenance, limitation…), **grade E1–E5**, confidence, scope, revalidate_after |
-| **Evidence** | Why a claim holds | method (executed, code-located, doc-quoted, claimed, inferred), locator (file+lines+commit / URL+section / test run id), excerpt, retrieved_at, source_id |
-| **Decision** | A recorded choice (reuse X for requirement R, reject Y) | reason, claims relied on, alternatives, superseded_by |
-| **Ledger entry** | Metered spend | run, task, provider, operation, units, cost, cached? |
-| **Config version** | Every tunable: model routing, prompts, weights, thresholds, strategies | version, parent, level (L1–L4), content, status (candidate, promoted, retired) |
-| **Eval run** | A benchmark execution | suite version, config version, mode (replay or live), metrics, per-case results |
+In words: a brief is a mission inside a workspace; its tasks, candidates, blueprint and builds hang off it, while claims are about resources and are shared when those resources are public.
 
-**Mapping to what exists:**
-- `resources` and `repositories` become Resource.
-- `evidence` and the capability `knowledge_objects` become Claims graded E2, with their Evidence.
-- README assessments become Claims graded E4.
-- `briefs`, `brief_candidates` and `brief_blueprints` become Project, Run and Artifacts.
+| Entity | Table (migration) | Purpose | End-state change |
+|---|---|---|---|
+| Workspace, member, user | `workspaces`, `workspace_members`, `users` (009) | Tenancy; roles member and maintainer [D§14.1] | Team workspaces with invitations; an operator workspace that governs global configuration [D§14.9] |
+| Mission | `briefs` (006, 009, 011) | Brief, constraints, answers, budget, challenges, focus requirements, run status | `completion_status`, `stopping_condition`, `workflow_profile` [D§4, D§5] |
+| Task | `tasks` (009) | One row per task type per mission: status, `depends_on`, `inputs_fingerprint`, output, attempts, lock | Task contract fields per type [D§5.10] |
+| Candidate | `brief_candidates` (006, 010, 012) | Ranked candidates with signals, sources that found them, README assessment, provenance | Comparison scores per brief-specific criterion [D§5.5] |
+| Blueprint | `brief_blueprints` (007) | The staged blueprint and its change list | One row per version, with a schema version for the export [D§6.2] |
+| Resource | `resources`, `repositories` (001, 005) | Indexed repositories and other sources; analysis scope in `ingestion_jobs.scope_json` | None |
+| Claim | `claims` (009, 012) | Statement, kind, grade E1–E5, subject and subject version, scope, status, evidence list, `revalidate_after` | Applicability context [D§9.2] |
+| Memory | `episodes`, `experiences`, `procedures`, `strategy_records`, `source_stats`, `revalidation_checks` (012) | Episodic, procedural and source-reliability memory | Sharing flags [D§14.11]; admission scores [D§9.2] |
+| Configuration | `config_versions` (008, 013) | Content-hashed tuning, level, status, evidence | Held-out evidence and rollout stage [D§10.2, D§14.12] |
+| Evolution | `feedback`, `label_proposals`, `evolution_proposals`, `evolution_events` (013) | Verdicts, proposals, decisions, rollbacks | Rejection criterion on every proposal [D§10.2 step 4] |
+| Build | `builds` (014) | Scope, status, change set, diff, test report | Failure cause per iteration [D§5.8] |
+| Ledger | `provider_usage` (005, 008) | Every metered LLM and source call, per mission and task | Prices for every model, so cost is reported [D§12, D§14.3] |
+| Cache | `connector_cache` (010) | Source responses by request hash, with TTL | None |
+| Audit log | Gap | Approvals, consequential actions, decision-affecting memory reads, injection detections, sandbox runs | New append-only table [D§11, D§9.2] |
 
 ## 4. Orchestration: the run graph
 
-### 4.1 How it works
-- **A run is a graph of typed tasks** (D§6.1). The orchestrator starts from the brief and adds tasks as earlier artifacts appear. For example, the research plan artifact determines which discovery tasks exist.
-- **Claiming and recovery:** tasks are claimed with `FOR UPDATE SKIP LOCKED`, the same proven pattern as the three queues today (`ingestion_jobs`, `briefs`, `brief_blueprints`). Those three queues become task types in a single `tasks` table, so there is one implementation of claiming, retry and stale-lock recovery.
-- **Incremental recomputation (A2):** a task's `inputs_fingerprint` is a hash of its input artifact versions plus its config version. When an input changes (a new constraint, a revalidated claim, a user challenge), the orchestrator marks every task downstream of it `stale`. Stale tasks re-run only if their fingerprint actually changes. Unaffected artifacts are reused.
-- **Human in the loop (D§4.1, D§7.1):** a task that needs a person (clarifying questions, plan approval over budget, build authorisation) ends in `awaiting_input` with a structured question. The UI shows it, the user's answer becomes an artifact, and dependents become ready.
-- **Budgets (A4):** before a task starts, the orchestrator reserves its estimated budget. The gateway meters actual spend and refuses calls past the run's limits. A refused reservation stops the run with `stop_reason = budget`.
-- **Stopping (D§6.4):** the orchestrator evaluates the four stopping conditions after each task. "Diminishing returns" is concrete: the last *k* research tasks changed no Decision and raised no claim's grade.
-- **Bounds (D§6.3):** a maximum graph depth, maximum tasks per run, maximum attempts per task, and no task may spawn a task of its own type for the same input.
-
-### 4.2 Inside a task
-Most tasks are a fixed sequence of steps: fetch, extract, validate, write. Tasks that need iterative tool use (deep investigation of one repository, build mode coding) run a **bounded agent loop**. That loop has a fixed tool list, a step limit and a budget reservation, and its output is validated against the task's artifact schema before it is accepted. The loop is one task, so it is durable, metered and resumable like any other.
-
-### 4.3 Why not LangGraph or Temporal at the run level
-See the decision record in section 12. In short:
-- **LangGraph:** its checkpointed state graph handles human-in-the-loop well. But one state blob per run does not give dependency-precise recomputation (A2), or relational claims and evidence that evaluation and memory must query (A3, A9).
-- **Temporal:** gives excellent durability, but needs a cluster to operate, and recomputation would still be ours to build.
-- **What we already have:** the Postgres task pattern already runs in production here, and it meets A1–A5 with no new infrastructure. Agent frameworks remain an option *inside* tasks (section 4.2), where their strengths apply.
-
-## 5. Discovery and extraction layer
-
-### 5.1 Connector contract (A6)
-
-Every source implements the same contract and is registered with its declared properties. The orchestrator and task workers call connectors only through the gateway.
-
-```text
-Connector
-  id, source_type (code_host | package_registry | vuln_db | qa_forum | search | docs_site | papers)
-  access_basis (official_api | public_page | rendered_public_page)
-  declared limits: requests/min, cost per call, terms notes, robots policy
-  search(query, filters) -> [Candidate { resource_ref, title, url, snippet, signals, provenance }]
-  fetch(resource_ref | url) -> Document { content_ref, content_hash, retrieved_at, url, licence_hint, access_basis }
-```
-
-**The gateway around every call** handles:
-- the cache, keyed by request hash with a TTL per connector;
-- budget metering;
-- the robots and terms policy;
-- marking content as untrusted;
-- provenance;
-- the record/replay switch used by evaluation (A5).
-
-### 5.2 Connectors, in order of preference (D§7.3: APIs first)
-
-| Source | Access | What it contributes | Phase |
-|---|---|---|---|
-| GitHub REST and GraphQL | Official API | Repository search (with READMEs, as tuned in the prototype), metadata, releases, issues, topics, licence | Now / P1 |
-| GitHub code search | Official API (authenticated) | Finding implementations by symbol or API name | P2 |
-| deps.dev | Official API | Packages across npm, PyPI, Maven, Go, Cargo and NuGet: versions, licences, dependencies, advisories, OpenSSF Scorecard, linked source repositories | P2 |
-| OSV.dev | Official API | Known vulnerabilities per package version | P2 |
-| npm registry, crates.io | Official API | Package search where the registry offers it. PyPI has no search API, so Python packages are found through GitHub and search, then resolved through deps.dev. | P2 |
-| Stack Exchange | Official API | Integration problems and gotchas for candidate packages | P2 |
-| Search provider (Tavily today) | Official API | Official docs, articles, comparable products | P2 |
-| arXiv / Semantic Scholar | Official API | Research papers, when the brief needs algorithms | P2 |
-| Official documentation sites | Public pages | E3 evidence: documented capabilities, configuration, versions | P2 |
-
-The Stack Exchange, PyPI, npm, arXiv and Hacker News clients, de-duplication identifiers and token-bucket limiter in the BridgeAI repository are ported into this contract rather than rewritten.
-
-### 5.3 Crawling and rendering
-
-| Need | Tool | Rule |
-|---|---|---|
-| Clean content from a single page | Firecrawl (in use), with a native fetch fallback behind the SSRF guard | Per page |
-| Crawling a documentation site in scope | **Scrapy** | Allowed-domain list, sitemap first, robots middleware on, AutoThrottle, depth and page caps from the budget, HTTP cache |
-| A permitted page that needs JavaScript or interaction | **Playwright** (headless Chromium or Firefox), through scrapy-playwright for crawls | Only pages that permit automated access |
-| Pages that refuse plain HTTP clients or need a real browser to render | **Scrapling + Camoufox** (worker scraper service, `apps/worker/scraper`; adopted 2026-10-21 by product decision, superseding the earlier rejection) | Guardrails: SSRF checks on the requested and the final URL; login walls are reported as `AUTH_REQUIRED` and never indexed or worked around; no CAPTCHA solving; crawls stay on the starting site and respect robots.txt; the service is loopback-only unless a shared secret is set |
-
-### 5.4 Research strategy (D§3, D§6.4)
-
-The planning task produces a research plan artifact: questions, then source types, then queries, each with an expected value and a cost. Discovery tasks run in order of value per cost. The research planner itself is a strategy, so it is versioned configuration (L2). Strategy memory (section 8) supplies the starting priors for a class of brief.
-
-## 6. Verification and evidence grading
-
-| Grade | Produced by | Mechanism |
-|---|---|---|
-| E1 Executed | Testing task in the sandbox (P6; per-project opt-in, D§12.4) | Install the package or repo at a pinned version, run a generated check against the claim, attach the test run |
-| E2 Verified in code | Indexing workers (the existing evidence gate) | The claim resolves to a real definition or verbatim quote at file, lines and commit. Anything else is rejected, never stored as a placeholder. |
-| E3 Officially documented | Docs extraction task | Quote located in the project's own docs, release notes or API reference at a URL and section; the docs domain is linked to the resource by its metadata |
-| E4 Claimed | README, blog and forum assessment | Recorded with its source and never shown as verified |
-| E5 Inferred | Evaluation and design tasks | Recorded as reasoning, with the claims it was inferred from |
-
-**Rules:**
-- A claim's displayed grade is the highest one its evidence supports.
-- Raising a grade requires new evidence produced by that grade's mechanism.
-- Licence comes from GitHub plus deps.dev and is graded E3. When they conflict, the claim becomes a conflicting-evidence item.
-- Vulnerabilities come from OSV, and maintenance from releases, commits and Scorecard. Both are graded and versioned like any other claim.
-
-**Large repositories:** the prototype skipped CesiumJS-scale repositories because they exceed the size limit. Instead, repositories over the limit get a partial analysis: a sparse checkout of the directories the research plan needs. They are marked as partial in the inventory, so the major frameworks are not missing from it.
-
-## 7. Blueprint generation
-
-The blueprint is a set of artifacts produced by separate tasks, each validated, not one long LLM call (D§5). Each section can then be regenerated alone when its inputs change (A2).
-
-| Step | Input | Output artifact | Validation |
-|---|---|---|---|
-| Classify | Requirements, claims per candidate | Build-vs-reuse class per requirement (D§5.4), with reasons | Classes 1–3 must cite E1–E3 claims; otherwise downgraded to 6 or "investigate further" |
-| Inventory | Candidates, claims, licence policy | Inventory entries with actions (D§5.3) | Every capability listed is a cited claim; licence matches the policy or is flagged |
-| Architecture | Classification, inventory, constraints | Components, flows, interfaces, trade-offs (D§5.5) | Each reused component maps to an inventory entry with action reuse or adapt |
-| Integration guide | Architecture, E2/E3 claims about interfaces and configuration | Ordered steps (D§5.6) | Every step cites a claim or is marked as unexecuted |
-| Roadmap | Classes 3–6, architecture | Tasks with acceptance criteria and tests (D§5.7) | Every non-reused requirement has at least one task; estimates are labelled |
-| Uncertainty report | All of the above | D§5.9 | Generated mostly from data: conflicts, stale claims, E4/E5 dependencies, waiting decisions |
-| Executive recommendation | All of the above | D§5.2 | Written last; may only summarise the artifacts above |
-
-The blueprint stage already built (validated citations, unsupported reuse downgraded to build, data-derived risks) is the seed of the classify, inventory and uncertainty steps.
-
-## 8. Memory
-
-### 8.1 Storage
-
-| Memory (D§8.1) | Stored as | Scope |
-|---|---|---|
-| Project | Project, Run, Artifact, Decision tables | Project, inside the workspace |
-| Technical knowledge | Resource, ResourceVersion, Claim and Evidence tables | **Global** for claims about public sources (they are facts about public code), with workspace-private notes |
-| Experience | `experiences`: outcome, context (resources and versions involved), measured result, linked test runs | Workspace |
-| Source reliability | `source_stats`: per source and source type, claims later verified or refuted, staleness | Global |
-| Strategy | `strategy_records`: brief class, config version, measured metrics | Global (no project content) |
-| Evolution history | `config_versions` plus `eval_runs`, with decisions and reasons | Global |
-
-The semantic index (pgvector) covers claims, experiences and decisions so they can be found by meaning, but the records themselves stay structured.
-
-### 8.2 Behaviour
-- **Revalidation is cheap:** for a GitHub resource, compare the stored commit or release with the current one (one API call). An unchanged source keeps its claims current. A changed source marks its E2 and E3 claims for re-check; the evidence gate re-resolves the locators, which usually takes no LLM call.
-- **Cross-project reuse:** a new project's discovery tasks first query technical memory for resources matching its requirements. Reused claims enter the blueprint tagged with their original verification date, and are revalidated before a decision depends on them.
-- **Deduplication:** a claim is identified by resource, kind and normalised statement. A repeat finding adds evidence to the existing claim instead of creating a new one.
-- **Correction:** a user correction creates a refuting evidence item. Affected claims are downgraded, and the artifacts that cited them are marked `stale` (A2), so dependent projects see the change.
-
-### 8.3 Memory types
-
-Every memory record belongs to exactly one of three types. Each type has one store, one write path and one read path, all behind one API (`apps/worker/memory`); the web app reads the same tables for the `/memory` audit page and mirrors the correction rules.
-
-| Type | Holds | Store | Written by | Read by | Revalidation |
-|---|---|---|---|---|---|
-| **Semantic** | Facts about the world: graded findings about a resource at a version | `claims` (E1–E5, subject and subject version, `revalidate_after`), `source_stats`, `revalidation_checks` | `claims.upsert_claim` during discovery and verification; corroboration after verification; user refute and confirm | The `recall` task (remembered candidates), the audit search | Per kind of finding (maximum age) and whenever the source's commit changes: an idle worker job compares the stored commit with GitHub's (one call, two when something was pushed), keeps unchanged claims current, marks E2/E3 code claims at an old commit `needs_revalidation` and queues a re-index. A claim that is not current is shown as "last verified on …", never as current |
-| **Episodic** | What happened in a specific run: understanding, queries and what each returned, shortlist and rejections with reasons, blueprint decisions, budget used, outcome, later feedback and refutations | `episodes` (`run` per completed, stopped or failed run; `event` for later corrections), `experiences` (build and test outcomes, Phase 6) | `sync_brief_status` when a run reaches COMPLETED, STOPPED or FAILED (idempotent per run state); corrections add event episodes | The `recall` task (similar past runs of the workspace: "a similar brief on <date> chose X; feedback said Y"), the audit page | None: history is permanent; it is annotated, never rewritten. Experiences are flagged when a resource version they depend on changes |
-| **Procedural** | How to do things: a query pattern that found the solution for a kind of requirement, a research strategy for a class of brief, later integration recipes and avoidance rules | `procedures` (candidate, active, retired; trigger, steps, evidence, success and failure counts), fed by `strategy_records` (evaluation metrics per brief class and tuning version) | Distillation (idle worker job and the strategy ingestion CLI): proposed as `candidate` only when at least three distinct briefs succeeded with it and no run contradicts it; a maintainer activates it once it has three successful uses. Run outcomes and refutations update the counts | The `recall` task hands active matching query procedures to the discovery planner (a small, capped block in its prompt) | An active procedure that fails at least half of its uses (four or more) retires itself; strategies are superseded by better-measured ones |
-
-Source reliability is semantic metadata: a smoothed, decaying (90-day half-life) share of a source's claims later corroborated rather than refuted, per source and per source type, exposed for ranking but not yet weighted into it. Strategy records are the measured input of procedural memory.
-
-Cross-project reuse runs as its own task: `recall` depends on `understand`, and `discover` depends on `understand` and `recall`. Remembered candidates join the discovery result with provenance `memory`; a requirement that an earlier brief of the same workspace researched within seven days, with at least three remembered candidates, is not searched again (`searchesAvoided` in the discovery metrics).
-
-## 9. Controlled evolution
-
-- **Everything tunable is configuration:** model routing per task type, prompts, ranking weights, thresholds, query strategies and research priors all live in `config_versions` with levels L1–L3 (D§9.1). Code reads configuration and never hard-codes these values. (Today they are constants in `ranking.py`, `runner.py` and the prompt strings.)
-- **Proposals:** the learning task mines finished runs and evaluation failures for recurring weaknesses, and proposes a candidate configuration with the change and the reason.
-- **Gate:**
-  - the candidate runs on the replay benchmark (section 10.3) at least three times;
-  - it must beat the promoted baseline on its target metric by more than the run-to-run noise;
-  - it must not regress any guard metric beyond tolerance: evidence correctness, grade honesty, cost, latency.
-  - L1 changes that pass are promoted automatically. L2 and L3 changes wait for maintainer approval (D§12.7).
-- **Monitoring and rollback:** live runs record their config version. If live metrics for a promoted version fall below the previous version's band, it is rolled back automatically and the event is logged.
-- **L4 (code):** never self-applied. A proposal at this level becomes an issue or a draft pull request for humans.
-
-## 10. Evaluation plan
-
-### 10.1 The suite (D§10.2)
-- **Suite v1: 15 briefs in 5 domains.**
-  - The domains: geospatial and visualisation; developer tooling; data pipelines; LLM applications; web backends with authentication.
-  - At least 30% sit outside the team's own expertise.
-  - The satellite-tracker brief is case 1.
-- **Labels per brief:**
-  - requirements;
-  - for each requirement, the known solutions, rated *essential* or *acceptable*;
-  - the expected build-vs-reuse class;
-  - **traps**: repositories that look relevant but must be rejected (abandoned, unlicensed, look-alike, too large to be the right base).
-- **Labelling protocol:** two people label each brief independently, disagreements are resolved and recorded, and inter-annotator agreement is reported. Briefs whose agreement is too low to be a reliable ground truth are rewritten.
-- **Storage:** versioned in the repository under `eval/suite-v1/`. Cases are added over time; none are removed. Every production failure becomes a regression case.
-- **Build-mode tasks (P6):** 10 small integration tasks with acceptance tests.
-
-### 10.2 Baselines, recorded before any change (D§10.1)
-- **B0, plain search:** for each brief, the GitHub repository search top 10 for the brief's title terms, plus the search-provider top 10. Scored with the same metrics.
-- **B0s, plain search sorted by stars:** B0 with GitHub's results ordered by stars, what a person tries next. It is the stricter baseline, and the one improvement targets are measured against.
-- **B1, the current prototype:** commit `b411ce7` plus the blueprint stage, on the same cases. Two bugs found while recording it (the decomposer giving up on a long, broken JSON answer, and the planner dropping queries whose requirement name the model shortened) were fixed first. The partial run before the fixes is kept in the run notes as the before-state.
-
-### 10.3 Reproducibility
-- **Record:** the first live run of a suite version records every gateway response (GitHub, registries, pages, READMEs) into a content-addressed snapshot.
-- **Replay:** replay mode serves the snapshot, so configuration A and configuration B see the same external world. LLM calls are not replayed: they run live at low temperature, three times per configuration, and results are reported as mean and spread.
-- **Live runs:** a monthly live run measures drift (new repositories, changed rankings) and refreshes the snapshot as a new suite version.
-
-### 10.4 Metrics and how each is computed
-
-| Metric | Computation | Initial target (to confirm once baselines exist) |
-|---|---|---|
-| Discovery recall@10 | Labelled essential solutions found in the top 10, divided by all labelled essential solutions | B0 + 20 points |
-| Shortlist precision | Shortlisted candidates labelled essential or acceptable, divided by all shortlisted | ≥ 0.8 |
-| Trap rejection | Trap repositories not recommended for reuse or adapt | ≥ 0.9 |
-| Classification accuracy | Requirements whose class matches the label (6 classes) | ≥ 0.75 |
-| Requirement coverage | Requirements with a class and a reason | 1.0 |
-| Evidence correctness | Human audit of 50 sampled E1/E2 claims per suite run | ≥ 0.95 |
-| Grade honesty | Human audit of 50 random claims: share shown above their real grade | ≤ 0.02 |
-| Memory effectiveness | On paired related briefs: research calls avoided, and the share of reused claims that fail revalidation | Measured from P4 |
-| Integration success (P6) | Build tasks whose acceptance tests pass | Measured from P6 |
-| Cost and latency | From the ledger, per brief and per stage | Must not regress beyond 10% without a matching quality gain |
-
-The audit views (a claim, its evidence, correct or incorrect) are part of the product's learning record (D§4.2). Audits are product features, not side scripts.
-
-### 10.5 Cadence
-- **On every pipeline pull request:** a five-brief replay subset in CI.
-- **Weekly:** the full suite in replay.
-- **Monthly:** the full suite live.
-- **Results:** stored in `eval_runs` and shown in the learning record.
-
-## 11. Safety, budgets and security
-
-| Concern | Mechanism | From |
-|---|---|---|
-| Budgets | Per-project limits; reservation per task; gateway refuses calls past limits; live budget display | D§7.2 |
-| Untrusted content | Gateway tags all fetched text. Prompts carry it only inside untrusted-content blocks (as today). Validators accept only schema-conforming output. Detected embedded instructions are logged. | D§7.3, D§11 |
-| SSRF and fetch safety | The existing guard (scheme, DNS-resolved private ranges, redirect re-checks, size caps) moves into the gateway for every connector | D§11 |
-| Repository inspection | Clones as today: shallow, hooks off, symlinks as files, size caps, deleted after use. No code from cloned repositories is executed on application hosts. | A7 |
-| Code execution | Only in the sandbox service. No secrets inside it, egress allowlist, CPU, memory and time caps, destroyed after use. | A7, D§12.4 |
-| Secrets | Provider keys stay in the platform's secret store and are used only by the gateway, never placed in prompts, artifacts, logs or memory. Users' own credentials, if ever needed, are scoped per source and require approval. | D§11 |
-| Authentication and tenancy | Sign-in, workspaces, roles (member, maintainer); every query is scoped by workspace | A8 |
-| Build-mode actions | A GitHub App with per-repository installation and minimal permissions; a branch and pull request only after explicit approval | D§5.8, D§7.1 |
-| Licences | Policy per project (default: copyleft allowed and flagged, D§12.5), applied in the inventory and roadmap | D§11 |
-
-## 12. Technology choices
-
-Each choice names the requirement it serves, what was considered, and when it would be revisited.
-
-| Area | Choice | Why | Alternatives considered | Revisit when |
-|---|---|---|---|---|
-| Web app | **Next.js (keep)** | Already in production; the UI, API routes and streaming exist | — | — |
-| Pipeline language | **Python for all pipeline work** | The indexer, evidence gate and discovery are Python. Web/PDF ingestion and decomposition currently run in-process in the web app, where a deploy kills them (A1), so they move to workers. | Split TS/Python (today) | — |
-| System of record | **PostgreSQL + pgvector (keep)** | Relational claims, evidence and tasks, plus semantic search, in one transactional store (A3, A9) | Separate vector database | Vector volume or query latency exceeds what pgvector serves on one instance |
-| Raw content and snapshots | **S3-compatible object storage** | Content-addressed recordings for replay and provenance (A5) | Postgres large objects | — |
-| Run orchestration | **Own run graph on Postgres** (generalising today's three queues) | Meets durability, waiting for a person, dependency-precise recomputation, budgets and relational audit (A1–A5) with no new infrastructure | **LangGraph** (fits agent loops and human-in-the-loop, but state is one blob per run, with no dependency-precise invalidation or relational evidence); **Temporal** (strongest durability, but a cluster to run, and recomputation still ours) | The scheduler becomes a bottleneck, or we need cross-service workflows; then Temporal |
-| Agent loops inside tasks | **Thin, bounded tool loop over the provider interface** | Few tasks need it; it must be metered and schema-validated like everything else | LangGraph for that loop; vendor agent SDKs | A task's loop needs branching or sub-agents; LangGraph is the first candidate there |
-| LLMs | **Provider-agnostic interface (keep), routing by task tier, decided by the benchmark.** Initial defaults: the most capable model (Claude Opus 5.5) for planning, classification, architecture and the blueprint; a fast model (Claude Haiku 5.5) for high-volume extraction and assessment. OpenAI and Mistral stay supported. | The prototype's failures came from the free-tier small model (invalid or truncated JSON). The planning and design tasks need the strongest structured reasoning. Model choice is L2 configuration, so the evaluation decides, not preference. | Single model for everything | Every benchmark run; routing is configuration |
-| Structured output | **Schema-constrained output where the provider supports it, plus validators** | Several bugs came from free-form JSON (bare arrays, truncation) | Prompt-only JSON (today) | — |
-| Embeddings | **Keep mistral-embed (1024-d) until the benchmark justifies a change** | Changing model means re-embedding everything; only worth doing for a measured retrieval gain | OpenAI text-embedding-3 at 1024 dimensions | A retrieval change wins on the suite |
-| Search provider | **Tavily (keep), behind the connector contract** | Already integrated and cached | Exa, Brave, Serper | Recall on docs and articles is the weak metric |
-| Single-page extraction | **Firecrawl (keep), with native fetch fallback** | Already integrated | — | — |
-| Site crawling | **Scrapy** | Mature support for robots, AutoThrottle, caching, sitemaps and per-domain limits | Firecrawl crawl (per-page cost) | — |
-| Rendering | **Scrapling with Camoufox** for extraction (with the guardrails in section 5.3); **Playwright** for UI testing | One browser-rendering path for extraction, behind the scraper service | Selenium | A site's terms or the guardrails cannot be met |
-| Package, licence and vulnerability data | **deps.dev + OSV.dev** | Official, free, cross-ecosystem; licences, dependencies, advisories, Scorecard | libraries.io (key, rate limits), scraping registries (prohibited) | — |
-| Sandbox | **Managed microVM sandbox service behind a Sandbox interface; E2B and Modal Sandboxes shortlisted, chosen by a P6 spike** (cold start, egress control, cost) | Application hosts must never run third-party code (A7), and Railway containers cannot host nested isolation | Self-hosted Firecracker (operational cost) | — |
-| Build-mode delivery | **GitHub App** | Per-repository permissions, auditable pull requests | Personal access tokens (too broad) | — |
-| Authentication | **Auth.js with GitHub sign-in** | The users are developers; their GitHub identity is useful later for the GitHub App | Clerk, Supabase Auth | — |
-| Observability | **Run and task timeline in the database, plus the ledger and LLM call log; OpenTelemetry traces** | "Record tool calls and outputs" is a product requirement (D§9.2), not just ops | A hosted LLM-observability product (e.g. Langfuse) | Debugging prompt behaviour needs more than the call log |
-| Hosting | **Railway (keep): web, orchestrator, two worker pools, Postgres**; sandbox external | Upload-based deploys already work; separate pools keep indexing from starving research | — | Cost or isolation needs exceed it |
-
-## 13. Implementation phases
-
-Research mode comes first (D§12.2). Each phase ends only when its exit criteria are met on the evaluation suite, and no phase starts features of a later one.
+### 4.1 Tasks
 
 ```mermaid
 flowchart LR
-    P0["P0 Measure"] --> P1["P1 Core platform"]
-    P1 --> P2["P2 Discovery and verification"]
-    P1 --> P3["P3 Complete blueprint"]
-    P2 --> P3
-    P3 --> P4["P4 Memory"]
-    P0 -. "config registry enables L1 tuning early" .-> P5["P5 Controlled evolution"]
-    P4 --> P5
-    P3 -- "targets met" --> P6["P6 Build mode"]
+    U["understand<br>specification, questions"] --> R["recall<br>memory before research"]
+    U --> D["discover<br>search, rank, shortlist"]
+    R --> D
+    D --> V["verify<br>index shortlist, E2"]
+    D --> DOC["docs<br>registry, advisories, docs, E3"]
+    V --> X["execute<br>opt-in sandbox checks, E1"]
+    V --> B["blueprint<br>classify to executive summary"]
+    DOC --> B
+    X --> B
+    R -.-> P["plan, gap<br>research plan by information gain"]
+    P -.-> D
+    B -.-> EV["evaluate, gap<br>completion status and learning"]
 ```
 
-| Phase | Scope | Exit criteria | Size |
+In words: seven task types run today in dependency order; the end state adds an explicit plan task before discovery and an evaluate task after the blueprint.
+
+| Task | Consumes | Produces | Serves |
 |---|---|---|---|
-| **P0 Measure** | Land the blueprint stage after checking it against the definition. Write eval suite v1 (15 labelled briefs, labelling protocol). Build the harness with record/replay. Record LLM calls and costs in the ledger. Move the hard-coded weights and prompts into a config registry. Record baselines B0 and B1. | A reproducible baseline report: B0 and B1 on all metrics that need no new features, run twice with matching results within the noise band | M |
-| **P1 Core platform** | Authentication and workspaces. A single run-graph orchestrator replacing the three queues and the web app's in-process jobs. Decomposition moves into workers. Understanding check (acceptance criteria, at most three questions, assumptions, waiting for a person). Budgets enforced through the gateway. Claim and evidence model with grades (migrate existing evidence to E2 and README assessments to E4). Live status view. | A constraint change re-runs only its dependents (tested); a run stops cleanly on budget; every blueprint statement references a claim; suite metrics no worse than B1 | L |
-| **P2 Discovery and verification** | Connector gateway and contract. Connectors: deps.dev, OSV, npm, crates, Stack Exchange, search for docs, arXiv, GitHub code search. Scrapy docs crawling and Playwright rendering. E3 from official docs. Licence, vulnerability and maintenance claims. Partial analysis of large repositories. Value-per-cost research planner and diminishing-returns stopping. | Recall@10 at least B0 + 20 points; trap rejection ≥ 0.9; evidence correctness ≥ 0.95 | L |
-| **P3 Complete blueprint** | Six-class classification, inventory with all four actions, architecture, integration guide, roadmap with acceptance criteria, uncertainty report, executive recommendation. Iterate without restarting: challenge a decision, deepen one requirement, change a constraint. | Classification accuracy ≥ 0.75; coverage 1.0; grade honesty ≤ 0.02; expert rubric review of 5 blueprints | L |
-| **P4 Memory** | Memory tables and scopes, revalidation by commit or release, cross-project reuse, source reliability updates, audit and correction UI | On paired briefs: research calls reduced with no loss in recall; zero stale claims shown as current in the audit | M |
-| **P5 Controlled evolution** | Feedback capture (marking candidates and decisions right or wrong), weakness mining, L1 auto-tuning under the gate, L2 proposals with maintainer approval, evolution history, automatic rollback, learning record UI | At least one promoted and one rejected change, each with benchmark evidence; a simulated live regression triggers rollback | M |
-| **P6 Build mode** *(starts only when P3 targets are met)* | Sandbox spike and choice. E1 execution checks (per-project opt-in). Implementation task with a bounded coding loop in the sandbox. Test reports. GitHub App pull-request delivery after approval. | Integration success measured on 10 build tasks against a target set after the first measurement; no code executed outside the sandbox (audited) | L |
+| `understand` | Brief, constraints, answers | Requirements (MUST, SHOULD, NICE-TO-HAVE), acceptance criteria, assumptions, at most three questions with a blocking flag | D§5.1 |
+| `recall` | Requirements, memory | Remembered candidates with current claims, similar past episodes, active procedures, requirements not to search again | D§5.2, D§9 |
+| `discover` | Requirements, constraints, recall | Ranked candidates and a shortlist from GitHub and the registries | D§5.3 |
+| `verify` | Shortlist | Shortlisted repositories queued into the indexer; waits until they finish or a maximum wait passes | D§5.4 |
+| `docs` | Shortlist, requirements | deps.dev licence and Scorecard, OSV advisories, official-docs quotes (E3), Stack Exchange issues (E4) | D§5.4, D§11 supply chain |
+| `execute` | Verified claims, opt-in | Claims raised to E1 or refuted by a sandboxed smoke test; skipped without opt-in | D§5.4, D§14.4 |
+| `blueprint` | All of the above, challenges, licence policy | The staged blueprint (section 7) | D§5.5–5.7, D§6.2 |
 
-**Sizes** are relative (S, M, L) and are estimates, per D§5.7. Calendar estimates come after P0, when there is measured throughput to base them on.
+**Mechanics (built):**
+- **Statuses:** `pending`, `running`, `waiting` (re-claimed after `not_before`), `awaiting_input`, `done`, `failed`, `stale`, `cancelled`.
+- **Fingerprints (A2):** each task hashes what its result depends on: inputs, constraints that shape it, tuning version, prompt version. An input change marks the task and everything downstream `stale`; a stale task whose fingerprint is unchanged is marked done without running. The execution opt-in affects only `execute`.
+- **People (A1):** an unanswered blocking question ends `understand` in `awaiting_input`. Non-blocking questions do not hold research back [D§5.1].
+- **Budgets (A4):** each mission has limits (default 60 LLM calls, 400,000 tokens, 250 GitHub requests, 300 source requests). The ledger authorises every call; a refusal fails the task with `stop_reason = budget`, and raising the budget resumes from that task.
+- **Bounds [D§11]:** retry limit per task, lock timeout with heartbeat, maximum verification wait.
+- **Separate queues:** repository indexing (`ingestion_jobs`) is shared across missions, and builds (`builds`) must never start from research [D§7]. Both keep their own queues with the same claiming rules.
 
-## 14. Risks to this plan
+### 4.2 Adaptive workflow (gap)
+
+- **Simplest workflow [D§5]:** `understand` also chooses a workflow profile (for example narrow, standard, extended). The profile sets which tasks are created and their budgets, so a library question does not get the full pipeline.
+- **Research plan [D§5.2]:** a `plan` task writes the plan artifact: questions, solution categories, source types, evidence each decision needs, expected cost. Questions are ordered by information gain, implementation impact, uncertainty reduced and cost. Above the default budget, the plan waits for approval.
+- **Re-planning [D§5.2]:** discovery runs in rounds. After each round the plan is re-scored; it stops on diminishing returns [D§7 stopping]. Each plan change is recorded with its reason and shown in workspace A.
+- **Reversals [D§5]:** a verified licence conflict, a failing integration test, a changed constraint or a failed revalidation invalidates the affected task, and the report records the reversal.
+- **Controls [D§3.3]:** pause sets a flag the claim query respects; resume clears it; stop cancels pending tasks and keeps partial results, labelled partial. Excluding a source invalidates only the tasks whose outputs used it.
+- **Task contracts [D§5.10]:** each task type is registered with objective, inputs, output schema, evidence required, budget share, completion condition and failure policy. The handler output is validated against the schema before it is accepted.
+
+### 4.3 Mission completion status (gap)
+
+Today `briefs.status` summarises the run (QUEUED, RUNNING, AWAITING_INPUT, COMPLETED, STOPPED, FAILED). The five statuses of D§4 are computed by an `evaluate` task from recorded data, never by a model (A10):
+
+| Status [D§4] | Rule over recorded data | Usual stopping condition [D§7] |
+|---|---|---|
+| Complete | Blueprint done; every requirement has a class in 1–5 with its evidence; every acceptance criterion has a covering task or test | Acceptance criteria met |
+| Complete with gaps | Blueprint done; at least one class 6 requirement, each with "resolve by" | Diminishing returns |
+| Partial | A task failed on budget or time; the report covers what was reached | Budget or time limit |
+| Blocked | A blocking question is unanswered, an approval is pending, or a required source is unavailable | Decision needs the user |
+| Failed | No usable blueprint was produced | Stated failure reason |
+
+Every status except Failed produces the full report, with unreached sections marked as such [D§6.2]. Build statuses map from `builds.status`: `succeeded` → Succeeded, `awaiting_approval` → **Needs review**, `failed` → Failed, `delivered` → Delivered [D§4].
+
+### 4.4 Builds
+
+A build is authorised by a maintainer for selected roadmap tasks [D§7, D§5.8]. The runner claims it, then repeats: the model writes files; a fresh sandbox installs dependencies with network, loses its network, and runs the tests; failures go back to the model. It stops when all tests pass, after the iteration limit, or when the budget or sandbox time is used up. It stores the change set, a diff and a test report (passed, failed, untested, needs a human) [D§6.3]. Delivery is a separate, approved request that opens a branch and a draft pull request [D§6.3, D§7].
+
+**Failure diagnosis (gap) [D§5.8]:** after each failed run a diagnose step assigns one of the five causes, with the evidence for it:
+
+| Cause | Evidence used | Action |
+|---|---|---|
+| 1. Implementation wrong | Assertion failures in new code | Fix within the iteration budget |
+| 2. Dependency incompatible | Resolver or import errors, version constraints | Pin or replace within budget; record the incompatibility as a claim |
+| 3. Environment at fault | Sandbox errors, timeouts, missing tools | Retry or adjust the environment; never edit tests to pass |
+| 4. Test inadequate | Test contradicts the acceptance criteria | Change the test only with the reason in the test report |
+| 5. Assumption wrong | Behaviour contradicts a claim or assumption the blueprint relied on | Stop the build; refute the claim; mark `blueprint` stale, so research or design re-runs |
+
+The cause of each iteration is stored on the build and as an episodic experience [D§5.9].
+
+### 4.5 Why our own run graph
+
+Our own Postgres task graph meets A1–A5 with no new infrastructure, and gives dependency-precise invalidation and relational claims, which a per-run state blob (LangGraph) does not. Temporal remains the candidate if the scheduler becomes a bottleneck. The decision record belongs in [TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) [D§8 tool adoption].
+
+## 5. Discovery and extraction layer
+
+### 5.1 Connector contract and gateway (built)
+
+Every source implements one contract (`connectors/base.py`): `search(query, filters)` returns candidates with provenance; `fetch(ref)` returns a document with content hash and access basis. Source types: code host, package registry, vulnerability database, Q&A forum, search, docs site, papers. Access bases: official API, public page, rendered public page. A source without credentials or reachability raises "unavailable", and callers record that and go on [D§7 failure].
+
+The gateway around every call [D§8 efficiency, D§11]:
+- caches by request hash (credentials removed), with a TTL per connector, in `connector_cache`;
+- authorises the call against the mission budget and records it in the ledger;
+- runs the SSRF check on every non-official host and every redirect;
+- paces live requests per connector;
+- marks every response untrusted, and logs instruction-like text [D§11 untrusted content];
+- takes an injectable HTTP client, so the evaluation harness can record and replay (A5).
+
+### 5.2 Tool registry (partly built)
+
+`connectors/registry.py` lists each connector with its source type, access basis, official hosts, cache TTL, pacing and terms note. D§8 requires more, so each entry gains: capabilities, input and output contracts, permissions needed, cost per call, rate limits, observed reliability (success rate and latency from the ledger), failure modes, and when to use and not use it. The planner then selects tools per question from the registry instead of fixed code paths, and adding or removing a tool is a registry change [D§8]. GitHub, the indexer, the scraper and the sandbox are registered too, so the registry describes every discovery and execution tool.
+
+### 5.3 Sources
+
+| Source | Access | Contributes | State |
+|---|---|---|---|
+| GitHub repository search | Official API | Repositories, READMEs, metadata, licence, last push | Built, own metered client (to move behind the gateway) |
+| GitHub code and issue search | Official API, authenticated | Implementations by symbol or API name; known problems | Gap [D§5.3] |
+| npm, crates.io | Official API | Package search, resolved to source repositories | Built (off in the harness by default) |
+| deps.dev | Official API | Licences, dependencies, Scorecard, published packages | Built; dependents not yet followed (gap) [D§5.3] |
+| OSV.dev | Official API | Advisories per package version | Built |
+| Stack Exchange | Official API | Integration problems and gotchas | Built |
+| Tavily | Official API | Docs, articles, comparable products | Built |
+| arXiv | Official API | Papers when the brief needs algorithms | Built |
+| Official docs sites | Public pages, robots honoured | E3 quotes by URL and section | Built |
+| Commercial services and APIs | Search plus vendor docs and pricing pages | Candidates beside the best open alternative and its cost | Gap [D§5.3, D§14.13] |
+| Alternatives | Search, registry metadata, "alternative to" queries | Independent discovery strategies when the first finds too little | Gap [D§5.3] |
+
+PyPI has no search API, so Python packages are found through GitHub and search, then resolved through deps.dev.
+
+### 5.4 Layered retrieval and rendering
+
+| Layer [D§8] | Component | State |
+|---|---|---|
+| 1. Search indexes and structured APIs | Connectors above | Built |
+| 2. Direct repository and docs retrieval | Indexer (shallow clone; sparse checkout for large repositories); docs connector | Built |
+| 3. Structured crawling of permitted sites | A crawler with allowed domains, sitemap first, robots, throttling, page caps from the budget | Gap; the tool is chosen in TECHNOLOGY_DECISIONS.md |
+| 4. Browser rendering of permitted pages | Scraper service | Built, but must change (below) |
+| 5. Targeted deeper investigation | `deepen` re-runs discovery with extra queries for one requirement; re-planning rounds (4.2) | Partly built |
+
+**The scraper conflicts with the definition; resolving it is decision 14, still open [D§2.4, D§8 access, D§14.6, D§14.14].** It uses Scrapling's stealth fetcher with Camoufox, a browser built to evade fingerprinting. It routes a list of "protected" domains straight to it and retries pages that answered with a challenge. D§2.4 rules out fingerprint evasion, and D§14.6 allows a browser only to render permitted pages. In the end state, rendering uses a standard headless browser that identifies itself. A challenge page, a 403 or a sign-in wall is reported as blocked, and the protected-domain routing is removed. The SSRF checks and the `AUTH_REQUIRED` handling stay.
+
+### 5.5 Research plan
+
+The research plan (4.2) is versioned L2 configuration, and active procedures from memory supply its starting priors [D§9, D§10.1]. Today the discovery planner writes queries per requirement and kind of tool, skips requirements memory covers, and stops on diminishing returns. It has no explicit plan artifact or information-gain ordering (gap) [D§5.2].
+
+## 6. Verification and evidence grading
+
+| Grade [D§6.1] | Produced by | Mechanism | State |
+|---|---|---|---|
+| E1 Executed | `execute` task, sandbox | A generated smoke test of one E2 capability claim against the pinned published package; exit 0 raises the claim, anything else adds refuting or inconclusive evidence | Built for npm and PyPI packages only |
+| E2 Verified in code | Indexer evidence gate | The claim resolves to a definition or verbatim quote at file, lines and commit; anything else is rejected | Built |
+| E3 Officially documented | `docs` task; platform API facts | A quote from the project's own docs (linked from its metadata) by URL and section; licence, Scorecard and advisories from deps.dev and OSV | Built |
+| E4 Claimed | README assessment, Stack Exchange | Stored with its source, never shown as verified | Built |
+| E5 Inferred | Blueprint stages | Recorded as reasoning with the claims it rests on | Built |
+
+**Rules [D§6.1]:**
+- A claim shows the highest grade its evidence supports. Raising a grade needs new evidence from that grade's mechanism.
+- A repeat finding adds evidence to the existing claim (identity: subject, kind, normalised statement, scope).
+- Licence, maintenance, vulnerabilities and version compatibility are graded claims like any other. A licence conflict between sources becomes a conflicting-evidence item.
+- Recommendations, assumptions and estimates are labelled as such and never graded.
+
+**Large repositories [D§5.4]:** repositories over the size limit get a partial analysis of the directories the requirements need, marked partial in the inventory (built).
+
+**Duplicates and forks [D§5.4]:** today detection is basic (name and fork flag). The end state uses the fork parent, shared commit history and the package each repository publishes to merge duplicates before ranking (gap).
+
+## 7. Blueprint and report
+
+### 7.1 Stages (built)
+
+The blueprint task runs separate, validated stages, each one LLM call with a deterministic validator and a deterministic fallback. The numbered sources are the only citable evidence [D§6.2 section 13].
+
+| Stage | Output | Validation | Serves |
+|---|---|---|---|
+| Classify | One class per requirement, with reason and sources | Classes 1–4 must cite E1–E3 sources from the named candidate about that requirement; otherwise class 6 | D§5.6 |
+| Inventory | Every candidate: capabilities, reusable modules, licence against policy, maintenance, action (reuse, adapt, investigate, reject) | Every capability is a cited claim; licence checked against the policy [D§14.5] | D§6.2 section 3 |
+| Compare | Gap: brief-specific criteria and weights, scores, written trade-offs | Weights sum to one; every score cites claims | D§5.5 |
+| Architecture | Components (reused, adapted, new), flows, interfaces, operations, rejected alternatives | Each reused component maps to an inventory entry with action reuse or adapt | D§5.7 |
+| Guide | Ordered installation and integration steps | Each step cites a claim, and is marked executed or not | D§6.2 section 9 |
+| Roadmap | Tasks with dependencies, acceptance criteria, tests, risks, estimates | Every requirement in class 2 or higher has a task; estimates labelled | D§5.7 |
+| Uncertainty | Conflicts, stale claims, weak evidence, decisions for a person | Generated from data | D§6.2 section 14 |
+| Executive | Strategy, building blocks, top three risks, decisions needing a human | Written last; may only summarise the stages above | D§6.2 section 1 |
+
+Challenges and the licence policy re-run only this task; "deepen" re-runs discovery and everything after it [D§3.3]. The blueprint lists what changed since the previous version [D§6.2 iteration].
+
+### 7.2 Requirement classes, v2 (gap) [D§5.6, D§14.8]
+
+The built classifier uses the v1 taxonomy. Migration to v2:
+
+| v1 class | v2 class |
+|---|---|
+| 1 Available and verified | 1 Available and verified; stricter: needs E1 or E2 from that candidate |
+| 2 Needs configuration or integration | 2 Needs configuration, or 3 Needs integration: split by whether the named work is settings or glue code; ambiguous rows are re-classified |
+| 3 Needs modification | 4 Partly available, needs modification |
+| 4 Partially solved | 4 Partly available, needs modification, with the uncovered part named |
+| 5 Missing | 5 Not covered, must be built, with the searches recorded |
+| 6 Unresolved | 6 Unresolved, with "resolve by" |
+
+Stored blueprints are migrated by re-running the classify stage on their recorded inputs. The evaluation labels move with them.
+
+### 7.3 The 16-section report (partly built) [D§6.2]
+
+| # | Section | Produced from | State |
+|---|---|---|---|
+| 1 | Executive recommendation | Executive stage | Built |
+| 2 | Requirements and assumptions | `understand`, user corrections | Built |
+| 3 | Existing solutions and source inventory | Inventory stage, with version or commit | Built |
+| 4 | Comparison of the strongest candidates | Compare stage | Gap |
+| 5 | Build-versus-reuse analysis | Classify stage, v2 classes | Built (v1 classes) |
+| 6 | Recommended architecture | Architecture stage | Built |
+| 7 | Component integration map | Architecture interfaces plus guide order | Gap |
+| 8 | Dependencies, versions and compatibility | deps.dev and OSV claims, E1 results | Partly built (not a section) |
+| 9 | Installation and configuration guidance | Guide stage; variable names only | Built |
+| 10 | Implementation roadmap | Roadmap stage | Built |
+| 11 | Acceptance criteria and test plan | `understand` criteria plus roadmap tests | Gap as a section |
+| 12 | Security, licensing and operational risks | Advisories, licence checks, maintenance claims, architecture risks | Built as "Risks" |
+| 13 | Evidence and source citations | Numbered sources with grades | Built |
+| 14 | Unresolved questions and uncertainty | Uncertainty stage, plus what was not searched and why | Partly built |
+| 15 | Expected costs and complexity | Estimates plus ledger-priced operating costs and commercial pricing claims | Gap |
+| 16 | Completion status and next actions | `evaluate` task (4.3) | Gap |
+
+A section with nothing to report says so and why. The report also states which findings came from memory, their verification dates, and whether this mission revalidated them [D§9.2 explicit reuse].
+
+### 7.4 Machine-readable export (gap) [D§6.2]
+
+`GET /api/briefs/[id]/export` returns one versioned JSON document: requirements, classifications with claim ids and grades, inventory, architecture (components, interfaces, flows), roadmap tasks, completion status and stopping condition. It follows a published schema with a version number. The web view and the export render the same stored blueprint, so they cannot disagree.
+
+### 7.5 Build-mode deliverable [D§6.3]
+
+A branch and draft pull request (never a push to a default branch), adapters, configuration, tests, the test report, and an updated report showing which claims execution raised to E1 and which it refuted. Built, apart from the updated report (gap).
+
+## 8. Memory
+
+### 8.1 Layers [D§9.1]
+
+| Layer | Stored as | Scope | State |
+|---|---|---|---|
+| Project | `briefs`, `tasks`, `brief_candidates`, `brief_blueprints` | The project's workspace | Built |
+| Technical knowledge | `claims` | Global for public resources; workspace for private ones | Built |
+| Episodic | `episodes` (one per finished, stopped or failed run, plus correction events), `experiences` (build outcomes) | Workspace | Built |
+| Procedural | `procedures` (candidate, active, retired), fed by `strategy_records` | Workspace, or global when learned from public evaluations | Built |
+| Source and evidence | Evidence on each claim, `source_stats` (90-day decaying reliability), `revalidation_checks` | Follows the finding | Built |
+| Team and organisation | Gap: findings shared across a team's projects by maintainer decision | Authorised members | Gap |
+| Evolution | `config_versions`, `evolution_proposals`, `evolution_events` | Maintainers; visible to users | Built |
+
+### 8.2 Behaviour (built)
+
+- **Recall first [D§5.2]:** `recall` runs before discovery. Remembered candidates join with provenance "memory". A requirement the workspace researched within seven days, with at least three remembered candidates, is not searched again, and the metrics count the searches avoided.
+- **Revalidation [D§9.2 freshness]:** an idle job compares a repository's stored commit with GitHub's (one call, two when something was pushed). Unchanged keeps claims current; changed marks code claims `needs_revalidation` and queues a re-index. A claim that is not current is shown as "last verified on …".
+- **Merging [D§9.2]:** identity is subject, kind, normalised statement and scope; repeats add evidence.
+- **Correction [D§9.2]:** refuting a claim downgrades it, adds an event episode, and marks dependent blueprints stale, so every project that relied on it sees the change.
+- **Procedures [D§10.1 L0]:** proposed only when at least three distinct briefs succeeded with one and none contradicts it; a maintainer activates it; it retires itself when it fails at least half of four or more uses.
+
+### 8.3 End-state additions (gap)
+
+- **Applicability [D§9.2]:** claims, experiences and procedures carry their context (language, framework version, environment). Before reuse, `recall` checks the context against the mission's constraints and drops mismatches with the reason.
+- **Admission by utility [D§9.2]:** each candidate record gets an admission score from grade, provenance and expected reuse (how often its subject recurs). Records below the threshold are not stored; the threshold is L1 configuration.
+- **Team sharing [D§9.1, D§14.11]:** findings about public resources are shared. Episodes, procedures and private project content stay in the workspace unless a maintainer shares them, which copies them to team scope with the project details removed.
+- **Retrieval [D§9.2]:** claims are found by full-text search today. Embedding retrieval over claims, episodes and decisions is added only if it measurably raises research avoided on paired briefs (section 10). The records stay structured.
+- **Audit [D§9.2]:** every memory read that changes a decision (a skipped search, a reused claim, an applied procedure) is written to the audit log with the mission and record ids.
+
+## 9. Controlled evolution
+
+| Level [D§10.1] | Mechanism | State |
+|---|---|---|
+| L0 Memory | Admission, revalidation, procedure activation (section 8) | Built |
+| L1 Configuration | Offline re-ranking of stored runs under candidate tunings (`evolution/tune.py`); paired gate; automatic promotion; logged and reversible | Built; first full pass promoted nothing |
+| L2 Prompts and strategies | `evolution/propose.py`: candidate replay runs, unpaired gate, pending proposal, maintainer approval on `/evolution` | Built; one promotion so far (`category-queries-fresh`) |
+| L3 Workflow | As L2, plus a staged rollout | Gap: no staged rollout |
+| L4 Code, permissions, security | Recorded as a proposal for humans; never applied | Built |
+
+**The gate [D§10.2 steps 5–6] (built):** a candidate is compared with the promoted baseline on at least three runs each. The primary metric is recall@10, then shortlist precision. The noise band is half the baseline's run range, with a floor of 0.005. Guards: shortlist precision or recall@10 (whichever is not the target), shortlist recall, trap rejection among surfaced traps, and cost and latency within 10%. Paired evidence (offline L1) must win in every run. Unpaired evidence (L2, L3) must beat the mean by more than the band, with its worst run above the baseline mean.
+
+**Changes the gate needs (gap):**
+- **More runs and pooled noise [D§10.2 step 5]:** the three-run unpaired gate accepted a change that did nothing (+0.046 recall@10 inside LLM variation). The minimum rises to five runs per side, and noise is estimated from the pooled runs of unchanged versions.
+- **Held-out set [D§10.2, D§14.12]:** a quarter of the benchmark is held out, never used to design or tune. Every L2 and L3 promotion must also pass on it.
+- **Rejection criterion [D§10.2 step 4]:** every proposal states the failure it addresses, the expected benefit, and the result that would reject it, before it is run.
+- **Staged rollout [D§10.1 L3]:** an approved L3 change first serves a share of new missions, and is promoted fully only if live feedback does not regress.
+- **Governance [D§14.9]:** only maintainers of the operator workspace may promote, approve or roll back global configuration. Today any maintainer can, and without sign-in every visitor is a maintainer.
+
+**Monitoring and rollback [D§10.2 step 7] (built):** feedback verdicts carry the tuning version. When the promoted version's negative share exceeds its predecessor's by a margin, on enough verdicts, and a one-sided two-proportion test says it is unlikely to be chance, the predecessor is promoted again and the event is logged.
+
+**Weakness mining [D§10.2 step 3] (built):** recurring findings in evaluation runs (essential not retrieved, ranked low, trap shortlisted, zero-recall brief) become draft candidates for a person to benchmark.
+
+## 10. Evaluation
+
+The full plan is [EVALUATION_PLAN.md](EVALUATION_PLAN.md). This section records what the architecture provides for it.
+
+**Suite v1 [D§12]:** 15 briefs in five domains, with requirements, essential and acceptable solutions, expected classes and traps. The labels are a draft by one AI labeller, checked against GitHub, not yet labelled independently. Absolute numbers are provisional; comparisons on the same labels are meaningful.
+
+**Measured so far** (ministral-8b, free tier; `eval/results/suite-v1`):
+
+| System | Recall@10 | Shortlist precision |
+|---|---|---|
+| B0 plain search, B0s sorted by stars | 0.063 | 0.033 |
+| B1 first default (`cfg-02b30c8854db`) | 0.111 (0.104–0.116) | 0.091 |
+| Integrated default after P2–P6 (`cfg-66b9cecdb37a`) | 0.341 (0.305–0.365) | 0.255 (0.243–0.276) |
+
+**Reproducibility [A5] (built):** record, replay and fill modes serve GitHub and search responses from a content-addressed snapshot. LLM calls always run live. Snapshots hold no credentials. They are not committed, so a replay is reproducible only on the recording machine until they move to object storage (gap).
+
+**What the suite still needs (gap) [D§12]:** independent labels by two people with agreement reported; the adversarial cases D§12 lists; build tasks with acceptance tests; the held-out set [D§14.12]; every observed failure as a regression case; and a manual-research baseline, without which no superiority claim is made [D§1, D§12].
+
+| Area [D§12] | Metric | State |
+|---|---|---|
+| Discovery | Recall@10, recall of all kept, shortlist precision, shortlist recall, trap rejection, lift over B0 | Built |
+| Evidence | Evidence correctness and grade honesty by human audit of sampled claims | Gap: no audit view |
+| Decisions | Classification accuracy against expected classes; requirement coverage; expert review of integration plans | Gap |
+| Execution | Build tasks whose acceptance tests pass | Gap: no build tasks |
+| Efficiency | Calls, tokens, time per brief; cost when the model is priced | Built; cost not priced |
+| Memory | Research avoided and stale-memory errors on paired briefs | Gap |
+| Evolution | Regressions after promotion; improvement against the fixed baseline | Built (history), held-out gap |
+
+**Cadence (gap):** a five-brief replay subset on every pull request that touches the pipeline; the full suite in replay weekly; live monthly to measure drift. No CI runs today.
+
+## 11. Safety, budgets and security
+
+| Concern | Mechanism | State | From |
+|---|---|---|---|
+| Budgets | Per-mission limits; ledger authorisation before each call; retry limits; maximum waits | Built; default set by hand, not from measured cost | D§11, D§14.3 |
+| Isolation | Clones are shallow, hooks off, size-capped, deleted after use; third-party code runs only in the sandbox: no secrets, CPU, memory and process caps, network only to install, destroyed after use | Built; E2B cannot switch network off after install, which is recorded | D§11, A7 |
+| Execution opt-in | Per project, set by a project maintainer only | Gap: any member can set `allowExecution` | D§14.4, D§14.10 |
+| Secrets | Provider keys only in the platform's secret store, used by the gateway and providers; never in prompts, reports, logs or memory | Built | D§11 |
+| Supply chain | Licence, advisories and Scorecard for every shortlisted candidate | Built | D§11 |
+| Untrusted content | Gateway tags all fetched text; prompts carry it only in untrusted blocks; schema validation; instruction-like text logged | Built; logged to stdout, not the audit log | D§11 |
+| Access to sites | robots honoured; SSRF checks; login walls reported as blocked; no CAPTCHA solving; no fingerprint evasion | Gap: stealth browser in the scraper (5.4) | D§2.4, D§8, D§14.6 |
+| Sign-in | GitHub sign-in; every request scoped to its workspace; a public deployment refuses to start or serve without sign-in configured | Gap: sign-in is optional, and without it every visitor shares one workspace as maintainer | D§11, A8 |
+| Approvals | Build start and delivery need a maintainer's explicit approval; spending above budget needs the user | Built | D§7 |
+| Build delivery | A GitHub App with per-repository installation and minimal permissions | Gap: a single token (`GITHUB_BUILD_TOKEN`) | D§7, D§11 |
+| Audit and reproducibility | Append-only audit log per mission; execution record from tasks, fingerprints, configuration version and ledger; audit view in workspace A | Partly built: the pieces exist, the log and view do not | D§11, A11 |
+| Honesty | Statuses computed from data (4.3); unavailable sources reported per candidate; nothing filled in for a failed source | Built for sources; statuses gap | D§11, D§4 |
+
+## 12. Technology choices
+
+Each choice names the requirement it serves. The full record, with evidence and rejected options, is [TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) [D§8 tool adoption].
+
+| Area | Choice | Why | Revisit when |
+|---|---|---|---|
+| Web app | Next.js | In production; UI, API routes and polling exist | — |
+| Mission work | Python workers | Indexer, evidence gate, discovery and blueprint are Python; work in workers survives deploys (A1) | — |
+| System of record | PostgreSQL with pgvector | Relational claims, tasks and memory in one transactional store (A3, A9) | Vector volume or latency exceeds one instance |
+| Orchestration | Own task graph on Postgres | Section 4.5 | The scheduler becomes a bottleneck; then Temporal |
+| LLMs | Provider-agnostic interface; routing by tuning keys (`models.discovery`, `models.blueprint`) | Model choice is L2 configuration, decided by the benchmark [D§10.1]. All measurements so far used ministral-8b on the free tier | A paid key allows the planned stronger-model experiment |
+| Structured output | Schema validation with deterministic fallbacks; schema-constrained output where supported | Free-form JSON caused several measured failures | — |
+| Embeddings | mistral-embed (1024 dimensions) for indexed chunks | Changing model means re-embedding everything | A retrieval change wins on the suite |
+| Package data | deps.dev and OSV.dev | Official, free, cross-ecosystem | — |
+| Search | Tavily behind the connector contract | Integrated and cached | Docs and article recall is the weak metric |
+| Rendering | A standard headless browser behind the scraper service | Permitted pages only [D§14.6]; replaces the stealth browser | — |
+| Crawling | To be decided (Scrapy is the candidate) | Layer 3 needs robots, throttling and caps | When layer 3 is built |
+| Sandbox | E2B on Railway; Docker locally | Railway containers cannot host nested isolation (A7) | E2B cold start, egress control or cost fails the build-mode targets |
+| Build delivery | A GitHub App | Per-repository permissions, auditable pull requests | — |
+| Sign-in | Auth.js with GitHub | Users are developers; identity reused by the GitHub App | — |
+| Hosting | Railway: web, worker, Postgres; upload deploys; migrations before each web deploy | Works today; worker uploaded from a staging directory so the web config never applies to it | Cost or isolation exceeds it, or a second worker pool is needed |
+
+## 13. Delivery
+
+Phases, dependencies, completion conditions and release points are in [ROADMAP.md](ROADMAP.md).
+
+**What P0–P6 delivered.** P0 built the evaluation harness with record and replay, the cost ledger, the configuration registry and the B0 and B1 baselines. P1 replaced the brief and blueprint queues with the per-mission task graph, moved brief understanding into the worker, added optional GitHub sign-in with workspaces, enforced budgets and graded claims. P2 added the connector contract, gateway and registry, seven connectors plus official docs, the docs task with E3 evidence, and partial analysis of large repositories. P3 delivered the staged blueprint with six classes (v1 taxonomy), challenge and deepen. P4 added semantic, episodic and procedural memory with revalidation and the recall task. P5 added feedback, gated L1 tuning, L2 proposals, monitoring and rollback. P6 added the sandbox, opt-in E1 checks and build mode with delivery after approval. The integrated default reaches recall@10 0.341 against 0.063 for plain search, on draft labels.
+
+## 14. Risks to this design
 
 | Risk | Effect | Mitigation |
 |---|---|---|
-| Labelling effort for the suite is underestimated | P0 slips, so everything slips | Start with 15 briefs; label known solutions per requirement rather than whole rankings; reuse the satellite brief work |
-| LLM cost of the strongest model at volume | Budgets hit early | Tier routing; cache; the benchmark decides where the strong model is needed |
-| GitHub API limits (search: 30 requests per minute per token) | Slow discovery, especially for concurrent users | Response cache in the gateway; GitHub code search and deps.dev to cut query counts; one installation token per workspace once the GitHub App exists |
-| Replay snapshots drift from the live world | Benchmark wins that do not hold live | Monthly live runs; promotion also requires a non-negative live delta |
-| Expected-information-gain planning is hard to get right | Over- or under-researching | Start with a simple value-per-cost score and diminishing-returns stopping; it is L2 configuration and is tuned by the benchmark |
-| Scope creep inside phases | The definition warns about it | Exit criteria are metric-based; anything that does not move a phase's metrics waits |
+| Draft labels by one labeller | Every metric, and every promotion, rests on uncertain ground truth | Independent labelling before further promotions (ROADMAP Q2) |
+| LLM run-to-run noise larger than real effects | The gate promotes changes that did nothing | Five runs per side, pooled noise, held-out confirmation |
+| Free-tier small model | Look-alike traps accepted; truncated JSON | Validators and fallbacks now; stronger-model routing as an L2 experiment |
+| GitHub limits (code search is stricter than repository search) | Slow discovery for concurrent missions | Gateway cache; registry and deps.dev to cut queries; per-installation tokens once the GitHub App exists |
+| Replay snapshots drift from the live web | Benchmark wins that do not hold live | Monthly live runs; promotion also needs a non-negative live result |
+| Information-gain planning is hard to get right | Over- or under-research | Start with a simple value-per-cost score and diminishing-returns stopping; tune it as L2 configuration |
+| Hosted sandbox unproven | E1 checks and builds cannot run on Railway | Run the E2B adapter against the live service in Q4; keep Docker for local and CI |
+| Scope growth inside phases | The original objective slips [D§13] | Completion conditions are tied to ACCEPTANCE.md items and metrics |
 
-## 15. What changes in the current code
+## 15. Gaps between the built system and this design
 
-| Today | Becomes | Phase |
-|---|---|---|
-| Three queues (`ingestion_jobs`, `briefs`, `brief_blueprints`) with copied claim logic | One `tasks` table and scheduler | P1 |
-| Web app runs web/PDF/YouTube ingestion and decomposition in-process | Worker tasks; the web app only enqueues | P1 |
-| No authentication | Auth.js, workspaces, roles | P1 |
-| `evidence` + capability `knowledge_objects` | Claims (E2) with Evidence | P1 |
-| README assessments in `brief_candidates.assessment_json` | Claims (E4) | P1 |
-| Ranking weights, thresholds and prompts as constants | `config_versions` (L1/L2) | P0 |
-| `provider_usage` written only by Tavily and Firecrawl | Gateway ledger for every LLM and connector call | P0–P1 |
-| `tests/benchmark` (schema and heuristic checks on fixed resources) | Kept as unit-level checks; `eval/` adds the outcome-level suite | P0 |
-| GitHub-only discovery in `apps/worker/discovery/` | The first connector behind the contract | P2 |
-| Blueprint stage (uncommitted) | Seed of P3's classify, inventory and uncertainty steps; landed in P0 | P0 |
+| Area | Built today | This design requires | From | Phase |
+|---|---|---|---|---|
+| Sign-in | Optional; without OAuth every visitor shares one workspace as maintainer | Enforced on public deployments; refuse to serve without it | D§11, A8 | Q1 |
+| Completion status | Run statuses | Five mission statuses and build "Needs review", computed by rules (4.3) | D§4 | Q1 |
+| Report | Nine of sixteen sections built, two partial | All sixteen, each with "nothing to report, because…" when empty | D§6.2 | Q1–Q4 |
+| Requirement classes | v1 taxonomy | v2 classes and migration of stored blueprints and labels (7.2) | D§5.6, D§14.8 | Q1 |
+| Audit log | Ledger, evolution events, revalidation checks | One append-only audit log and a view per mission | D§11, D§9.2 | Q1 |
+| Scraper | Stealth browser, protected-domain routing | Standard headless rendering; challenges reported as blocked | D§2.4, D§14.6 | Q1 |
+| Governance | Any maintainer governs; anyone may opt into execution | Operator-workspace maintainers govern; project maintainers opt in | D§14.9, D§14.10 | Q1 |
+| Mission controls | Change constraints, answers, budget | Pause, resume, stop with partial results kept (Q1); exclude a source (Q4) | D§3.3 | Q1, Q4 |
+| Entry point | Studio chat at `/` | Brief form at `/`; library pages only as evidence views | D§3.1, D§3.2 | Q1 |
+| Deployment | P1–P6 merged, not deployed | Railway deploy with migrations 009–014 and an E2B key | D§11 | Q1 |
+| Benchmark | 15 briefs, draft labels, no held-out split, no build or adversarial cases | Independent labels, adversarial and build cases, held-out set, manual baseline | D§12, D§14.12 | Q2 |
+| Gate | Three runs, unpaired band | Five runs, pooled noise, held-out pass | D§10.2 | Q2 |
+| Reproducibility | Snapshots on the recording machine; no CI | Object storage for snapshots; replay subset in CI | D§11, A5 | Q2 |
+| Cost | Models unpriced; default budget by hand | Priced ledger; default budget from measured cost | D§12, D§14.3 | Q2 |
+| Research plan | Queries per requirement; diminishing-returns stop | Plan artifact by information gain; re-planning rounds; workflow profiles | D§5, D§5.2 | Q3 |
+| Discovery breadth | GitHub repository search, registries, search, papers, docs | GitHub code and issue search; dependents and alternatives; commercial services | D§5.3, D§14.13 | Q3 |
+| Tool registry | Connector list with declared properties | Full D§8 descriptions; planner selects; GitHub, indexer, scraper and sandbox registered | D§8 | Q3 |
+| Live research | Run step and search metrics | Events labelled actual, planned, example; open questions | D§3.2 B | Q3 |
+| Comparison | Ranking scores; inventory actions | Brief-specific criteria, weights, written trade-offs | D§5.5 | Q4 |
+| Design depth | Architecture, guide, roadmap | Integration map, test plan, cost section, export | D§6.2 | Q4 |
+| Existing systems (UC2) and brief inputs | No repository, links, deadline, performance, existing-asset or exclusion fields | Repository and reference-link intake as worker tasks; the missing fields; web in-process ingestion retired | D§2.2, D§3.1, D§5.1 | Q4 |
+| Inspection depth | E1 for npm and PyPI; basic fork detection; E2B never run live | E1 in more ecosystems and through repositories' own tests; fork and duplicate merging; hosted sandbox proven | D§5.4, D§11 | Q4 |
+| Memory | Three memory types, revalidation, recall | Applicability, admission, team sharing, decision-affecting reads audited, embedding retrieval if it wins | D§9 | Q5 |
+| Build mode | Bounded loop, test report, token-based delivery | Five-cause diagnosis; real builds on benchmark tasks; sandbox measured for builds; GitHub App | D§5.8, D§6.3 | Q6 |
+| Evolution | L1 tuner, L2 proposals, rollback | L2 and L3 promotions on held-out evidence; staged rollout; rejection criterion per proposal | D§10 | Q7 |
