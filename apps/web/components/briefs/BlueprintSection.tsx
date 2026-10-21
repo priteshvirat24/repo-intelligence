@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertCircle, ArrowUpRight, CheckCircle2, MinusCircle } from 'lucide-react';
 import { BlueprintComponent, BlueprintItem, BlueprintSource, BriefBlueprint, EngineeringBlueprint } from '@repo/shared';
 import { IndexingProgress } from '@/components/IndexingState';
+import { Feedback } from '@/components/briefs/Feedback';
 
 const DECISION_LABEL: Record<string, string> = { reuse: 'Reuse', adapt: 'Adapt', investigate: 'Investigate', build: 'Build' };
 const DECISION_TONE: Record<string, string> = { reuse: 'badge-verified', adapt: 'badge-inferred', investigate: 'badge-neutral', build: 'badge-outline' };
@@ -158,6 +159,7 @@ const ComponentRow: React.FC<{ component: BlueprintComponent; sources: Map<strin
           </a>
         )}
         {EVIDENCE_LABEL[c.evidence] && <span className="xsmall faint">{EVIDENCE_LABEL[c.evidence]}</span>}
+        <Feedback kind="blueprint_decision" target={c.requirement} subject={`the decision for ${c.requirement}`} />
       </div>
       {c.how && <span className="small muted">{c.how}</span>}
       <Citations ids={c.sources} sources={sources} />
