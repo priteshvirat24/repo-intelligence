@@ -60,7 +60,12 @@ def resolve_package(full_name: str, language: Optional[str], http: Optional[http
     published by someone else is never installed."""
     owner_repo = full_name.lower()
     name = full_name.split("/")[-1]
-    names = list(dict.fromkeys([name, name.lower(), name.lower().replace("_", "-")]))
+    lower = name.lower()
+    # Repositories are often named after the ecosystem (python-sgp4 publishes sgp4); every guess is still
+    # checked against the registry's repository link below
+    stripped = re.sub(r"^(python|py|node|js)[-_.]", "", lower)
+    stripped = re.sub(r"[-_.](python|py|js|node)$", "", stripped)
+    names = list(dict.fromkeys([name, lower, lower.replace("_", "-"), stripped, stripped.replace("_", "-")]))
     lang = (language or "").lower()
     order = ["pypi"] if lang == "python" else ["npm"] if lang in ("javascript", "typescript") else ["pypi", "npm"]
     client = http or httpx.Client(timeout=20.0, follow_redirects=True)

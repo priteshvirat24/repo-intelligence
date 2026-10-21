@@ -190,6 +190,8 @@ def test_package_must_point_back_to_the_repository():
         if request.url.path == "/pypi/orbits/json":
             return httpx.Response(200, json={"info": {"name": "orbits", "version": "1.2.3",
                                                       "project_urls": {"Source": "https://github.com/acme-test/orbits"}}})
+        if request.url.path == "/pypi/sgp4/json":
+            return httpx.Response(200, json={"info": {"name": "sgp4", "version": "2.27", "home_page": "https://github.com/brandon-rhodes/python-sgp4"}})
         if request.url.path == "/pypi/lookalike/json":
             return httpx.Response(200, json={"info": {"name": "lookalike", "version": "9.9", "project_urls": {"Source": "https://github.com/someone-else/lookalike"}}})
         return httpx.Response(404)
@@ -198,6 +200,9 @@ def test_package_must_point_back_to_the_repository():
     assert execution.resolve_package("acme-test/orbits", "Python", http=client) == PACKAGE
     assert execution.resolve_package("acme-test/lookalike", "Python", http=client) is None
     assert execution.resolve_package("acme-test/orbits-extra", "Python", http=client) is None
+    # An ecosystem prefix in the repository name is dropped, and the registry link still has to match
+    assert execution.resolve_package("brandon-rhodes/python-sgp4", "Python", http=client)["name"] == "sgp4"
+    assert execution.resolve_package("someone-else/python-sgp4", "Python", http=client) is None
 
 
 def test_install_commands_are_quoted():
