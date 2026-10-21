@@ -6,19 +6,41 @@ import {
 } from './types';
 import { validateResourceUrlSecurity } from '../security/ssrf';
 
+// Sites that only render their content with JavaScript, or refuse plain HTTP clients
+const BROWSER_RENDERED_DOMAINS = ['linkedin.com', 'twitter.com', 'x.com'];
+const DEFAULT_TIMEOUT_MS = 30000;
+// The service may use its whole budget across both fetch tiers; the request waits a little longer
+const REQUEST_MARGIN_MS = 5000;
+
+function hostMatches(url: string, domains: string[]): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return domains.some((d) => host === d || host.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Client for the worker's scraper service (apps/worker/scraper/api.py). It is used only when the
+ * service URL is configured: WORKER_SCRAPER_URL (or SCRAPLING_API_URL), plus SCRAPER_SECRET when the
+ * service listens beyond loopback.
+ */
 export class ScraplingProvider implements WebExtractionProvider {
   private baseUrl: string;
 
   constructor(customUrl?: string) {
-    this.baseUrl =
-      customUrl ||
-      process.env.WORKER_SCRAPER_URL ||
-      process.env.SCRAPLING_API_URL ||
-      'http://127.0.0.1:8001';
+    this.baseUrl = (customUrl || process.env.WORKER_SCRAPER_URL || process.env.SCRAPLING_API_URL || '').trim();
   }
 
   isAvailable(): boolean {
-    return Boolean(this.baseUrl && this.baseUrl.trim().length > 0);
+    return this.baseUrl.length > 0;
+  }
+
+  private headers(): Record<string, string> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (process.env.SCRAPER_SECRET) headers['X-Scraper-Secret'] = process.env.SCRAPER_SECRET;
+    return headers;
   }
 
   async scrape(url: string, options: ScrapeOptions = {}): Promise<ScrapedPage> {
@@ -34,26 +56,25 @@ export class ScraplingProvider implements WebExtractionProvider {
       };
     }
 
+    if (!this.isAvailable()) {
+      return { url, title: this.extractTitleFromUrl(url), markdown: '', statusCode: 503, success: false, errorMessage: 'Scraper service is not configured' };
+    }
+
     try {
-      const isStealthNeeded =
-        url.includes('linkedin.com') ||
-        url.includes('twitter.com') ||
-        url.includes('x.com') ||
-        (options.waitFor && options.waitFor > 0);
+      const needsBrowser = hostMatches(url, BROWSER_RENDERED_DOMAINS) || Boolean(options.waitFor && options.waitFor > 0);
+      const timeout = options.timeout || DEFAULT_TIMEOUT_MS;
 
       const endpoint = `${this.baseUrl.replace(/\/+$/, '')}/scrape`;
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: this.headers(),
         body: JSON.stringify({
           url,
-          stealth: isStealthNeeded,
-          timeout: options.timeout || 35000,
+          stealth: needsBrowser,
+          timeout,
           waitFor: options.waitFor || 0
         }),
-        signal: AbortSignal.timeout(options.timeout || 40000)
+        signal: AbortSignal.timeout(timeout + REQUEST_MARGIN_MS)
       });
 
       if (!res.ok) {
@@ -93,11 +114,15 @@ export class ScraplingProvider implements WebExtractionProvider {
   }
 
   async crawl(url: string, options: CrawlOptions = {}): Promise<ScrapedPage[]> {
+    const ssrfCheck = await validateResourceUrlSecurity(url);
+    if (!ssrfCheck.valid || !this.isAvailable()) {
+      return [await this.scrape(url)];
+    }
     try {
       const endpoint = `${this.baseUrl.replace(/\/+$/, '')}/crawl`;
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: this.headers(),
         body: JSON.stringify({
           url,
           limit: options.limit || 3

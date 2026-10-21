@@ -192,7 +192,7 @@ The Stack Exchange, PyPI, npm, arXiv and Hacker News clients, de-duplication ide
 | Clean content from a single page | Firecrawl (in use), with a native fetch fallback behind the SSRF guard | Per page |
 | Crawling a documentation site in scope | **Scrapy** | Allowed-domain list, sitemap first, robots middleware on, AutoThrottle, depth and page caps from the budget, HTTP cache |
 | A permitted page that needs JavaScript or interaction | **Playwright** (headless Chromium or Firefox), through scrapy-playwright for crawls | Only pages that permit automated access |
-| Camoufox | **Not adopted** | Its distinguishing feature is fingerprint resistance, which only serves the prohibited use (D§12.6). Playwright already renders permitted pages, in Firefox too. |
+| Pages that refuse plain HTTP clients or need a real browser to render | **Scrapling + Camoufox** (worker scraper service, `apps/worker/scraper`; adopted 2026-10-21 by product decision, superseding the earlier rejection) | Guardrails: SSRF checks on the requested and the final URL; login walls are reported as `AUTH_REQUIRED` and never indexed or worked around; no CAPTCHA solving; crawls stay on the starting site and respect robots.txt; the service is loopback-only unless a shared secret is set |
 
 ### 5.4 Research strategy (D§3, D§6.4)
 
@@ -345,7 +345,7 @@ Each choice names the requirement it serves, what was considered, and when it wo
 | Search provider | **Tavily (keep), behind the connector contract** | Already integrated and cached | Exa, Brave, Serper | Recall on docs and articles is the weak metric |
 | Single-page extraction | **Firecrawl (keep), with native fetch fallback** | Already integrated | — | — |
 | Site crawling | **Scrapy** | Mature support for robots, AutoThrottle, caching, sitemaps and per-domain limits | Firecrawl crawl (per-page cost) | — |
-| Rendering | **Playwright** | Deterministic rendering of permitted pages; also used for UI testing | **Camoufox (rejected, section 5.3)**, Selenium | — |
+| Rendering | **Scrapling with Camoufox** for extraction (with the guardrails in section 5.3); **Playwright** for UI testing | One browser-rendering path for extraction, behind the scraper service | Selenium | A site's terms or the guardrails cannot be met |
 | Package, licence and vulnerability data | **deps.dev + OSV.dev** | Official, free, cross-ecosystem; licences, dependencies, advisories, Scorecard | libraries.io (key, rate limits), scraping registries (prohibited) | — |
 | Sandbox | **Managed microVM sandbox service behind a Sandbox interface; E2B and Modal Sandboxes shortlisted, chosen by a P6 spike** (cold start, egress control, cost) | Application hosts must never run third-party code (A7), and Railway containers cannot host nested isolation | Self-hosted Firecracker (operational cost) | — |
 | Build-mode delivery | **GitHub App** | Per-repository permissions, auditable pull requests | Personal access tokens (too broad) | — |

@@ -371,7 +371,7 @@ Approved 2026-10-21: every decision below takes its proposed default (in *italic
 3. **Default budget per brief** (spend and time). *Default: to be set from measured cost on the benchmark.*
 4. **Executing third-party code** to reach E1: allowed by default in the sandbox, or per project? *Default: per-project opt-in.*
 5. **Licence policy default:** permissive only, or copyleft allowed and flagged? *Default: allowed and flagged, overridable per project.*
-6. **Browser-based research:** limited to pages that permit automated access. Tools such as Camoufox are acceptable only for rendering permitted pages, never to evade detection or restrictions. *Please confirm.*
+6. **Browser-based research:** *Scrapling with Camoufox renders pages that need a browser or refuse plain HTTP clients (decided 2026-10-21).* The limits in section 7.1 still hold: it never gets past logins, paywalls or CAPTCHAs; a sign-in wall is reported as blocked and not indexed.
 7. **Who approves L2–L3 self-improvements:** each user, or a maintainer? *Default: a maintainer, with results visible to users.*
 
 ## Appendix A: Where the current prototype stands against this definition

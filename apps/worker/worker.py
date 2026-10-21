@@ -844,14 +844,20 @@ class IngestionWorker:
 
 
 def start_scraper_daemon(port: int = 8001):
-    """Starts the Scrapling & Camoufox HTTP extraction daemon in a background thread."""
+    """Starts the Scrapling & Camoufox HTTP extraction service in a background thread.
+
+    It listens on SCRAPER_HOST (default 127.0.0.1). To serve the web app over a private network, set
+    SCRAPER_HOST (e.g. "::" on Railway) together with SCRAPER_SECRET; without the secret it will not
+    listen beyond loopback. The socket is bound here, before the thread starts, so a failure is reported
+    at startup instead of killing the thread silently."""
     try:
-        from .scraper.api import run_scraper_server
-        t = threading.Thread(target=run_scraper_server, kwargs={"port": port, "host": "0.0.0.0"}, daemon=True)
-        t.start()
-        print(f"[Worker] Started Scrapling & Camoufox scraper daemon on port {port}", flush=True)
+        from .scraper.api import make_server
+        host = os.getenv("SCRAPER_HOST", "127.0.0.1")
+        server = make_server(port, host, os.getenv("SCRAPER_SECRET"))
+        threading.Thread(target=server.serve_forever, name="scraper-service", daemon=True).start()
+        print(f"[Worker] Scraper service listening on {host}:{port}", flush=True)
     except Exception as e:
-        print(f"[Worker] Could not start Scrapling/Camoufox daemon: {e}", file=sys.stderr, flush=True)
+        print(f"[Worker] Could not start the scraper service: {e}", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":
