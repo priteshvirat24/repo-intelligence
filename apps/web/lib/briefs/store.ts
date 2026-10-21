@@ -62,7 +62,7 @@ export async function getBrief(id: string, workspaceId: string): Promise<BriefDe
      FROM tasks WHERE brief_id = $1`,
     [id]
   );
-  const order = ['understand', 'recall', 'discover', 'verify', 'blueprint'];
+  const order = ['understand', 'recall', 'discover', 'verify', 'execute', 'blueprint'];
   brief.tasks = tasksRes.rows.sort((a: any, b: any) => order.indexOf(a.type) - order.indexOf(b.type));
   brief.budget = await getBudget(id, brief.budgetJson || {});
   delete brief.budgetJson;
@@ -127,6 +127,7 @@ async function getUsage(briefId: string, contentHash: string): Promise<BriefUsag
      SELECT CASE
               WHEN u.scope_type = 'brief_upload' OR u.purpose = 'understanding' THEN 'understanding'
               WHEN u.scope_type = 'brief' AND u.purpose = 'blueprint' THEN 'blueprint'
+              WHEN u.scope_type = 'brief' AND u.purpose IN ('execution', 'build') THEN 'execution'
               WHEN u.scope_type = 'brief' THEN 'discovery'
               WHEN u.scope_type = 'repository_job' THEN 'verification'
               ELSE 'blueprint'
@@ -145,7 +146,7 @@ async function getUsage(briefId: string, contentHash: string): Promise<BriefUsag
      GROUP BY 1`,
     [briefId, contentHash]
   );
-  const order = ['understanding', 'discovery', 'verification', 'blueprint'];
+  const order = ['understanding', 'discovery', 'verification', 'execution', 'blueprint'];
   const rows = [...res.rows].sort((a: any, b: any) => order.indexOf(a.stage) - order.indexOf(b.stage));
   const unpriced = rows.some((r: any) => r.unpriced > 0);
   return {

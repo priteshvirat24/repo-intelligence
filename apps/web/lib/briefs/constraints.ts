@@ -10,6 +10,8 @@ export interface BriefConstraints {
   avoid?: string;
   licencePolicy?: LicencePolicy;
   notes?: string;
+  /** Per-project opt-in to running third-party packages in the sandbox for E1 checks (PRODUCT_DEFINITION 12.4) */
+  allowExecution?: true;
 }
 
 export interface BudgetLimits {
@@ -45,6 +47,8 @@ export function parseConstraints(raw: unknown): BriefConstraints {
   if (typeof r.licencePolicy === 'string' && LICENCE_POLICIES.includes(r.licencePolicy as LicencePolicy)) {
     out.licencePolicy = r.licencePolicy as LicencePolicy;
   }
+  // Only an explicit yes opts in; anything else (absent, false, other strings) leaves execution off
+  if (r.allowExecution === true || r.allowExecution === 'true') out.allowExecution = true;
   return out;
 }
 

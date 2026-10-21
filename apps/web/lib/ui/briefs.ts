@@ -9,6 +9,7 @@ const STEP_LABELS: Record<DiscoveryStep, string> = {
   READING_READMES: 'Reading READMEs of the strongest matches',
   RANKING: 'Ranking candidates',
   VERIFYING: 'Verifying the best repositories against their code',
+  EXECUTING: 'Running checks in the sandbox',
   DESIGNING: 'Writing the blueprint',
   DONE: 'Done',
   FAILED: 'Failed'
@@ -23,6 +24,7 @@ const STEP_PROGRESS: Record<DiscoveryStep, number> = {
   READING_READMES: 45,
   RANKING: 55,
   VERIFYING: 70,
+  EXECUTING: 80,
   DESIGNING: 90,
   DONE: 100,
   FAILED: 100

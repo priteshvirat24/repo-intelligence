@@ -9,6 +9,7 @@ import { Navbar } from '@/components/Navbar';
 import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
 import { BlueprintSection } from '@/components/briefs/BlueprintSection';
+import { BuildPanel } from '@/components/briefs/BuildPanel';
 import { BudgetPanel, ConstraintsEditor, TaskTimeline, UnderstandingPanel } from '@/components/briefs/RunPanel';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { KIND_LABELS, compactNumber, discoveryProgress, discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
@@ -239,6 +240,7 @@ export default function BriefDetailPage() {
                 onChanged={fetchBrief}
               />
             )}
+            {brief.blueprint?.status === 'COMPLETED' && <BuildPanel briefId={brief.id} />}
 
             <section style={{ marginBottom: 'var(--s-7)' }}>
               <div className="rule-head">
@@ -311,7 +313,8 @@ const STAGE_LABEL: Record<BriefUsage['byStage'][number]['stage'], string> = {
   understanding: 'reading the brief',
   discovery: 'discovery',
   verification: 'verifying repositories',
-  blueprint: 'writing the blueprint'
+  blueprint: 'writing the blueprint',
+  execution: 'sandbox checks and builds'
 };
 
 /** What this brief's run spent, from the cost ledger, and which tuning version produced it. */

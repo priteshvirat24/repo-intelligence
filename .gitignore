@@ -7,6 +7,8 @@ node_modules/
 dist/
 out/
 build/
+# ...except the build-mode API route (/api/briefs/[id]/build), which is source
+!apps/web/app/api/briefs/\[id\]/build/
 *.tsbuildinfo
 
 # Python virtual environment & cache

@@ -12,7 +12,8 @@ PIPELINE: Dict[str, List[str]] = {
     "recall": ["understand"],  # Phase 4: memory read before research
     "discover": ["understand", "recall"],
     "verify": ["discover"],
-    "blueprint": ["verify"],
+    "execute": ["verify"],
+    "blueprint": ["verify", "execute"],
 }
 ORDER = list(PIPELINE)
 
