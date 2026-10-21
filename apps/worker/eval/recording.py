@@ -40,17 +40,20 @@ def request_key(request: httpx.Request) -> str:
 
 
 class RecordingTransport(httpx.BaseTransport):
-    """mode: "live" (pass through), "record" (pass through and store), "replay" (serve from the snapshot only)."""
+    """mode: "live" (pass through), "record" (pass through and store), "replay" (serve from the snapshot only),
+    "fill" (serve from the snapshot, fetch and store what is missing: for runs whose queries differ from the
+    recording, e.g. a changed planner prompt; shared requests still see the recorded world)."""
 
     def __init__(self, snapshot_dir: str, mode: str, inner: Optional[httpx.BaseTransport] = None):
-        if mode not in ("live", "record", "replay"):
+        if mode not in ("live", "record", "replay", "fill"):
             raise ValueError(f"Unknown mode {mode!r}")
         self.dir = Path(snapshot_dir)
         self.mode = mode
         self.inner = inner or httpx.HTTPTransport(retries=1)
         self.recorded = 0
         self.replayed = 0
-        if mode == "record":
+        self.fetched = 0
+        if mode in ("record", "fill"):
             self.dir.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
@@ -59,16 +62,17 @@ class RecordingTransport(httpx.BaseTransport):
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         key = request_key(request)
         path = self._path(key)
-        if self.mode == "replay":
-            if not path.exists():
-                raise ReplayMiss(f"No recorded response for {request.method} {request.url.copy_with(query=None)} (key {key[:12]})")
+        if self.mode in ("replay", "fill") and path.exists():
             stored = json.loads(path.read_text())
             self.replayed += 1
             return httpx.Response(stored["status"], headers=stored["headers"], content=base64.b64decode(stored["body"]), request=request)
+        if self.mode == "replay":
+            raise ReplayMiss(f"No recorded response for {request.method} {request.url.copy_with(query=None)} (key {key[:12]})")
 
         response = self.inner.handle_request(request)
         response.read()
-        if self.mode == "record" and response.status_code < 500 and response.status_code != 429:
+        self.fetched += 1
+        if self.mode in ("record", "fill") and response.status_code < 500 and response.status_code != 429:
             # Transient failures are not recorded: replay must reproduce the world, not a bad minute
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({

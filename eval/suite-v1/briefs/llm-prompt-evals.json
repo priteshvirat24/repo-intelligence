@@ -89,7 +89,7 @@
     "traps": [
       {
         "repo": "EleutherAI/lm-evaluation-harness",
-        "reason": "Benchmarks models on academic tasks; not for testing an application's prompts"
+        "reason": "Benchmarks models on academic tasks; not built for testing an application's own prompts (look-alike)."
       }
     ]
   }

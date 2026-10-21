@@ -66,7 +66,7 @@
         "expectedClass": 2,
         "solutions": [
           {
-            "repo": "CloudCannon/pagefind",
+            "repo": "Pagefind/pagefind",
             "rating": "essential"
           },
           {
@@ -97,7 +97,7 @@
     "traps": [
       {
         "repo": "esdoc/esdoc",
-        "reason": "No longer maintained"
+        "reason": "No push since 2024-08 (over two years)."
       }
     ]
   }

@@ -57,7 +57,7 @@
         "expectedClass": 2,
         "solutions": [
           {
-            "repo": "rhasspy/piper",
+            "repo": "OHF-Voice/piper1-gpl",
             "rating": "acceptable"
           },
           {
@@ -97,7 +97,11 @@
     "traps": [
       {
         "repo": "coqui-ai/TTS",
-        "reason": "The company behind it shut down; no longer maintained"
+        "reason": "No push since 2024-08 (over two years); the company behind it closed (reviewer to confirm)."
+      },
+      {
+        "repo": "rhasspy/piper",
+        "reason": "Archived; development continues in OHF-Voice/piper1-gpl."
       }
     ]
   }

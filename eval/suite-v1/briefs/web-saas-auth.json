@@ -57,7 +57,7 @@
         "expectedClass": 2,
         "solutions": [
           {
-            "repo": "boxyhq/jackson",
+            "repo": "ory/polis",
             "rating": "essential"
           },
           {

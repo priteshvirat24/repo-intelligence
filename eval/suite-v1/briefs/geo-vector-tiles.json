@@ -113,12 +113,8 @@
     ],
     "traps": [
       {
-        "repo": "mapbox/tippecanoe",
-        "reason": "Unmaintained upstream; development continues in felt/tippecanoe"
-      },
-      {
         "repo": "mapbox/mapbox-gl-js",
-        "reason": "Version 2 and later are not open source (proprietary licence); MapLibre is the open fork"
+        "reason": "Licence is not an open-source licence (GitHub reports NOASSERTION; v2+ uses the Mapbox Terms of Service); MapLibre GL JS is the open fork. Reviewer to confirm."
       }
     ]
   }

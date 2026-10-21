@@ -1,0 +1,1148 @@
+{
+  "checkedAt": "2026-10-21T12:22:02.938535+00:00",
+  "repositories": {
+    "Automattic/kue": {
+      "archived": false,
+      "description": "Kue is a priority job queue backed by redis, built for node.js.",
+      "fullName": "Automattic/kue",
+      "license": "MIT",
+      "pushedAt": "2024-02-12T17:05:49Z",
+      "stale": true,
+      "stars": 9418
+    },
+    "Bogdanp/dramatiq": {
+      "archived": false,
+      "description": "A fast and reliable background task processing library for Python 3.",
+      "fullName": "Bogdanp/dramatiq",
+      "license": "LGPL-3.0",
+      "pushedAt": "2026-10-15T04:53:25Z",
+      "stale": false,
+      "stars": 5330
+    },
+    "CesiumGS/cesium": {
+      "archived": false,
+      "description": "An open-source JavaScript library for world-class 3D globes and maps :earth_americas:",
+      "fullName": "CesiumGS/cesium",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:08:14Z",
+      "stale": false,
+      "stars": 15862
+    },
+    "ClickHouse/ClickHouse": {
+      "archived": false,
+      "description": "ClickHouse\u00ae is a real-time analytics database management system",
+      "fullName": "ClickHouse/ClickHouse",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:14:37Z",
+      "stale": false,
+      "stars": 50519
+    },
+    "ConduitIO/conduit": {
+      "archived": false,
+      "description": "Conduit streams data between data stores. Kafka Connect replacement. No JVM required.",
+      "fullName": "ConduitIO/conduit",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T05:05:34Z",
+      "stale": false,
+      "stars": 617
+    },
+    "EleutherAI/lm-evaluation-harness": {
+      "archived": false,
+      "description": "A framework for few-shot evaluation of language models.",
+      "fullName": "EleutherAI/lm-evaluation-harness",
+      "license": "MIT",
+      "pushedAt": "2026-09-14T10:51:06Z",
+      "stale": false,
+      "stars": 14285
+    },
+    "Flowm/satvis": {
+      "archived": false,
+      "description": "3D satellite tracker and pass predictor. 16,000+ satellites live on a globe or in a compass-aimed sky view, from CelesTrak element sets. Built with CesiumJS and Vue",
+      "fullName": "Flowm/satvis",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T02:00:22Z",
+      "stale": false,
+      "stars": 409
+    },
+    "Kong/kong": {
+      "archived": false,
+      "description": "\ud83e\udd8d The API and AI Gateway",
+      "fullName": "Kong/kong",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-19T02:45:09Z",
+      "stale": false,
+      "stars": 44288
+    },
+    "Leaflet/Leaflet": {
+      "archived": false,
+      "description": "\ud83c\udf43 JavaScript library for mobile-friendly interactive maps \ud83c\uddfa\ud83c\udde6",
+      "fullName": "Leaflet/Leaflet",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-10-21T12:06:13Z",
+      "stale": false,
+      "stars": 45778
+    },
+    "OHF-Voice/piper1-gpl": {
+      "archived": false,
+      "description": "Fast and local neural text-to-speech engine",
+      "fullName": "OHF-Voice/piper1-gpl",
+      "license": "GPL-3.0",
+      "pushedAt": "2026-10-17T19:52:51Z",
+      "stale": false,
+      "stars": 5941
+    },
+    "OpenLineage/OpenLineage": {
+      "archived": false,
+      "description": "An Open Standard for lineage metadata collection",
+      "fullName": "OpenLineage/OpenLineage",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:02:22Z",
+      "stale": false,
+      "stars": 2717
+    },
+    "OptimalBits/bull": {
+      "archived": false,
+      "description": "Premium Queue package for handling distributed jobs and messages in NodeJS.",
+      "fullName": "OptimalBits/bull",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-17T10:17:16Z",
+      "stale": false,
+      "stars": 16254
+    },
+    "Pagefind/pagefind": {
+      "archived": false,
+      "description": "Static low-bandwidth search at scale",
+      "fullName": "Pagefind/pagefind",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T23:19:54Z",
+      "stale": false,
+      "stars": 5520
+    },
+    "PeerDB-io/peerdb": {
+      "archived": false,
+      "description": "Fast, Simple and a cost effective tool to replicate data from Postgres to Data Warehouses, Queues and Storage",
+      "fullName": "PeerDB-io/peerdb",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-21T08:40:48Z",
+      "stale": false,
+      "stars": 3309
+    },
+    "PrefectHQ/prefect": {
+      "archived": false,
+      "description": "Prefect is a workflow orchestration framework for building resilient data pipelines in Python.",
+      "fullName": "PrefectHQ/prefect",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T08:01:19Z",
+      "stale": false,
+      "stars": 24052
+    },
+    "Project-OSRM/osrm-backend": {
+      "archived": false,
+      "description": "Open Source Routing Machine - C++ backend",
+      "fullName": "Project-OSRM/osrm-backend",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-10-21T09:35:08Z",
+      "stale": false,
+      "stars": 8161
+    },
+    "Redocly/redoc": {
+      "archived": false,
+      "description": "\ud83d\udcd8  OpenAPI/Swagger-generated API Reference Documentation",
+      "fullName": "Redocly/redoc",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T20:05:57Z",
+      "stale": false,
+      "stars": 25971
+    },
+    "SYSTRAN/faster-whisper": {
+      "archived": false,
+      "description": "Faster Whisper transcription with CTranslate2",
+      "fullName": "SYSTRAN/faster-whisper",
+      "license": "MIT",
+      "pushedAt": "2026-10-16T11:12:55Z",
+      "stale": false,
+      "stars": 26012
+    },
+    "TypeStrong/typedoc": {
+      "archived": false,
+      "description": "Documentation generator for TypeScript projects.",
+      "fullName": "TypeStrong/typedoc",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-07-13T01:33:41Z",
+      "stale": false,
+      "stars": 8452
+    },
+    "Unstructured-IO/unstructured": {
+      "archived": false,
+      "description": "Convert documents to structured data effortlessly. Unstructured is open-source ETL solution for transforming complex documents into clean, structured formats for language models.  Visit our website to learn more about our enterprise grade Platform product for production grade workflows, partitioning, enrichments, chunking and embedding.",
+      "fullName": "Unstructured-IO/unstructured",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T06:06:55Z",
+      "stale": false,
+      "stars": 15582
+    },
+    "actions/toolkit": {
+      "archived": false,
+      "description": "The GitHub ToolKit for developing GitHub Actions.",
+      "fullName": "actions/toolkit",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T22:39:03Z",
+      "stale": false,
+      "stars": 5889
+    },
+    "airbytehq/airbyte": {
+      "archived": false,
+      "description": "Open-source data movement for ELT pipelines and AI agents \u2014 from APIs, databases & files to warehouses, lakes, and AI applications. Both self-hosted and Cloud.",
+      "fullName": "airbytehq/airbyte",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T12:06:24Z",
+      "stale": false,
+      "stars": 22252
+    },
+    "algolia/docsearch": {
+      "archived": false,
+      "description": ":blue_book: The easiest way to add search to your documentation.",
+      "fullName": "algolia/docsearch",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T15:04:13Z",
+      "stale": false,
+      "stars": 4381
+    },
+    "apache/airflow": {
+      "archived": false,
+      "description": "Apache Airflow - A platform to programmatically author, schedule, and monitor workflows",
+      "fullName": "apache/airflow",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:19:31Z",
+      "stale": false,
+      "stars": 47240
+    },
+    "apache/apisix": {
+      "archived": false,
+      "description": "The Cloud-Native API Gateway and AI Gateway",
+      "fullName": "apache/apisix",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T00:55:41Z",
+      "stale": false,
+      "stars": 17244
+    },
+    "apache/kafka": {
+      "archived": false,
+      "description": "Apache Kafka - A distributed event streaming platform",
+      "fullName": "apache/kafka",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:57:59Z",
+      "stale": false,
+      "stars": 34099
+    },
+    "astral-sh/ruff": {
+      "archived": false,
+      "description": "An extremely fast Python linter and code formatter, written in Rust.",
+      "fullName": "astral-sh/ruff",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T11:14:24Z",
+      "stale": false,
+      "stars": 50207
+    },
+    "better-auth/better-auth": {
+      "archived": false,
+      "description": "The most comprehensive authentication framework",
+      "fullName": "better-auth/better-auth",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T07:24:05Z",
+      "stale": false,
+      "stars": 30406
+    },
+    "brandon-rhodes/pyephem": {
+      "archived": false,
+      "description": "Scientific-grade astronomy routines for Python",
+      "fullName": "brandon-rhodes/pyephem",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-16T15:27:36Z",
+      "stale": false,
+      "stars": 897
+    },
+    "brandon-rhodes/python-sgp4": {
+      "archived": false,
+      "description": "Python version of the SGP4 satellite position library",
+      "fullName": "brandon-rhodes/python-sgp4",
+      "license": "MIT",
+      "pushedAt": "2026-09-24T12:58:27Z",
+      "stale": false,
+      "stars": 475
+    },
+    "celery/celery": {
+      "archived": false,
+      "description": "Distributed Task Queue (development branch)",
+      "fullName": "celery/celery",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-20T22:12:54Z",
+      "stale": false,
+      "stars": 29029
+    },
+    "changesets/changesets": {
+      "archived": false,
+      "description": "\ud83e\udd8b A tool to manage versioning and changelogs with a focus on monorepos",
+      "fullName": "changesets/changesets",
+      "license": "MIT",
+      "pushedAt": "2026-10-18T15:57:41Z",
+      "stale": false,
+      "stars": 12495
+    },
+    "confident-ai/deepeval": {
+      "archived": false,
+      "description": "The LLM Evaluation Framework",
+      "fullName": "confident-ai/deepeval",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-19T06:25:04Z",
+      "stale": false,
+      "stars": 19009
+    },
+    "consbio/mbtileserver": {
+      "archived": false,
+      "description": "Basic Go server for mbtiles",
+      "fullName": "consbio/mbtileserver",
+      "license": "ISC",
+      "pushedAt": "2025-05-21T15:32:25Z",
+      "stale": false,
+      "stars": 794
+    },
+    "coqui-ai/TTS": {
+      "archived": false,
+      "description": "\ud83d\udc38\ud83d\udcac - a deep learning toolkit for Text-to-Speech, battle-tested in research and production",
+      "fullName": "coqui-ai/TTS",
+      "license": "MPL-2.0",
+      "pushedAt": "2024-08-16T12:07:14Z",
+      "stale": true,
+      "stars": 46145
+    },
+    "csete/gpredict": {
+      "archived": false,
+      "description": "Gpredict satellite tracking application",
+      "fullName": "csete/gpredict",
+      "license": "GPL-2.0",
+      "pushedAt": "2026-10-11T12:14:03Z",
+      "stale": false,
+      "stars": 1195
+    },
+    "dagster-io/dagster": {
+      "archived": false,
+      "description": "An orchestration platform for the development, production, and observation of data assets.",
+      "fullName": "dagster-io/dagster",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-20T22:18:30Z",
+      "stale": false,
+      "stars": 16307
+    },
+    "dbt-labs/dbt": {
+      "archived": false,
+      "description": "dbt enables data analysts and engineers to transform their data using the same practices that software engineers use to build applications.",
+      "fullName": "dbt-labs/dbt",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T09:21:06Z",
+      "stale": false,
+      "stars": 14054
+    },
+    "debezium/debezium": {
+      "archived": false,
+      "description": "Change data capture for a variety of databases. Please log issues at https://github.com/debezium/dbz/issues.",
+      "fullName": "debezium/debezium",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T08:44:53Z",
+      "stale": false,
+      "stars": 13253
+    },
+    "deepset-ai/haystack": {
+      "archived": false,
+      "description": "Open-source AI orchestration framework for building context-engineered, production-ready LLM applications. Design modular pipelines and agent workflows with explicit control over retrieval, routing, memory, and generation. Built for scalable agents, RAG, multimodal applications, semantic search, and conversational systems.",
+      "fullName": "deepset-ai/haystack",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:18:47Z",
+      "stale": false,
+      "stars": 26801
+    },
+    "dependabot/dependabot-core": {
+      "archived": false,
+      "description": "\ud83e\udd16 Dependabot's core logic for creating update PRs.",
+      "fullName": "dependabot/dependabot-core",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T11:09:06Z",
+      "stale": false,
+      "stars": 5808
+    },
+    "dlt-hub/dlt": {
+      "archived": false,
+      "description": "data load tool (dlt) is an open source Python library that makes data loading easy \ud83d\udee0\ufe0f ",
+      "fullName": "dlt-hub/dlt",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:41:21Z",
+      "stale": false,
+      "stars": 5996
+    },
+    "dnwrnr/sgp4": {
+      "archived": false,
+      "description": "Simplified perturbations models",
+      "fullName": "dnwrnr/sgp4",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-09-26T16:24:34Z",
+      "stale": false,
+      "stars": 195
+    },
+    "docling-project/docling": {
+      "archived": false,
+      "description": "Get your documents ready for gen AI",
+      "fullName": "docling-project/docling",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T12:19:48Z",
+      "stale": false,
+      "stars": 69251
+    },
+    "dtcooper/python-fitparse": {
+      "archived": false,
+      "description": "Python library to parse ANT/Garmin .FIT files",
+      "fullName": "dtcooper/python-fitparse",
+      "license": "MIT",
+      "pushedAt": "2025-01-28T22:09:15Z",
+      "stale": false,
+      "stars": 826
+    },
+    "esa/dSGP4": {
+      "archived": false,
+      "description": "dSGP4: differentiable SGP4. Supports differentiability, ML integration & embarassingly parallel computations",
+      "fullName": "esa/dSGP4",
+      "license": "GPL-3.0",
+      "pushedAt": "2026-10-16T10:17:50Z",
+      "stale": false,
+      "stars": 98
+    },
+    "esdoc/esdoc": {
+      "archived": false,
+      "description": "ESDoc - Good Documentation for JavaScript",
+      "fullName": "esdoc/esdoc",
+      "license": "MIT",
+      "pushedAt": "2024-08-14T11:10:32Z",
+      "stale": true,
+      "stars": 2729
+    },
+    "eslint/eslint": {
+      "archived": false,
+      "description": "Find and fix problems in your JavaScript code.",
+      "fullName": "eslint/eslint",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T19:20:02Z",
+      "stale": false,
+      "stars": 27569
+    },
+    "express-rate-limit/express-rate-limit": {
+      "archived": false,
+      "description": "Basic rate-limiting middleware for the Express web server",
+      "fullName": "express-rate-limit/express-rate-limit",
+      "license": "MIT",
+      "pushedAt": "2026-10-15T21:06:46Z",
+      "stale": false,
+      "stars": 3313
+    },
+    "facebook/docusaurus": {
+      "archived": false,
+      "description": "Easy to maintain open source documentation websites.",
+      "fullName": "facebook/docusaurus",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T10:20:54Z",
+      "stale": false,
+      "stars": 66541
+    },
+    "felixmosh/bull-board": {
+      "archived": false,
+      "description": "\ud83c\udfaf Queue background jobs inspector ",
+      "fullName": "felixmosh/bull-board",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T08:27:00Z",
+      "stale": false,
+      "stars": 3514
+    },
+    "felt/tippecanoe": {
+      "archived": false,
+      "description": "Build vector tilesets from large collections of GeoJSON features.",
+      "fullName": "felt/tippecanoe",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-09-26T17:33:53Z",
+      "stale": false,
+      "stars": 1624
+    },
+    "fivetran/great_expectations": {
+      "archived": false,
+      "description": "Always know what to expect from your data.",
+      "fullName": "fivetran/great_expectations",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T09:38:26Z",
+      "stale": false,
+      "stars": 11890
+    },
+    "fluent/fluent-bit": {
+      "archived": false,
+      "description": "Fast and Lightweight Logs, Metrics and Traces processor for Linux, BSD, OSX and Windows",
+      "fullName": "fluent/fluent-bit",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T10:11:19Z",
+      "stale": false,
+      "stars": 8163
+    },
+    "geopandas/geopandas": {
+      "archived": false,
+      "description": "Python tools for geographic data",
+      "fullName": "geopandas/geopandas",
+      "license": "BSD-3-Clause",
+      "pushedAt": "2026-10-12T21:00:11Z",
+      "stale": false,
+      "stars": 5282
+    },
+    "geospace-code/pymap3d": {
+      "archived": false,
+      "description": "pure-Python (Numpy optional) 3D coordinate conversions for geospace ecef enu eci",
+      "fullName": "geospace-code/pymap3d",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-06-22T01:32:21Z",
+      "stale": false,
+      "stars": 448
+    },
+    "golangci/golangci-lint": {
+      "archived": false,
+      "description": "Fast linters runner for Go",
+      "fullName": "golangci/golangci-lint",
+      "license": "GPL-3.0",
+      "pushedAt": "2026-10-20T22:12:17Z",
+      "stale": false,
+      "stars": 19462
+    },
+    "googleapis/release-please": {
+      "archived": false,
+      "description": "generate release PRs based on the conventionalcommits.org spec",
+      "fullName": "googleapis/release-please",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-19T19:50:52Z",
+      "stale": false,
+      "stars": 7645
+    },
+    "grafana/grafana": {
+      "archived": false,
+      "description": "The open and composable observability and data visualization platform. Visualize metrics, logs, and traces from multiple sources like Prometheus, Loki, Elasticsearch, InfluxDB, Postgres and many more. ",
+      "fullName": "grafana/grafana",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-21T12:06:49Z",
+      "stale": false,
+      "stars": 77401
+    },
+    "grafana/loki": {
+      "archived": false,
+      "description": "Like Prometheus, but for logs.",
+      "fullName": "grafana/loki",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-21T12:14:42Z",
+      "stale": false,
+      "stars": 29048
+    },
+    "graphhopper/graphhopper": {
+      "archived": false,
+      "description": "Open source routing engine for OpenStreetMap. Use it as Java library or standalone web server.",
+      "fullName": "graphhopper/graphhopper",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-19T15:12:43Z",
+      "stale": false,
+      "stars": 6737
+    },
+    "graphile/worker": {
+      "archived": false,
+      "description": "High performance Node.js/PostgreSQL job queue (also suitable for getting jobs generated by PostgreSQL triggers/functions out into a different work queue)",
+      "fullName": "graphile/worker",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T18:58:01Z",
+      "stale": false,
+      "stars": 2418
+    },
+    "greenkeeperio/greenkeeper": {
+      "archived": false,
+      "description": ":robot: :palm_tree: Real-time automated dependency updates for npm and GitHub",
+      "fullName": "greenkeeperio/greenkeeper",
+      "license": "Apache-2.0",
+      "pushedAt": "2021-07-11T06:35:58Z",
+      "stale": true,
+      "stars": 1610
+    },
+    "infiniflow/ragflow": {
+      "archived": false,
+      "description": "RAGFlow is a leading open-source Retrieval-Augmented Generation (RAG) engine that fuses cutting-edge RAG with Agent capabilities to create a superior context layer for LLMs",
+      "fullName": "infiniflow/ragflow",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:20:48Z",
+      "stale": false,
+      "stars": 92595
+    },
+    "jimporter/mike": {
+      "archived": false,
+      "description": "Manage multiple versions of your MkDocs-powered documentation via Git",
+      "fullName": "jimporter/mike",
+      "license": "BSD-3-Clause",
+      "pushedAt": "2026-10-14T03:11:35Z",
+      "stale": false,
+      "stars": 745
+    },
+    "k2-fsa/sherpa-onnx": {
+      "archived": false,
+      "description": "Speech-to-text, text-to-speech, speaker diarization, speech enhancement, source separation, and VAD using next-gen Kaldi with onnxruntime without Internet connection. Support embedded systems, Android, iOS, HarmonyOS, Raspberry Pi, RISC-V, RK NPU, Axera NPU, Ascend NPU, x86_64 servers, websocket server/client, support 12 programming languages",
+      "fullName": "k2-fsa/sherpa-onnx",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T03:48:15Z",
+      "stale": false,
+      "stars": 15418
+    },
+    "keycloak/keycloak": {
+      "archived": false,
+      "description": "Open Source Identity and Access Management For Modern Applications and Services",
+      "fullName": "keycloak/keycloak",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:57:35Z",
+      "stale": false,
+      "stars": 37450
+    },
+    "langchain-ai/langchain": {
+      "archived": false,
+      "description": "The agent engineering platform.",
+      "fullName": "langchain-ai/langchain",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T09:31:44Z",
+      "stale": false,
+      "stars": 148192
+    },
+    "langfuse/langfuse": {
+      "archived": false,
+      "description": "\ud83e\udea2 Open source agent evals & observability: Trace, evaluate, and improve LLM applications with one open platform.",
+      "fullName": "langfuse/langfuse",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T12:19:38Z",
+      "stale": false,
+      "stars": 36132
+    },
+    "livekit/agents": {
+      "archived": false,
+      "description": "A framework for building realtime voice AI agents \ud83e\udd16\ud83c\udf99\ufe0f\ud83d\udcf9 ",
+      "fullName": "livekit/agents",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:17:04Z",
+      "stale": false,
+      "stars": 14877
+    },
+    "mapbox/mapbox-gl-js": {
+      "archived": false,
+      "description": "Interactive, thoroughly customizable maps in the browser, powered by vector tiles and WebGL",
+      "fullName": "mapbox/mapbox-gl-js",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T07:25:13Z",
+      "stale": false,
+      "stars": 12449
+    },
+    "maplibre/maplibre-gl-js": {
+      "archived": false,
+      "description": "MapLibre GL JS - Interactive vector tile maps in the browser",
+      "fullName": "maplibre/maplibre-gl-js",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T10:51:42Z",
+      "stale": false,
+      "stars": 11908
+    },
+    "maplibre/martin": {
+      "archived": false,
+      "description": "Blazing fast and lightweight PostGIS, MBtiles and PMtiles tile server, tile generation, and mbtiles tooling.",
+      "fullName": "maplibre/martin",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:15:53Z",
+      "stale": false,
+      "stars": 4012
+    },
+    "maptiler/tileserver-gl": {
+      "archived": false,
+      "description": "Vector and raster maps with GL styles. Server side rendering by MapLibre GL Native. Map tile server for MapLibre GL JS, Android, iOS, Leaflet, OpenLayers, GIS via WMTS, etc.",
+      "fullName": "maptiler/tileserver-gl",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-13T17:49:40Z",
+      "stale": false,
+      "stars": 2911
+    },
+    "mher/flower": {
+      "archived": false,
+      "description": "Real-time monitor and web admin for Celery distributed task queue",
+      "fullName": "mher/flower",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-09-22T14:15:14Z",
+      "stale": false,
+      "stars": 7238
+    },
+    "mkdocstrings/mkdocstrings": {
+      "archived": false,
+      "description": ":blue_book: Automatic documentation from sources, for MkDocs.",
+      "fullName": "mkdocstrings/mkdocstrings",
+      "license": "ISC",
+      "pushedAt": "2026-10-19T15:42:54Z",
+      "stale": false,
+      "stars": 2099
+    },
+    "nextauthjs/next-auth": {
+      "archived": false,
+      "description": "Authentication for the Web.",
+      "fullName": "nextauthjs/next-auth",
+      "license": "ISC",
+      "pushedAt": "2026-07-22T19:42:19Z",
+      "stale": false,
+      "stars": 28366
+    },
+    "octokit/octokit.js": {
+      "archived": false,
+      "description": "The all-batteries-included GitHub SDK for Browsers, Node.js, and Deno.",
+      "fullName": "octokit/octokit.js",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T22:04:20Z",
+      "stale": false,
+      "stars": 7862
+    },
+    "onthegomap/planetiler": {
+      "archived": false,
+      "description": "Flexible tool to build planet-scale vector tilesets from OpenStreetMap data fast",
+      "fullName": "onthegomap/planetiler",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-19T08:32:45Z",
+      "stale": false,
+      "stars": 2222
+    },
+    "openai/whisper": {
+      "archived": false,
+      "description": "Robust Speech Recognition via Large-Scale Weak Supervision",
+      "fullName": "openai/whisper",
+      "license": "MIT",
+      "pushedAt": "2026-08-31T17:19:19Z",
+      "stale": false,
+      "stars": 110986
+    },
+    "openlayers/openlayers": {
+      "archived": false,
+      "description": "OpenLayers",
+      "fullName": "openlayers/openlayers",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-10-21T01:10:54Z",
+      "stale": false,
+      "stars": 12624
+    },
+    "openmaptiles/openmaptiles": {
+      "archived": false,
+      "description": "OpenMapTiles Vector Tile Schema Implementation",
+      "fullName": "openmaptiles/openmaptiles",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-07-29T12:19:41Z",
+      "stale": false,
+      "stars": 3200
+    },
+    "openmaptiles/osm-bright-gl-style": {
+      "archived": false,
+      "description": "OSM Bright GL Style using OpenMapTiles",
+      "fullName": "openmaptiles/osm-bright-gl-style",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-08-04T08:21:07Z",
+      "stale": false,
+      "stars": 256
+    },
+    "openmeterio/openmeter": {
+      "archived": false,
+      "description": "Metering and Billing for AI, API and DevOps. Collect and aggregate millions of usage events in real-time and enable usage-based billing.",
+      "fullName": "openmeterio/openmeter",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T12:20:28Z",
+      "stale": false,
+      "stars": 2396
+    },
+    "opensearch-project/OpenSearch": {
+      "archived": false,
+      "description": "\ud83d\udd0e Open source distributed and RESTful search engine.",
+      "fullName": "opensearch-project/OpenSearch",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:30:58Z",
+      "stale": false,
+      "stars": 13891
+    },
+    "ory/polis": {
+      "archived": false,
+      "description": "Streamline your web application's authentication with Polis, an SSO service supporting SAML and OpenID Connect protocols. Beyond enterprise-grade Single Sign-On, it also supports Directory Sync via the SCIM 2.0 protocol for automatic user and group provisioning/de-provisioning.",
+      "fullName": "ory/polis",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-07-27T21:17:28Z",
+      "stale": false,
+      "stars": 2270
+    },
+    "pgvector/pgvector": {
+      "archived": false,
+      "description": "Open-source vector similarity search for Postgres",
+      "fullName": "pgvector/pgvector",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T07:14:27Z",
+      "stale": false,
+      "stars": 23427
+    },
+    "pipecat-ai/pipecat": {
+      "archived": false,
+      "description": "Open Source framework for voice agents, multimodal apps, and realtime AI. Maintained by Daily and the community.",
+      "fullName": "pipecat-ai/pipecat",
+      "license": "BSD-2-Clause",
+      "pushedAt": "2026-10-21T12:22:28Z",
+      "stale": false,
+      "stars": 16688
+    },
+    "polyvertex/fitdecode": {
+      "archived": false,
+      "description": "A FIT file parsing and decoding library written in Python3",
+      "fullName": "polyvertex/fitdecode",
+      "license": "MIT",
+      "pushedAt": "2025-08-06T08:06:41Z",
+      "stale": false,
+      "stars": 219
+    },
+    "probot/probot": {
+      "archived": false,
+      "description": "\ud83e\udd16 A framework for building GitHub Apps to automate and improve your workflow",
+      "fullName": "probot/probot",
+      "license": "ISC",
+      "pushedAt": "2026-10-21T05:24:24Z",
+      "stale": false,
+      "stars": 9625
+    },
+    "prometheus/alertmanager": {
+      "archived": false,
+      "description": "Prometheus Alertmanager",
+      "fullName": "prometheus/alertmanager",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-20T09:28:20Z",
+      "stale": false,
+      "stars": 8667
+    },
+    "promptfoo/promptfoo": {
+      "archived": false,
+      "description": "Test your prompts, agents, and RAGs. Red teaming/pentesting/vulnerability scanning for AI. Compare performance of GPT, Claude, Gemini, DeepSeek, and more. Simple declarative configs with command line and CI/CD integration.  Used by OpenAI and Anthropic.",
+      "fullName": "promptfoo/promptfoo",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T07:48:03Z",
+      "stale": false,
+      "stars": 26230
+    },
+    "protomaps/PMTiles": {
+      "archived": false,
+      "description": "Pyramids of map tiles in a single file on static storage",
+      "fullName": "protomaps/PMTiles",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-09-16T18:35:12Z",
+      "stale": false,
+      "stars": 3094
+    },
+    "protomaps/basemaps": {
+      "archived": false,
+      "description": "Basemap PMTiles generation and cartographic styles for OpenStreetMap data and more",
+      "fullName": "protomaps/basemaps",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-09-11T20:32:59Z",
+      "stale": false,
+      "stars": 762
+    },
+    "qdrant/qdrant": {
+      "archived": false,
+      "description": "Qdrant - High-performance, massive-scale Vector Database and Vector Search Engine for the next generation of AI. Also available in the cloud https://cloud.qdrant.io/",
+      "fullName": "qdrant/qdrant",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T10:01:38Z",
+      "stale": false,
+      "stars": 35171
+    },
+    "quickwit-oss/quickwit": {
+      "archived": false,
+      "description": "Cloud-native OSS search engine for observability",
+      "fullName": "quickwit-oss/quickwit",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T10:54:05Z",
+      "stale": false,
+      "stars": 11729
+    },
+    "redpanda-data/redpanda": {
+      "archived": false,
+      "description": "Redpanda is a streaming data platform for developers. Kafka API compatible. 10x faster. No ZooKeeper. No JVM!",
+      "fullName": "redpanda-data/redpanda",
+      "license": null,
+      "pushedAt": "2026-10-08T14:10:50Z",
+      "stale": false,
+      "stars": 12627
+    },
+    "renovatebot/renovate": {
+      "archived": false,
+      "description": "Home of the Renovate CLI: Cross-platform Dependency Automation by Mend.io",
+      "fullName": "renovatebot/renovate",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-21T12:19:14Z",
+      "stale": false,
+      "stars": 22821
+    },
+    "reviewdog/reviewdog": {
+      "archived": false,
+      "description": "\ud83d\udc36 Automated code review tool integrated with any code analysis tools regardless of programming language",
+      "fullName": "reviewdog/reviewdog",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T07:45:46Z",
+      "stale": false,
+      "stars": 9682
+    },
+    "rhasspy/piper": {
+      "archived": true,
+      "description": "A fast, local neural text to speech system",
+      "fullName": "rhasspy/piper",
+      "license": "MIT",
+      "pushedAt": "2025-08-26T15:01:29Z",
+      "stale": false,
+      "stars": 11302
+    },
+    "rq/rq": {
+      "archived": false,
+      "description": "Simple job queues for Python",
+      "fullName": "rq/rq",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T02:31:56Z",
+      "stale": false,
+      "stars": 10693
+    },
+    "run-llama/llama_index": {
+      "archived": false,
+      "description": "LlamaIndex is the document processing platform for AI",
+      "fullName": "run-llama/llama_index",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T02:34:58Z",
+      "stale": false,
+      "stars": 52598
+    },
+    "scalar/scalar": {
+      "archived": false,
+      "description": "Scalar is an open-source API platform:\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\ud83c\udf10 Modern REST API Client\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\ud83d\udcd6 Beautiful API References\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u2728 1st-Class OpenAPI/Swagger Support",
+      "fullName": "scalar/scalar",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T11:22:34Z",
+      "stale": false,
+      "stars": 16299
+    },
+    "semantic-release/semantic-release": {
+      "archived": false,
+      "description": "\ud83d\udce6\ud83d\ude80 Fully automated version management and package publishing",
+      "fullName": "semantic-release/semantic-release",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T07:42:18Z",
+      "stale": false,
+      "stars": 24120
+    },
+    "semgrep/semgrep": {
+      "archived": false,
+      "description": "Lightweight static analysis for many languages. Find bug variants with patterns that look like source code.",
+      "fullName": "semgrep/semgrep",
+      "license": "LGPL-2.1",
+      "pushedAt": "2026-10-21T00:02:16Z",
+      "stale": false,
+      "stars": 17161
+    },
+    "shapely/shapely": {
+      "archived": false,
+      "description": "Manipulation and analysis of geometric objects",
+      "fullName": "shapely/shapely",
+      "license": "BSD-3-Clause",
+      "pushedAt": "2026-10-16T18:11:31Z",
+      "stale": false,
+      "stars": 4530
+    },
+    "shashwatak/satellite-js": {
+      "archived": false,
+      "description": "Modular set of functions for SGP4 and SDP4 propagation of TLE and OMM.",
+      "fullName": "shashwatak/satellite-js",
+      "license": "MIT",
+      "pushedAt": "2026-10-14T09:29:10Z",
+      "stale": false,
+      "stars": 1096
+    },
+    "skyfielders/python-skyfield": {
+      "archived": false,
+      "description": "Elegant astronomy for Python",
+      "fullName": "skyfielders/python-skyfield",
+      "license": "MIT",
+      "pushedAt": "2026-09-29T01:14:06Z",
+      "stale": false,
+      "stars": 1791
+    },
+    "snakers4/silero-vad": {
+      "archived": false,
+      "description": "Silero VAD: pre-trained enterprise-grade Voice Activity Detector",
+      "fullName": "snakers4/silero-vad",
+      "license": "MIT",
+      "pushedAt": "2026-09-29T10:20:28Z",
+      "stale": false,
+      "stars": 10492
+    },
+    "sodadata/soda-core": {
+      "archived": false,
+      "description": "Data Contracts engine for the modern data stack. https://www.soda.io",
+      "fullName": "sodadata/soda-core",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T11:14:15Z",
+      "stale": false,
+      "stars": 2438
+    },
+    "sphinx-doc/sphinx": {
+      "archived": false,
+      "description": "The Sphinx documentation generator",
+      "fullName": "sphinx-doc/sphinx",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T06:03:03Z",
+      "stale": false,
+      "stars": 8070
+    },
+    "squidfunk/mkdocs-material": {
+      "archived": false,
+      "description": "Documentation that simply works",
+      "fullName": "squidfunk/mkdocs-material",
+      "license": "MIT",
+      "pushedAt": "2026-10-17T18:17:28Z",
+      "stale": false,
+      "stars": 27583
+    },
+    "super-linter/super-linter": {
+      "archived": false,
+      "description": "Combination of multiple linters to run as a GitHub Action or standalone",
+      "fullName": "super-linter/super-linter",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T13:34:39Z",
+      "stale": false,
+      "stars": 10633
+    },
+    "swagger-api/swagger-ui": {
+      "archived": false,
+      "description": "Swagger UI is a collection of HTML, JavaScript, and CSS assets that dynamically generate beautiful documentation from a Swagger-compliant API.",
+      "fullName": "swagger-api/swagger-ui",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-10-21T11:00:35Z",
+      "stale": false,
+      "stars": 29041
+    },
+    "systemed/tilemaker": {
+      "archived": false,
+      "description": "Make OpenStreetMap vector tiles without the stack",
+      "fullName": "systemed/tilemaker",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T10:39:26Z",
+      "stale": false,
+      "stars": 1908
+    },
+    "taskforcesh/bullmq": {
+      "archived": false,
+      "description": "BullMQ - Message Queue and Batch processing for NodeJS, Python, .NET, Elixir, Rust and PHP based on Redis or PostgreSQL",
+      "fullName": "taskforcesh/bullmq",
+      "license": "MIT",
+      "pushedAt": "2026-10-21T10:45:17Z",
+      "stale": false,
+      "stars": 9524
+    },
+    "thkruz/keeptrack.space": {
+      "archived": false,
+      "description": "\ud83c\udf0e\ud83d\udce1 TypeScript Astrodynamics Software for Non-Engineers. 3D Visualization of satellite data and the sensors that track them.",
+      "fullName": "thkruz/keeptrack.space",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-19T12:43:30Z",
+      "stale": false,
+      "stars": 1614
+    },
+    "timgit/pg-boss": {
+      "archived": false,
+      "description": "Queueing jobs in Postgres from Node.js like a boss",
+      "fullName": "timgit/pg-boss",
+      "license": "MIT",
+      "pushedAt": "2026-10-20T02:33:50Z",
+      "stale": false,
+      "stars": 4074
+    },
+    "tkrajina/gpxpy": {
+      "archived": false,
+      "description": "gpx-py is a python GPX parser. GPX (GPS eXchange Format) is an XML based file format for GPS tracks.",
+      "fullName": "tkrajina/gpxpy",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-09-26T11:50:36Z",
+      "stale": false,
+      "stars": 1108
+    },
+    "unkeyed/unkey": {
+      "archived": false,
+      "description": "The Developer Platform for Modern APIs",
+      "fullName": "unkeyed/unkey",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-21T12:21:32Z",
+      "stale": false,
+      "stars": 5472
+    },
+    "valhalla/valhalla": {
+      "archived": false,
+      "description": "Open Source Routing Engine for OpenStreetMap",
+      "fullName": "valhalla/valhalla",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-19T19:20:21Z",
+      "stale": false,
+      "stars": 6350
+    },
+    "vasturiano/globe.gl": {
+      "archived": false,
+      "description": "UI component for Globe Data Visualization using ThreeJS/WebGL",
+      "fullName": "vasturiano/globe.gl",
+      "license": "MIT",
+      "pushedAt": "2026-08-22T20:36:21Z",
+      "stale": false,
+      "stars": 3203
+    },
+    "vasturiano/three-globe": {
+      "archived": false,
+      "description": "WebGL Globe Data Visualization as a ThreeJS reusable 3D object",
+      "fullName": "vasturiano/three-globe",
+      "license": "MIT",
+      "pushedAt": "2026-10-14T12:43:23Z",
+      "stale": false,
+      "stars": 1640
+    },
+    "vectordotdev/vector": {
+      "archived": false,
+      "description": "A high-performance observability data pipeline.",
+      "fullName": "vectordotdev/vector",
+      "license": "MPL-2.0",
+      "pushedAt": "2026-10-21T12:18:29Z",
+      "stale": false,
+      "stars": 22746
+    },
+    "vibrantlabsai/ragas": {
+      "archived": false,
+      "description": "Supercharge Your LLM Application Evaluations \ud83d\ude80",
+      "fullName": "vibrantlabsai/ragas",
+      "license": "Apache-2.0",
+      "pushedAt": "2026-02-24T07:47:19Z",
+      "stale": false,
+      "stars": 16101
+    },
+    "zendesk/maxwell": {
+      "archived": false,
+      "description": "Maxwell's daemon, a mysql-to-json kafka producer",
+      "fullName": "zendesk/maxwell",
+      "license": "NOASSERTION",
+      "pushedAt": "2026-10-02T01:48:30Z",
+      "stale": false,
+      "stars": 4265
+    },
+    "zitadel/zitadel": {
+      "archived": false,
+      "description": "ZITADEL - Identity infrastructure, simplified for\u00a0you.",
+      "fullName": "zitadel/zitadel",
+      "license": "AGPL-3.0",
+      "pushedAt": "2026-10-21T11:38:15Z",
+      "stale": false,
+      "stars": 15363
+    }
+  }
+}

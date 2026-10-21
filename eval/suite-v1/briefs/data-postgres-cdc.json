@@ -93,7 +93,7 @@
     "traps": [
       {
         "repo": "zendesk/maxwell",
-        "reason": "Reads the MySQL binlog only; not applicable to PostgreSQL"
+        "reason": "Reads the MySQL binlog only; not applicable to PostgreSQL."
       }
     ]
   }

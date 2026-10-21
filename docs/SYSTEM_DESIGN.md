@@ -283,7 +283,8 @@ The semantic index (pgvector) covers claims, experiences and decisions so they c
 
 ### 10.2 Baselines, recorded before any change (D§10.1)
 - **B0, plain search:** for each brief, the GitHub repository search top 10 for the brief's title terms, plus the search-provider top 10. Scored with the same metrics.
-- **B1, the current prototype:** commit `b411ce7` plus the blueprint stage, on the same cases.
+- **B0s, plain search sorted by stars:** B0 with GitHub's results ordered by stars, what a person tries next. It is the stricter baseline, and the one improvement targets are measured against.
+- **B1, the current prototype:** commit `b411ce7` plus the blueprint stage, on the same cases. Two bugs found while recording it (the decomposer giving up on a long, broken JSON answer, and the planner dropping queries whose requirement name the model shortened) were fixed first. The partial run before the fixes is kept in the run notes as the before-state.
 
 ### 10.3 Reproducibility
 - **Record:** the first live run of a suite version records every gateway response (GitHub, registries, pages, READMEs) into a content-addressed snapshot.

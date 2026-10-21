@@ -57,7 +57,7 @@
         "expectedClass": 1,
         "solutions": [
           {
-            "repo": "dbt-labs/dbt-core",
+            "repo": "dbt-labs/dbt",
             "rating": "essential"
           }
         ]
@@ -70,7 +70,7 @@
         "expectedClass": 2,
         "solutions": [
           {
-            "repo": "great-expectations/great_expectations",
+            "repo": "fivetran/great_expectations",
             "rating": "essential"
           },
           {

@@ -5,9 +5,9 @@ Evaluation harness (SYSTEM_DESIGN 10).
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b1 --mode replay --requirements-from <run id>
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b0 --mode replay
 
-Systems: b0 (plain search baseline) and b1 (Open Eye: production decomposer, then discovery with the
+Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and b1 (Open Eye: production decomposer, then discovery with the
 given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
-a missing response fails that brief) and live (no snapshot).
+a missing response fails that brief), fill (serving the snapshot and recording what is missing) and live.
 
 LLM calls always run live; their tokens land in provider_usage under scope eval/<run id>:<brief>, and
 the run's cost is read back from there. Results go to eval/results/<suite version>/<run id>.json.
@@ -78,8 +78,8 @@ def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, An
 def main(argv: List[str] = None) -> int:
     parser = argparse.ArgumentParser(description="Open Eye evaluation harness")
     parser.add_argument("--suite", required=True)
-    parser.add_argument("--system", choices=["b0", "b1"], required=True)
-    parser.add_argument("--mode", choices=["record", "replay", "live"], required=True)
+    parser.add_argument("--system", choices=["b0", "b0s", "b1"], required=True)
+    parser.add_argument("--mode", choices=["record", "replay", "fill", "live"], required=True)
     parser.add_argument("--tuning", help="JSON file of tuning overrides (B1)")
     parser.add_argument("--requirements-from", help="Reuse the decomposition of an earlier B1 run instead of decomposing again")
     parser.add_argument("--briefs", help="Comma-separated brief ids (default: all)")
@@ -117,8 +117,8 @@ def main(argv: List[str] = None) -> int:
         started = time.time()
         entry: Dict[str, Any] = {"briefId": brief["id"], "domain": brief["domain"]}
         try:
-            if args.system == "b0":
-                out = run_b0(brief, http, os.getenv("TAVILY_API_KEY"))
+            if args.system in ("b0", "b0s"):
+                out = run_b0(brief, http, os.getenv("TAVILY_API_KEY"), sort="stars" if args.system == "b0s" else None)
                 entry["details"] = out["details"]
             else:
                 decomposition = json.loads((requirements_dir / f"{brief['id']}.json").read_text())
@@ -157,7 +157,7 @@ def main(argv: List[str] = None) -> int:
     time.sleep(0.5)
     costs = ledger_totals(db, run_id)
     for entry in per_brief:
-        entry["ledger"] = costs.get(entry["briefId"], {"llmCalls": 0, "failedCalls": 0, "inputTokens": 0, "outputTokens": 0, "costCents": 0.0 if args.system == "b0" else None})
+        entry["ledger"] = costs.get(entry["briefId"], {"llmCalls": 0, "failedCalls": 0, "inputTokens": 0, "outputTokens": 0, "costCents": 0.0 if args.system != "b1" else None})
 
     scored = [e["scores"] for e in per_brief if "scores" in e]
     llm_costs = [e["ledger"]["costCents"] for e in per_brief]
@@ -183,7 +183,7 @@ def main(argv: List[str] = None) -> int:
             "outputTokens": sum(e["ledger"]["outputTokens"] for e in per_brief),
             "costCents": round(sum(llm_costs), 4) if all(c is not None for c in llm_costs) else None,
         },
-        "snapshot": {"recorded": transport.recorded, "replayed": transport.replayed},
+        "snapshot": {"recorded": transport.recorded, "replayed": transport.replayed, "fetchedLive": transport.fetched},
         "briefs": per_brief,
     }
     out_path = results_dir / f"{run_id}.json"

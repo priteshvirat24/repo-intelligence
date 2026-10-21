@@ -133,7 +133,7 @@
     "traps": [
       {
         "repo": "brandon-rhodes/pyephem",
-        "reason": "Its own README recommends Skyfield for new projects; legacy API"
+        "reason": "Legacy library; its README points new projects to Skyfield (reviewer to confirm). Licence reported as NOASSERTION."
       }
     ]
   }

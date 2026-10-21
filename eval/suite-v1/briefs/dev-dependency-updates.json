@@ -85,7 +85,7 @@
     "traps": [
       {
         "repo": "greenkeeperio/greenkeeper",
-        "reason": "Archived; the service was shut down"
+        "reason": "No push since 2021-07; the hosted Greenkeeper service was discontinued (reviewer to confirm)."
       }
     ]
   }
