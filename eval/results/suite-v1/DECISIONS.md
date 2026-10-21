@@ -53,6 +53,32 @@ The promoted default hashes to exactly the measured configuration; `test_promote
 
 `category-queries` and `category-queries-fresh` differ only in the shortlist rule, which does not change the ranking. Their recall@10 difference (0.322 against 0.295) is therefore LLM run-to-run variation, not an effect of the rule.
 
+## 2026-10-21: integrated default after Phases 2 to 6 (`cfg-66b9cecdb37a`)
+
+Phase 2 added tuning keys (diminishing-returns stop, registry search limits, docs evidence), so the default hashes to a new version. Three runs on the shared decomposition, which also store the ranking features the Phase 5 tuner needs.
+
+| Metric | `cfg-d88eb2047d1a` (3 runs) | `cfg-66b9cecdb37a` (3 runs) |
+|---|---|---|
+| Recall@10 | 0.295 (0.258–0.343) | 0.341 (0.305–0.365) |
+| Shortlist precision | 0.234 (0.221–0.256) | 0.255 (0.243–0.276) |
+| Shortlist recall (essential solutions recommended) | 0.253 | 0.291 |
+| Trap rejection (traps it found) | 0.583 | 0.533 |
+| LLM calls, tokens, time | 61, 207k in, 63 s/brief | 60, 206k in, 58 s/brief |
+
+**Decision: no improvement is claimed.** On this suite the two versions behave the same. The diminishing-returns stop skipped none of the 341 planned queries, and registry search is off in the harness unless `--registries` is passed. The +0.046 recall@10 is therefore LLM run-to-run variation. Yet it passes the unpaired gate (band ±0.042). With three runs per side, the gate can accept a change that does nothing, so L2 proposals should get more runs before approval (next step: raise the unpaired minimum to five runs, or pool the runs of unchanged versions to estimate noise).
+
+**Counting fix.** Since Phase 1, GitHub requests are metered in the same ledger, and the harness counted them as LLM calls (354 per run). The harness now counts AI providers only, and these three run files were recomputed from the ledger (60 calls each).
+
+## 2026-10-21: first L1 auto-tuning on stored features
+
+The tuner (`python -m apps.worker.evolution.tune --suite eval/suite-v1 --dry-run`) re-ranked the three runs above under 298 candidate rankings.
+
+- **First pass: wrongly accepted.** It accepted a change that raised shortlist precision by +0.08 in every run. Most of the gain came from cutting the shortlist from 6 to 4 (precision 0.243 → 0.286 from that alone) and dropping essential solutions from it. Precision rewards a shorter list, and nothing guarded what the shortlist recommends.
+- **Fix:** a new metric, shortlist recall (the share of essential solutions on the shortlist), is now a gate guard that must not fall in any run.
+- **Second pass: every candidate rejected.** The best remaining candidate gains +0.004 recall@10 and +0.009 precision, both inside the noise band. Its shortlist recall drops by 0.046 and its trap rejection by 0.23.
+
+**Decision: nothing promoted.** As far as this suite can measure, the ranking weights are not the bottleneck: essential solutions are missed because the searches never retrieve them (see "Known weaknesses").
+
 ## Known weaknesses (next candidates)
 
 - **Look-alike traps:** `EleutherAI/lm-evaluation-harness` is recommended for "regression tests for LLM prompts" in every run, and `OptimalBits/bull` (maintenance mode, its README points to BullMQ) in some. The small model's README assessment accepts them.

@@ -46,6 +46,22 @@ class Config:
     JOB_LOCK_TIMEOUT_MINUTES: int = int(os.getenv("JOB_LOCK_TIMEOUT_MINUTES", "10"))
     MAX_JOB_ATTEMPTS: int = int(os.getenv("MAX_JOB_ATTEMPTS", "3"))
 
+    # Sandboxed execution (Phase 6): third-party code runs only inside a sandbox, never on this host.
+    # docker (local development) or e2b (managed microVMs, needs E2B_API_KEY); anything else disables execution
+    SANDBOX_PROVIDER: str = os.getenv("SANDBOX_PROVIDER", "docker").lower()
+    E2B_API_KEY: str = os.getenv("E2B_API_KEY", "")
+    SANDBOX_MEMORY: str = os.getenv("SANDBOX_MEMORY", "2g")
+    SANDBOX_CPUS: str = os.getenv("SANDBOX_CPUS", "1")
+    SANDBOX_PIDS: int = int(os.getenv("SANDBOX_PIDS", "256"))
+    SANDBOX_PYTHON_IMAGE: str = os.getenv("SANDBOX_PYTHON_IMAGE", "python:3.12-slim")
+    SANDBOX_NODE_IMAGE: str = os.getenv("SANDBOX_NODE_IMAGE", "node:22-slim")
+    # E1 checks per brief (when the brief opts in): candidates and verified claims per candidate
+    EXECUTE_MAX_CANDIDATES: int = int(os.getenv("EXECUTE_MAX_CANDIDATES", "2"))
+    EXECUTE_MAX_CLAIMS: int = int(os.getenv("EXECUTE_MAX_CLAIMS", "2"))
+    # Build mode: coding iterations and total sandbox time per build
+    BUILD_MAX_ITERATIONS: int = int(os.getenv("BUILD_MAX_ITERATIONS", "4"))
+    BUILD_MAX_SANDBOX_SECONDS: int = int(os.getenv("BUILD_MAX_SANDBOX_SECONDS", "1800"))
+
     # Secret Redaction
     INTERNAL_API_SECRET: str = os.getenv("INTERNAL_API_SECRET", "dev-secret")
 

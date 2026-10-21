@@ -5,8 +5,8 @@ Evaluation harness (SYSTEM_DESIGN 10).
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b1 --mode replay --requirements-from <run id>
     python -m apps.worker.eval.run --suite eval/suite-v1 --system b0 --mode replay
 
-Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and b1 (Open Eye: production decomposer, then discovery with the
-given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
+Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and b1 (Open Eye: the production understanding
+task, then discovery with the given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
 a missing response fails that brief), fill (serving the snapshot and recording what is missing) and live.
 
 LLM calls always run live; their tokens land in provider_usage under scope eval/<run id>:<brief>, and
@@ -27,10 +27,15 @@ import httpx
 from ..config import config
 from ..db.repository import DatabaseRepository
 from ..discovery.github_search import GitHubSearchClient
+from ..discovery.registry_search import RegistrySearch
 from ..discovery.runner import DiscoveryRunner
+from ..connectors.gateway import Gateway, MemoryCache
+from ..connectors.registry import Connectors
+from ..evolution import offline
 from ..providers import ledger
 from ..providers.llm import get_llm_provider
 from ..tuning import default_tuning, load_tuning_file
+from ..understanding import understand
 from .baselines import run_b0
 from .recording import RecordingTransport, ReplayMiss
 from .suite import aggregate, load_suite, score_brief
@@ -45,12 +50,18 @@ def git_commit() -> str:
         return "unknown"
 
 
-def decompose(suite_dir: str, out_dir: Path, run_id: str):
-    """B1 step 1: the production TypeScript decomposer, run as a script against the same database."""
-    subprocess.run(
-        ["npx", "tsx", "scripts/eval-decompose.ts", str(Path(suite_dir).resolve()), str(out_dir.resolve()), run_id],
-        cwd=ROOT / "apps" / "web", check=True,
-    )
+def decompose(briefs: List[Dict[str, Any]], out_dir: Path, run_id: str):
+    """B1 step 1: the production understanding task (apps/worker/understanding.py) for every brief."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    llm = get_llm_provider()
+    for brief in briefs:
+        started = time.time()
+        with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}"):
+            result, mode = understand(llm, brief["title"], brief["brief"])
+        requirements = {k: v for k, v in result.items() if k not in ("acceptanceCriteria", "clarifyingQuestions", "assumptions")}
+        (out_dir / f"{brief['id']}.json").write_text(json.dumps(
+            {"briefId": brief["id"], "mode": mode, "durationMs": int((time.time() - started) * 1000), "requirements": requirements}, indent=2))
+        print(f"[eval] understood {brief['id']}: {len(requirements['requirements'])} requirements ({mode})", flush=True)
 
 
 def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, Any]]:
@@ -62,9 +73,10 @@ def ledger_totals(db: DatabaseRepository, run_id: str) -> Dict[str, Dict[str, An
                 SELECT split_part(scope_id, ':', 2) AS brief, COUNT(*), COUNT(*) FILTER (WHERE NOT success),
                        COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
                        SUM(cost_cents), COUNT(*) FILTER (WHERE cost_cents IS NULL)
-                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s GROUP BY 1
+                FROM provider_usage WHERE scope_type = 'eval' AND scope_id LIKE %s AND provider = ANY(%s) GROUP BY 1
                 """,
-                (f"{run_id}:%",)
+                # AI providers only: GitHub and the connector sources are metered too, but are not AI calls
+                (f"{run_id}:%", sorted(ledger.LLM_PROVIDERS))
             )
             return {
                 row[0]: {"llmCalls": row[1], "failedCalls": row[2], "inputTokens": row[3], "outputTokens": row[4],
@@ -98,6 +110,8 @@ def main(argv: List[str] = None) -> int:
     parser.add_argument("--requirements-from", help="Reuse the decomposition of an earlier B1 run instead of decomposing again")
     parser.add_argument("--briefs", help="Comma-separated brief ids (default: all)")
     parser.add_argument("--note", default="")
+    parser.add_argument("--registries", action="store_true",
+                        help="B1: also search npm and crates.io through the connector gateway (recorded and replayed like GitHub)")
     args = parser.parse_args(argv)
 
     suite = load_suite(args.suite)
@@ -124,7 +138,7 @@ def main(argv: List[str] = None) -> int:
             requirements_dir = work_dir / args.requirements_from / "requirements"
         else:
             requirements_dir = work_dir / run_id / "requirements"
-            decompose(args.suite, requirements_dir, run_id)
+            decompose(briefs, requirements_dir, run_id)
 
     per_brief = []
     for brief in briefs:
@@ -137,7 +151,10 @@ def main(argv: List[str] = None) -> int:
             else:
                 decomposition = json.loads((requirements_dir / f"{brief['id']}.json").read_text())
                 github = GitHubSearchClient(http=http)
-                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode))
+                # Registry requests share the recording client; the cache is per run, so replay sees every request
+                registries = (RegistrySearch(Connectors(Gateway(http=http, cache=MemoryCache(), sleep=pacing(transport, args.mode))), github,
+                                             decomposition["requirements"], tuning) if args.registries else None)
+                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode), registry_search=registries)
                 with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}", tuning_version=tuning.version):
                     result = runner.run(decomposition["requirements"])
                 out = {
@@ -152,6 +169,9 @@ def main(argv: List[str] = None) -> int:
                     "readmesAssessed": result["metrics"]["readmesAssessed"],
                     "decompositionMs": decomposition.get("durationMs"),
                 }
+                # Ranking inputs of every kept candidate: lets apps/worker/evolution re-rank this run under
+                # another tuning without a network or LLM call
+                entry["features"] = offline.capture(decomposition["requirements"], result)
             entry["ranked"] = out["ranked"]
             entry["shortlisted"] = out["shortlisted"]
             entry["scores"] = score_brief(brief, out["ranked"], out["shortlisted"])
@@ -180,11 +200,13 @@ def main(argv: List[str] = None) -> int:
         "mode": args.mode,
         "tuningVersion": tuning.version if args.system == "b1" else None,
         "tuningName": (Path(args.tuning).stem if args.tuning else "default") if args.system == "b1" else None,
+        "tuningValues": offline.l1_values(tuning) if args.system == "b1" else None,
         "requirementsFrom": args.requirements_from,
         "commit": git_commit(),
         "model": config.LLM_MODEL or None,
         "githubAuthenticated": bool(config.GITHUB_TOKEN),
         "note": args.note,
+        "registries": bool(args.registries),
         "finishedAt": datetime.now(timezone.utc).isoformat(),
         "aggregate": {
             **aggregate(scored),

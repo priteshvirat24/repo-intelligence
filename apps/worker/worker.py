@@ -29,11 +29,15 @@ from .analyzer.repo_digest import (
 from .providers.llm import get_llm_provider
 from .providers.embeddings import get_embedding_provider
 from .db.repository import DatabaseRepository, JobLostError
-from .db.briefs import BriefRepository
-from .discovery.github_search import GitHubSearchClient, GitHubRateLimited
-from .discovery.runner import DiscoveryRunner
-from .discovery.verification import select_verification_targets
-from .discovery.blueprint import generate_blueprint
+from .discovery.github_search import GitHubRateLimited
+from .orchestrator.store import DEFAULT_BUDGET, TaskStore
+from .orchestrator.handlers import HANDLERS, TaskContext, fingerprint
+from .memory import MemoryMaintenance
+from .builder.runner import BuildStore, process_build
+
+# The progress step shown while each task runs (discovery refines it as it goes)
+TASK_STEP = {"understand": "UNDERSTANDING", "recall": "RECALLING_MEMORY", "discover": "PLANNING_QUERIES", "verify": "VERIFYING",
+             "docs": "READING_DOCS", "execute": "EXECUTING", "blueprint": "DESIGNING"}
 from .providers import ledger
 from . import tuning as tuning_registry
 
@@ -129,10 +133,13 @@ class IngestionWorker:
         self.worker_id = worker_id
         self.running = True
         self.active_job: Optional[Dict[str, Any]] = None
-        self.active_brief: Optional[Dict[str, Any]] = None
-        self.active_blueprint: Optional[Dict[str, Any]] = None
+        self.active_task: Optional[Dict[str, Any]] = None
+        self.active_build: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
-        self.briefs = BriefRepository(self.db)
+        self.tasks = TaskStore(self.db)
+        # Phase 4: revalidation and distillation of memory while idle, at most every few minutes
+        self.memory = MemoryMaintenance(self.db)
+        self.builds = BuildStore(self.db)
         # Every LLM and embedding call is recorded in provider_usage
         ledger.add_sink(ledger.DatabaseSink(self.db))
         self.llm = get_llm_provider()
@@ -166,17 +173,17 @@ class IngestionWorker:
                 self.db.release_job_on_shutdown(self.active_job["id"], self.active_job["repository_id"], self.worker_id)
             except Exception as e:
                 print(f"[{self.worker_id}] Error releasing job: {e}", file=sys.stderr, flush=True)
-        if self.active_brief:
+        if self.active_task:
             try:
-                print(f"[{self.worker_id}] Releasing brief {self.active_brief['id']} back to queue...", flush=True)
-                self.briefs.release_on_shutdown(self.active_brief["id"], self.worker_id)
+                print(f"[{self.worker_id}] Releasing task {self.active_task['type']} of brief {self.active_task['brief_id']}...", flush=True)
+                self.tasks.release(self.active_task, self.worker_id)
             except Exception as e:
-                print(f"[{self.worker_id}] Error releasing brief: {e}", file=sys.stderr, flush=True)
-        if self.active_blueprint:
+                print(f"[{self.worker_id}] Error releasing task: {e}", file=sys.stderr, flush=True)
+        if self.active_build:
             try:
-                self.briefs.release_on_shutdown(self.active_blueprint["id"], self.worker_id, table="brief_blueprints")
+                self.builds.release(str(self.active_build["id"]), self.worker_id)
             except Exception as e:
-                print(f"[{self.worker_id}] Error releasing blueprint: {e}", file=sys.stderr, flush=True)
+                print(f"[{self.worker_id}] Error releasing build: {e}", file=sys.stderr, flush=True)
         sys.exit(0)
 
     def _start_lock_heartbeat(self, job_id: str) -> threading.Event:
@@ -228,7 +235,15 @@ class IngestionWorker:
             print(f"[{self.worker_id}] Starting Stage: CLONING...", flush=True)
             s_time = time.time()
             self.db.update_job_step(job_id, repo_id, "CLONING", "CLONING", self.worker_id)
-            scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
+            # Phase 2: a repository over the size limit is analysed partially (scope set by the brief's verify task)
+            scope = self._job_scope(job_id)
+            partial: Optional[Dict[str, Any]] = None
+            if scope.get("mode") == "partial":
+                scratch_dir, commit_sha, partial = GitCloner.partial_clone(
+                    repo_url, default_branch or "main", scope.get("focusTerms") or [],
+                    config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024, config.MAX_FILES)
+            else:
+                scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
             # Safety net for disk usage (submission checks the same limit via the GitHub API)
             checkout_bytes = GitCloner.checkout_size_bytes(scratch_dir)
             if checkout_bytes > config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024:
@@ -660,6 +675,9 @@ class IngestionWorker:
                 reasons.append(f"Indexed {len(selected_chunks)} of {len(all_chunks)} text excerpts for search")
             if subsystems_found > len(subsystems):
                 reasons.append(f"Studied {len(subsystems)} of {subsystems_found} subsystems in depth")
+            if partial is not None:
+                shown = ", ".join(partial["paths"]) or "root files only"
+                reasons.insert(0, f"{scope.get('reason') or 'Repository exceeds the size limit'}; checked out: {shown}")
             if files_included < 5:
                 completeness_level = "limited"
                 reasons.insert(0, f"Repository has only {files_included} analyzable file{'s' if files_included != 1 else ''}")
@@ -674,6 +692,9 @@ class IngestionWorker:
                 "subsystemsAnalyzed": len(subsystems),
                 "reason": reason
             }
+            if partial is not None:
+                analysis_completeness["analysedPaths"] = partial["paths"]
+                analysis_completeness["skippedPaths"] = partial["skipped"]
 
             self.db.persist_ingestion_atomic(
                 job_id=job_id,
@@ -723,72 +744,77 @@ class IngestionWorker:
                 GitCloner.cleanup(scratch_dir)
             self.active_job = None
 
-    def process_brief(self, brief: Dict[str, Any]):
-        """Runs GitHub discovery for one brief and stores its ranked candidates."""
-        brief_id = str(brief["id"])
-        self.active_brief = brief
-        github = GitHubSearchClient()
+    def _job_scope(self, job_id: str) -> Dict[str, Any]:
+        """The job's analysis scope (ingestion_jobs.scope_json, migration 010); {} means the whole repository."""
+        conn = self.db.get_connection()
         try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT scope_json FROM ingestion_jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        return (row[0] if row else None) or {}
+
+    def process_task(self, task: Dict[str, Any]):
+        """Runs one task of a brief's run graph inside the brief's budget and ledger scope."""
+        self.active_task = task
+        brief_id = str(task["brief_id"])
+        try:
+            loaded = self.tasks.load_context(brief_id)
+            brief = loaded["brief"]
             active = tuning_registry.load_active(self.db)
-            runner = DiscoveryRunner(
-                llm=self._llm_for(active, "models.discovery"),
-                github=github,
-                tuning=active,
-                on_step=lambda step: self.briefs.update_step(brief_id, step, self.worker_id),
+            ctx = TaskContext(
+                task=task, brief=brief, outputs=loaded["outputs"], tuning=active,
+                llm_for=lambda key: self._llm_for(active, key), db=self.db,
+                set_step=lambda step: self.tasks.set_step(brief_id, step),
+                heartbeat=lambda: self.tasks.heartbeat(task, self.worker_id),
             )
-            with ledger.ledger_scope(tuning_version=active.version):
-                result = runner.run(brief["requirements_json"] or {})
-            # The strongest shortlisted repositories go through the normal indexer so the blueprint can rest
-            # on code evidence; they are queued in the same transaction that stores the candidates
-            targets = select_verification_targets(result["candidates"], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT)
-            self.briefs.persist_discovery(brief_id, result["candidates"], result["metrics"], self.worker_id, targets)
-            shortlisted = sum(1 for c in result["candidates"] if c.get("shortlisted"))
-            queued = sum(1 for t in targets if t.get("state") != "skipped")
-            print(f"[{self.worker_id}] Discovery for brief {brief_id} done: {len(result['candidates'])} candidates, {shortlisted} shortlisted, {queued} queued for verification, {result['metrics']['durationMs']}ms", flush=True)
+            fp = fingerprint(ctx)
+            previous = task.get("output_json") or {}
+            self.tasks.set_step(brief_id, TASK_STEP[task["type"]])
+            if fp == task.get("inputs_fingerprint") and task.get("output_hash") and previous.get("phase") != "waiting":
+                # Inputs unchanged since the last successful run: the result still holds, nothing downstream changes
+                self.tasks.complete(task, previous, fp, self.worker_id)
+                print(f"[{self.worker_id}] {task['type']} for brief {brief_id}: inputs unchanged, reused", flush=True)
+                return
+
+            budget_cfg = brief.get("budget_json") or {}
+            limits = {**DEFAULT_BUDGET, **(budget_cfg.get("limits") or {})}
+            budget = ledger.Budget(limits, self.tasks.budget_usage(brief_id, budget_cfg.get("resetAt")))
+            with ledger.budget_scope(budget), ledger.ledger_scope(scope_type="brief", scope_id=brief_id, tuning_version=active.version):
+                outcome = HANDLERS[task["type"]](ctx)
+            if outcome.kind == "wait":
+                self.tasks.wait(task, outcome.wait_seconds, self.worker_id, outcome.output, fp, outcome.persist)
+            elif outcome.kind == "await_input":
+                self.tasks.await_input(task, outcome.output, fp, self.worker_id, outcome.persist)
+                print(f"[{self.worker_id}] {task['type']} for brief {brief_id} needs answers before research continues", flush=True)
+            else:
+                self.tasks.complete(task, outcome.output, fp, self.worker_id, outcome.persist)
+                print(f"[{self.worker_id}] {task['type']} for brief {brief_id} done", flush=True)
         except JobLostError as e:
-            print(f"[{self.worker_id}] Abandoning brief {brief_id}: {e}", file=sys.stderr)
+            print(f"[{self.worker_id}] Abandoning {task['type']} for brief {brief_id}: {e}", file=sys.stderr)
+        except ledger.BudgetExceeded as e:
+            print(f"[{self.worker_id}] {task['type']} for brief {brief_id} stopped: {e}", file=sys.stderr)
+            self._try(lambda: self.tasks.fail(task, str(e), self.worker_id, stop_reason="budget"))
         except Exception as e:
             err_msg = str(e)
-            attempts = int(brief.get("attempts") or 1)
+            attempts = int(task.get("attempts") or 1)
             if (isinstance(e, GitHubRateLimited) or is_transient_error(e)) and attempts < config.MAX_JOB_ATTEMPTS:
                 delay = 60 * (2 ** (attempts - 1))
-                print(f"[{self.worker_id}] Transient discovery failure for brief {brief_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
-                if not self.briefs.requeue_for_retry(brief_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay):
-                    print(f"[{self.worker_id}] Brief {brief_id} changed while failing; leaving it as is", file=sys.stderr)
+                print(f"[{self.worker_id}] Transient failure in {task['type']} for brief {brief_id} (attempt {attempts}), retrying in {delay}s: {err_msg}", file=sys.stderr)
+                self._try(lambda: self.tasks.retry(task, f"Retrying after a temporary error: {err_msg}", delay, self.worker_id))
             else:
-                print(f"[{self.worker_id}] Discovery failed for brief {brief_id}: {err_msg}", file=sys.stderr)
-                self.briefs.mark_failed(brief_id, err_msg, self.worker_id)
+                print(f"[{self.worker_id}] {task['type']} for brief {brief_id} failed: {err_msg}", file=sys.stderr)
+                self._try(lambda: self.tasks.fail(task, err_msg, self.worker_id))
         finally:
-            github.close()
-            self.active_brief = None
+            self.active_task = None
 
-    def process_blueprint(self, blueprint: Dict[str, Any]):
-        """Writes the engineering blueprint for a brief once its verification repositories are indexed."""
-        blueprint_id = str(blueprint["id"])
-        self.active_blueprint = blueprint
+    @staticmethod
+    def _try(action):
         try:
-            inputs = self.briefs.load_blueprint_inputs(blueprint)
-            self.briefs.update_blueprint_step(blueprint_id, "DESIGNING", self.worker_id)
-            active = tuning_registry.load_active(self.db)
-            with ledger.ledger_scope(tuning_version=active.version):
-                result = generate_blueprint(self._llm_for(active, "models.blueprint"), inputs, tuning=active)
-            self.briefs.persist_blueprint(blueprint_id, result, self.worker_id)
-            decisions = [c["decision"] for c in result["components"]]
-            print(f"[{self.worker_id}] Blueprint {blueprint_id} done: {decisions.count('reuse')} reuse, {decisions.count('adapt')} adapt, {decisions.count('build')} build, {len(result['sources'])} sources", flush=True)
-        except JobLostError as e:
-            print(f"[{self.worker_id}] Abandoning blueprint {blueprint_id}: {e}", file=sys.stderr)
-        except Exception as e:
-            err_msg = str(e)
-            attempts = int(blueprint.get("attempts") or 1)
-            if is_transient_error(e) and attempts < config.MAX_JOB_ATTEMPTS:
-                delay = 60 * (2 ** (attempts - 1))
-                print(f"[{self.worker_id}] Transient blueprint failure {blueprint_id} (attempt {attempts}/{config.MAX_JOB_ATTEMPTS}), retrying in {delay}s: {err_msg}", file=sys.stderr)
-                self.briefs.requeue_for_retry(blueprint_id, f"Retrying after a temporary error: {err_msg}", self.worker_id, delay, table="brief_blueprints")
-            else:
-                print(f"[{self.worker_id}] Blueprint failed {blueprint_id}: {err_msg}", file=sys.stderr)
-                self.briefs.mark_failed(blueprint_id, err_msg, self.worker_id, table="brief_blueprints")
-        finally:
-            self.active_blueprint = None
+            action()
+        except JobLostError:
+            pass
 
     def _llm_for(self, active: "tuning_registry.Tuning", key: str):
         """The model the active tuning routes this task to, or the worker's default provider."""
@@ -796,8 +822,8 @@ class IngestionWorker:
         return get_llm_provider(model=model) if model else self.llm
 
     def run_next(self) -> bool:
-        """Processes one unit of work: repository indexing first (it is what blueprints wait for), then
-        blueprints whose repositories are done, then brief discovery. Returns False when nothing is waiting."""
+        """Processes one unit of work: repository indexing first (verification tasks wait for it), then the next
+        ready task of any brief's run graph. Returns False when nothing is waiting."""
         job = self.db.claim_next_job(worker_id=self.worker_id)
         if job:
             self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
@@ -805,18 +831,21 @@ class IngestionWorker:
                 self.process_job(job)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
-        blueprint = self.briefs.claim_next_blueprint(self.worker_id)
-        if blueprint:
-            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"blueprintId": str(blueprint["id"])})
-            with ledger.ledger_scope(scope_type="blueprint", scope_id=str(blueprint["id"])):
-                self.process_blueprint(blueprint)
+        task = self.tasks.claim_next(self.worker_id)
+        if task:
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(task["brief_id"]), "task": task["type"]})
+            self.process_task(task)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
-        brief = self.briefs.claim_next_brief(self.worker_id)
-        if brief:
-            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(brief["id"])})
-            with ledger.ledger_scope(scope_type="brief", scope_id=str(brief["id"])):
-                self.process_brief(brief)
+        # Authorised builds (Phase 6): separate from the run graph, run only in the sandbox
+        build = self.builds.claim_next(self.worker_id)
+        if build:
+            self.active_build = build
+            self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"buildId": str(build["id"])})
+            try:
+                process_build(self.db, build, lambda key: self._llm_for(tuning_registry.load_active(self.db), key), self.worker_id)
+            finally:
+                self.active_build = None
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         return False
@@ -837,10 +866,26 @@ class IngestionWorker:
             try:
                 self.db.record_heartbeat(self.worker_id, status="ALIVE")
                 if not self.run_next():
+                    self.memory.maybe_run()
+                    self._idle_evolution_monitor()
                     time.sleep(config.WORKER_POLL_INTERVAL_SECONDS)
             except Exception as e:
                 print(f"[{self.worker_id}] Queue polling loop error: {e}", file=sys.stderr, flush=True)
                 time.sleep(3)
+
+    def _idle_evolution_monitor(self):
+        """Phase 5: when idle, at most every few hours, compare live feedback on the promoted tuning with its
+        predecessor and roll back on a regression (apps/worker/evolution/monitor.py)."""
+        from .evolution import monitor
+        if time.time() - getattr(self, "_last_evolution_check", 0.0) < monitor.MONITOR_INTERVAL_SECONDS:
+            return
+        self._last_evolution_check = time.time()
+        try:
+            outcome = monitor.check(self.db)
+            if outcome["action"] != "none":
+                print(f"[{self.worker_id}] Evolution monitor: {outcome['reason']}", flush=True)
+        except Exception as e:
+            print(f"[{self.worker_id}] Evolution monitor failed: {e}", file=sys.stderr, flush=True)
 
 
 def start_scraper_daemon(port: int = 8001):

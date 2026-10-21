@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
+import { ConstraintFields } from '@/components/briefs/RunPanel';
 
 const ACCEPT = '.txt,.md,.markdown,.pdf,.docx';
 
@@ -20,6 +21,8 @@ export default function BriefsPage() {
   const [loadError, setLoadError] = useState(false);
 
   const [title, setTitle] = useState('');
+  const [constraints, setConstraints] = useState<Record<string, string>>({});
+  const [showConstraints, setShowConstraints] = useState(false);
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -64,12 +67,13 @@ export default function BriefsPage() {
         const form = new FormData();
         form.append('file', file);
         if (title.trim()) form.append('title', title.trim());
+        form.append('constraints', JSON.stringify(constraints));
         res = await fetch('/api/briefs', { method: 'POST', body: form });
       } else {
         res = await fetch('/api/briefs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: title.trim(), text })
+          body: JSON.stringify({ title: title.trim(), text, constraints })
         });
       }
       const data: any = (await readJsonSafe(res)) || {};
@@ -153,6 +157,14 @@ export default function BriefsPage() {
             </div>
           )}
 
+          {showConstraints ? (
+            <ConstraintFields value={constraints} onChange={setConstraints} />
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setShowConstraints(true)}>
+              Add constraints (languages, infrastructure, licences)
+            </button>
+          )}
+
           <div className="row wrap between gap-3">
             <div className="row gap-2">
               <input
@@ -217,7 +229,11 @@ export default function BriefsPage() {
                 <div className="small muted">
                   {isBriefActive(b.status)
                     ? `${discoveryStepLabel(b.step)}…`
-                    : b.status === 'FAILED'
+                    : b.status === 'AWAITING_INPUT'
+                      ? 'Waiting for your answer'
+                      : b.status === 'STOPPED'
+                        ? 'Stopped: budget used up'
+                        : b.status === 'FAILED'
                       ? <span className="clamp-2">{b.errorMessage || 'Discovery failed.'}</span>
                       : `${b.requirementCount} requirements · ${b.candidateCount} candidates · ${b.shortlistedCount} shortlisted`}
                 </div>

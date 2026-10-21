@@ -1,120 +1,294 @@
+"""Run graph, budgets, claims and verification queueing against the database (Phase 1)."""
+import json
+
 import pytest
 from psycopg2.extras import Json
 
-from apps.worker.db.briefs import BriefRepository
+from apps.worker import claims
+from apps.worker.db.briefs import BriefStore
 from apps.worker.db.repository import DatabaseRepository, JobLostError
+from apps.worker.orchestrator import store as task_store
+from apps.worker.orchestrator.graph import downstream
+from apps.worker.orchestrator.handlers import Outcome, TaskContext, fingerprint, run_understand
+from apps.worker.providers import ledger
+from apps.worker.providers.llm import BaseLLMProvider
+from apps.worker.tuning import default_tuning
 
-REQUIREMENTS = {
-    "problemSummary": "Queue test brief",
-    "requirements": [{"name": "Orbit propagation", "description": "SGP4", "criticality": "MUST"}],
-}
+REQUIREMENTS = {"problemSummary": "Queue test brief", "requirements": [{"name": "Orbit propagation", "description": "SGP4", "criticality": "MUST"}]}
 
 
-@pytest.fixture
-def briefs():
-    db = DatabaseRepository()
-    repo = BriefRepository(db)
+def sql(db, query, params=()):
     conn = db.get_connection()
-    with conn.cursor() as cur:
-        # Older queued briefs from other tests or local use must not be claimed first
-        cur.execute("UPDATE briefs SET status = 'COMPLETED' WHERE status IN ('QUEUED', 'RUNNING')")
-        cur.execute(
-            """
-            INSERT INTO briefs (title, brief_text, content_hash, requirements_json, created_at)
-            VALUES ('Queue test', 'text', 'queue-test-hash', %s, NOW() - INTERVAL '1 hour')
-            RETURNING id
-            """,
-            (Json(REQUIREMENTS),)
-        )
-        brief_id = str(cur.fetchone()[0])
-        conn.commit()
-    yield repo, brief_id
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM briefs WHERE id = %s", (brief_id,))
-        conn.commit()
-    conn.close()
-
-
-def candidate(full_name, rank):
-    return {
-        "full_name": full_name, "source_url": f"https://github.com/{full_name}", "description": "d",
-        "primary_language": "Python", "topics": ["sgp4"], "stars": 10, "forks": 1, "open_issues": 0,
-        "license": "MIT", "pushed_at": "2026-09-01T00:00:00Z", "candidate_kind": "library",
-        "matched_queries": ["sgp4"], "matched_requirements": ["Orbit propagation"], "relevance_score": 0.5,
-        "health_score": 0.5, "coverage_score": 1.0, "final_score": 0.8, "rank": rank, "shortlisted": rank == 1,
-        "assessment": {"kind": "library", "coverage": {"Orbit propagation": "yes"}},
-    }
-
-
-def status_of(repo, brief_id):
-    conn = repo.db.get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT status, step, (SELECT COUNT(*) FROM brief_candidates WHERE brief_id = briefs.id) FROM briefs WHERE id = %s", (brief_id,))
-            return cur.fetchone()
+            cur.execute(query, params)
+            rows = cur.fetchall() if cur.description else None
+            conn.commit()
+            return rows
     finally:
         conn.close()
 
 
-def test_one_worker_claims_a_brief(briefs):
-    repo, brief_id = briefs
-    claimed = repo.claim_next_brief("worker-a")
-    assert str(claimed["id"]) == brief_id
-    assert claimed["requirements_json"]["problemSummary"] == "Queue test brief"
-    assert repo.claim_next_brief("worker-b") is None
-    assert status_of(repo, brief_id)[:2] == ("RUNNING", "PLANNING_QUERIES")
-
-
-def test_only_the_owner_can_progress_or_persist(briefs):
-    repo, brief_id = briefs
-    repo.claim_next_brief("worker-a")
-    with pytest.raises(JobLostError):
-        repo.update_step(brief_id, "SEARCHING_GITHUB", "worker-b")
-    with pytest.raises(JobLostError):
-        repo.persist_discovery(brief_id, [candidate("a/b", 1)], {}, "worker-b")
-    repo.update_step(brief_id, "SEARCHING_GITHUB", "worker-a")
-    assert status_of(repo, brief_id)[1] == "SEARCHING_GITHUB"
-
-
-def test_persist_replaces_previous_candidates(briefs):
-    repo, brief_id = briefs
-    repo.claim_next_brief("worker-a")
-    repo.persist_discovery(brief_id, [candidate("a/one", 1), candidate("a/two", 2)], {"candidatesFound": 2}, "worker-a")
-    assert status_of(repo, brief_id) == ("COMPLETED", "DONE", 2)
-
-    conn = repo.db.get_connection()
+@pytest.fixture
+def run():
+    db = DatabaseRepository()
+    store = task_store.TaskStore(db)
+    # Other briefs' tasks must not be claimed by these tests
+    sql(db, "UPDATE tasks SET status = 'done' WHERE status IN ('pending', 'stale', 'waiting', 'running')")
+    [(brief_id,)] = sql(db, """
+        INSERT INTO briefs (title, brief_text, content_hash, requirements_json, workspace_id)
+        VALUES ('Run test', 'text', 'run-test-hash', %s, '00000000-0000-0000-0000-000000000001') RETURNING id
+    """, (Json(REQUIREMENTS),))
+    brief_id = str(brief_id)
+    conn = db.get_connection()
     with conn.cursor() as cur:
-        cur.execute("UPDATE briefs SET status = 'QUEUED', step = 'QUEUED', attempts = 0 WHERE id = %s", (brief_id,))
+        task_store.create_run(cur, brief_id)
         conn.commit()
     conn.close()
-    repo.claim_next_brief("worker-a")
-    repo.persist_discovery(brief_id, [candidate("a/three", 1)], {"candidatesFound": 1}, "worker-a")
-    assert status_of(repo, brief_id) == ("COMPLETED", "DONE", 1)
+    yield db, store, brief_id
+    sql(db, "DELETE FROM briefs WHERE id = %s", (brief_id,))
 
 
-def test_retry_is_not_claimable_before_its_delay(briefs):
-    repo, brief_id = briefs
-    repo.claim_next_brief("worker-a")
-    assert repo.requeue_for_retry(brief_id, "GITHUB_RATE_LIMITED", "worker-a", 300)
-    assert status_of(repo, brief_id)[0] == "QUEUED"
-    assert repo.claim_next_brief("worker-b") is None
+def statuses(db, brief_id):
+    return dict(sql(db, "SELECT type, status FROM tasks WHERE brief_id = %s", (brief_id,)))
 
 
-def test_deleted_brief_is_abandoned(briefs):
-    repo, brief_id = briefs
-    repo.claim_next_brief("worker-a")
-    conn = repo.db.get_connection()
+def brief_status(db, brief_id):
+    return sql(db, "SELECT status, stop_reason FROM briefs WHERE id = %s", (brief_id,))[0]
+
+
+def test_graph_runs_in_dependency_order(run):
+    db, store, brief_id = run
+    first = store.claim_next("w1")
+    assert first["type"] == "understand"
+    assert store.claim_next("w2") is None  # discover waits for understand
+    store.complete(first, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    recall = store.claim_next("w2")
+    assert recall["type"] == "recall"  # memory is read before research (Phase 4)
+    assert store.claim_next("w1") is None  # discover waits for recall too
+    store.complete(recall, {"candidates": []}, "fp-r", "w2")
+    assert store.claim_next("w2")["type"] == "discover"
+    assert brief_status(db, brief_id)[0] == "RUNNING"
+
+
+def test_unchanged_output_does_not_disturb_downstream(run):
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.complete(understand, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    store.complete(store.claim_next("w1"), {"candidates": []}, "fp-r", "w1")  # recall
+    discover = store.claim_next("w1")
+    store.complete(discover, {"shortlist": ["a/b"]}, "fp-d", "w1")
+    assert statuses(db, brief_id)["discover"] == "done"
+
+    # Re-running understand with the same result leaves discover done; a different result makes it stale
+    task_store_conn = db.get_connection()
+    with task_store_conn.cursor() as cur:
+        cur.execute("UPDATE tasks SET status = 'stale' WHERE brief_id = %s AND type = 'understand'", (brief_id,))
+        task_store_conn.commit()
+    task_store_conn.close()
+    again = store.claim_next("w1")
+    assert again["type"] == "understand"
+    store.complete(again, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    assert statuses(db, brief_id)["discover"] == "done"
+
+    sql(db, "UPDATE tasks SET status = 'stale' WHERE brief_id = %s AND type = 'understand'", (brief_id,))
+    changed = store.claim_next("w1")
+    store.complete(changed, {"requirements": {"problemSummary": "changed", "requirements": []}}, "fp-u2", "w1")
+    s = statuses(db, brief_id)
+    assert s["discover"] == "stale" and s["verify"] == "pending"
+
+
+def test_invalidation_takes_ownership_from_a_running_task(run):
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.complete(understand, {"requirements": REQUIREMENTS}, "fp-u", "w1")
+    store.complete(store.claim_next("w1"), {"candidates": []}, "fp-r", "w1")  # recall
+    discover = store.claim_next("w1")  # running
+    conn = db.get_connection()
     with conn.cursor() as cur:
-        cur.execute("DELETE FROM briefs WHERE id = %s", (brief_id,))
+        task_store.invalidate(cur, brief_id, "understand", force=True)
         conn.commit()
     conn.close()
     with pytest.raises(JobLostError):
-        repo.update_step(brief_id, "RANKING", "worker-a")
-    with pytest.raises(JobLostError):
-        repo.persist_discovery(brief_id, [candidate("a/b", 1)], {}, "worker-a")
+        store.complete(discover, {"shortlist": []}, "fp-d", "w1")
+    s = statuses(db, brief_id)
+    assert s["understand"] == "stale" and s["discover"] == "stale"
+    assert sql(db, "SELECT inputs_fingerprint FROM tasks WHERE brief_id = %s AND type = 'understand'", (brief_id,))[0][0] is None
 
 
-# Verification queueing and the blueprint gate
+def test_waiting_task_is_not_claimed_before_its_time(run):
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.wait(understand, 300, "w1", {"phase": "waiting"}, "fp")
+    assert store.claim_next("w2") is None
+    sql(db, "UPDATE tasks SET not_before = NOW() - INTERVAL '1 second' WHERE brief_id = %s AND type = 'understand'", (brief_id,))
+    assert store.claim_next("w2")["type"] == "understand"
+
+
+def test_blocking_questions_hold_research(run):
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.await_input(understand, {"blockingQuestions": ["Which cloud?"]}, "fp", "w1")
+    assert store.claim_next("w1") is None
+    assert brief_status(db, brief_id)[0] == "AWAITING_INPUT"
+
+
+def test_budget_stop_is_reported_on_the_brief(run):
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.fail(understand, "BUDGET_EXCEEDED: llmCalls limit of 1 reached", "w1", stop_reason="budget")
+    assert brief_status(db, brief_id) == ("STOPPED", "budget")
+
+
+def test_downstream_order():
+    assert downstream("understand") == ["recall", "discover", "verify", "docs", "execute", "blueprint"]
+    assert downstream("recall") == ["discover", "verify", "docs", "execute", "blueprint"]
+    assert downstream("verify") == ["execute", "blueprint"]
+    assert downstream("docs") == ["blueprint"]
+    assert downstream("execute") == ["blueprint"]
+    assert downstream("blueprint") == []
+    from apps.worker.orchestrator.graph import ancestors
+    assert ancestors("blueprint") == ["understand", "recall", "discover", "verify", "docs", "execute"]
+    assert ancestors("docs") == ["understand", "recall", "discover"]
+
+
+# Understanding task
+
+class QuestionLLM(BaseLLMProvider):
+    def __init__(self, blocking):
+        self.blocking = blocking
+
+    def complete(self, prompt, system=None):
+        return json.dumps({
+            "problemSummary": "Track satellites",
+            "requirements": [{"name": "Orbit propagation", "description": "SGP4", "type": "functional", "criticality": "MUST", "confidence": "explicit"}],
+            "acceptanceCriteria": ["Shows ISS position within 1 km"],
+            "clarifyingQuestions": [{"question": "Browser or desktop?", "why": "Changes the rendering stack", "blocking": self.blocking}],
+            "assumptions": ["Public TLE data is enough"],
+        })
+
+
+def context(brief, llm):
+    return TaskContext(task={"type": "understand", "output_json": {}}, brief=brief, outputs={}, tuning=default_tuning(),
+                       llm_for=lambda key: llm, db=None)
+
+
+BRIEF = {"id": "b", "title": "Satellite tracker", "brief_text": "Track satellites in the browser.", "constraints_json": {}, "answers_json": {}}
+
+
+def test_non_blocking_questions_do_not_hold_research():
+    outcome = run_understand(context(BRIEF, QuestionLLM(blocking=False)))
+    assert outcome.kind == "done"
+    assert outcome.output["requirements"]["requirements"][0]["name"] == "Orbit propagation"
+
+
+def test_blocking_question_waits_until_answered():
+    assert run_understand(context(BRIEF, QuestionLLM(blocking=True))).kind == "await_input"
+    answered = {**BRIEF, "answers_json": {"Browser or desktop?": "Browser"}}
+    assert run_understand(context(answered, QuestionLLM(blocking=True))).kind == "done"
+
+
+def test_fingerprint_changes_with_constraints_and_answers():
+    base = fingerprint(context(BRIEF, None))
+    assert fingerprint(context({**BRIEF, "constraints_json": {"languages": "Python"}}, None)) != base
+    assert fingerprint(context({**BRIEF, "answers_json": {"q": "a"}}, None)) != base
+    assert fingerprint(context(dict(BRIEF), None)) == base
+
+
+# Budgets
+
+def test_budget_blocks_calls_once_spent():
+    budget = ledger.Budget({"llmCalls": 2, "githubRequests": 1})
+    with ledger.budget_scope(budget):
+        ledger.authorize("mistral")
+        ledger.record("mistral", "chat_completion", "m", 1, True, 10, 5)
+        ledger.record("mistral", "chat_completion", "m", 1, True, 10, 5)
+        with pytest.raises(ledger.BudgetExceeded, match="llmCalls"):
+            ledger.authorize("mistral")
+        ledger.authorize("github")
+        ledger.record("github", "search", None, 1, True)
+        with pytest.raises(ledger.BudgetExceeded, match="githubRequests"):
+            ledger.authorize("github")
+    assert budget.used == {"llmCalls": 2, "tokens": 30, "githubRequests": 1}
+    ledger.authorize("mistral")  # outside the scope nothing is limited
+
+
+def test_github_client_refuses_requests_over_budget():
+    import httpx
+    from apps.worker.discovery.github_search import GitHubSearchClient
+    client = GitHubSearchClient(token="t", http=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"items": []}))))
+    with ledger.budget_scope(ledger.Budget({"githubRequests": 1})):
+        assert client.search_repositories("sgp4") == []
+        with pytest.raises(ledger.BudgetExceeded):
+            client.search_repositories("globe")
+
+
+def test_llm_provider_reports_a_spent_budget_instead_of_retrying(monkeypatch):
+    # A spent budget must stop the run (status STOPPED), not look like an unavailable provider after retries
+    from apps.worker.discovery.planner import plan_queries
+    from apps.worker.providers.llm import MistralLLMProvider
+    import apps.worker.providers.llm as llm_module
+    monkeypatch.setattr(llm_module.time, "sleep", lambda s: pytest.fail("a spent budget is never retried"))
+    llm = MistralLLMProvider(api_key="k")
+    with ledger.budget_scope(ledger.Budget({"llmCalls": 0})):
+        with pytest.raises(ledger.BudgetExceeded):
+            llm.complete("plan")
+        # and the planner passes it on rather than falling back to keyword queries that still spend searches
+        with pytest.raises(ledger.BudgetExceeded):
+            plan_queries(llm, {"problemSummary": "x", "requirements": [{"name": "Queue", "description": "job queue", "criticality": "MUST"}]})
+
+
+# Claims
+
+def test_claims_merge_and_keep_the_best_grade(run):
+    db, _, brief_id = run
+    conn = db.get_connection()
+    try:
+        with conn.cursor() as cur:
+            subject = "github:test-owner/claims-test"
+            cur.execute("DELETE FROM claims WHERE subject = %s", (subject,))
+            a = claims.upsert_claim(cur, subject, "capability", "SGP4 propagation", "E4", {"method": "readme_assessment"})
+            b = claims.upsert_claim(cur, subject, "capability", "  sgp4   PROPAGATION ", "E2", {"method": "code_located", "locator": {"filePath": "sgp4.js"}})
+            c = claims.upsert_claim(cur, subject, "capability", "SGP4 propagation", "E4", {"method": "readme_assessment"})
+            assert a == b == c
+            cur.execute("SELECT grade, jsonb_array_length(evidence_json) FROM claims WHERE id = %s", (a,))
+            assert cur.fetchone() == ("E2", 2)  # strongest grade kept; the repeated README evidence not duplicated
+            scoped = claims.upsert_claim(cur, subject, "coverage", "covers orbit propagation", "E4", {"method": "readme_assessment"}, brief_id=brief_id)
+            assert scoped != a
+            cur.execute("DELETE FROM claims WHERE subject = %s", (subject,))
+            conn.commit()
+    finally:
+        conn.close()
+
+
+def test_claims_from_an_indexed_repository(run):
+    db, _, _ = run
+    conn = db.get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM repositories WHERE owner = 'test-owner' AND name = 'claims-repo'")
+            cur.execute("""INSERT INTO repositories (owner, name, url, status, latest_commit_hash, license)
+                           VALUES ('test-owner', 'claims-repo', 'https://github.com/test-owner/claims-repo', 'READY', 'abc123', 'MIT') RETURNING id""")
+            repo_id = str(cur.fetchone()[0])
+            cur.execute("""INSERT INTO knowledge_objects (repository_id, object_type, name, description)
+                           VALUES (%s, 'capability', 'SGP4 propagation', 'Propagates TLEs') RETURNING id""", (repo_id,))
+            ko = cur.fetchone()[0]
+            cur.execute("""INSERT INTO evidence (knowledge_object_id, file_path, start_line, end_line, quote_snippet, evidence_type, is_verified)
+                           VALUES (%s, 'src/sgp4.js', 10, 40, 'export function sgp4(', 'code_ast', TRUE)""", (ko,))
+            assert claims.claims_from_repository(cur, repo_id) == 2  # capability (E2) and licence (E3)
+            cur.execute("SELECT kind, grade, subject_version, evidence_json->0->>'sourceUrl' FROM claims WHERE subject = 'github:test-owner/claims-repo' ORDER BY kind")
+            rows = cur.fetchall()
+            assert rows[0][:3] == ("capability", "E2", "abc123")
+            assert rows[0][3] == "https://github.com/test-owner/claims-repo/blob/abc123/src/sgp4.js#L10-L40"
+            assert rows[1][:2] == ("licence", "E3")
+            cur.execute("DELETE FROM claims WHERE subject = 'github:test-owner/claims-repo'")
+            cur.execute("DELETE FROM repositories WHERE id = %s", (repo_id,))
+            conn.commit()
+    finally:
+        conn.close()
+
+
+# Verification queueing (unchanged behaviour, now called by the verify task)
 
 TARGET = {
     "fullName": "Test-Owner/BP-Verify",
@@ -125,84 +299,31 @@ TARGET = {
 
 
 @pytest.fixture
-def clean_target(briefs):
-    repo, _ = briefs
-    def wipe():
-        conn = repo.db.get_connection()
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
-            cur.execute("DELETE FROM resources WHERE lower(source_url) = %s", (TARGET["url"],))
-            cur.execute("UPDATE brief_blueprints SET status = 'COMPLETED' WHERE status IN ('WAITING', 'RUNNING')")
-            conn.commit()
-        conn.close()
+def clean_target():
+    db = DatabaseRepository()
+    wipe = lambda: (sql(db, "DELETE FROM repositories WHERE lower(url) = %s", (TARGET["url"],)),
+                    sql(db, "DELETE FROM resources WHERE lower(source_url) = %s", (TARGET["url"],)))
     wipe()
-    yield
+    yield db
     wipe()
 
 
-def run_sql(repo, sql, params=()):
-    conn = repo.db.get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall() if cur.description else None
-            conn.commit()
-            return rows
-    finally:
-        conn.close()
-
-
-def discover(repo, brief_id, targets):
-    repo.claim_next_brief("worker-a")
-    repo.persist_discovery(brief_id, [candidate("a/one", 1)], {}, "worker-a", targets)
-
-
-def test_discovery_queues_verification_and_blueprint_waits_for_it(briefs, clean_target):
-    repo, brief_id = briefs
-    discover(repo, brief_id, [TARGET, {"fullName": "x/too-big", "url": "https://github.com/x/too-big", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"}])
-
-    [(repo_id, status, branch, stars)] = run_sql(repo, "SELECT id, status, default_branch, stars FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
-    assert (status, branch, stars) == ("PENDING", "develop", 42)
-    assert run_sql(repo, "SELECT status FROM ingestion_jobs WHERE repository_id = %s", (repo_id,)) == [("QUEUED",)]
-    [(verification,)] = run_sql(repo, "SELECT verification_json FROM brief_blueprints WHERE brief_id = %s", (brief_id,))
-    assert [v["state"] for v in verification] == ["queued", "skipped"]
-    assert verification[0]["repositoryId"] == str(repo_id)
-
-    # Still indexing: not claimable
-    assert repo.claim_next_blueprint("worker-a") is None
-    run_sql(repo, "UPDATE repositories SET status = 'READY' WHERE id = %s", (repo_id,))
-    claimed = repo.claim_next_blueprint("worker-a")
-    assert claimed and str(claimed["brief_id"]) == brief_id
-
-    inputs = repo.load_blueprint_inputs(claimed)
-    assert inputs["requirements"]["problemSummary"] == "Queue test brief"
-    assert [v["repository"]["status"] if v["repository"] else None for v in inputs["verification"]] == ["READY", None]
-
-    with pytest.raises(JobLostError):
-        repo.persist_blueprint(str(claimed["id"]), {"summary": "x"}, "worker-b")
-    repo.persist_blueprint(str(claimed["id"]), {"summary": "x"}, "worker-a")
-    assert run_sql(repo, "SELECT status, blueprint_json->>'summary' FROM brief_blueprints WHERE id = %s", (claimed["id"],)) == [("COMPLETED", "x")]
-
-
-def test_indexed_repository_is_reused_not_reindexed(briefs, clean_target):
-    repo, brief_id = briefs
-    discover(repo, brief_id, [TARGET])
-    [(repo_id,)] = run_sql(repo, "SELECT id FROM repositories WHERE lower(url) = %s", (TARGET["url"],))
-    run_sql(repo, "UPDATE repositories SET status = 'READY' WHERE id = %s", (repo_id,))
-    run_sql(repo, "UPDATE ingestion_jobs SET status = 'COMPLETED' WHERE repository_id = %s", (repo_id,))
-    run_sql(repo, "UPDATE briefs SET status = 'QUEUED', attempts = 0 WHERE id = %s", (brief_id,))
-
-    discover(repo, brief_id, [TARGET])
-    [(verification,)] = run_sql(repo, "SELECT verification_json FROM brief_blueprints WHERE brief_id = %s", (brief_id,))
-    assert verification[0]["state"] == "reused"
-    assert run_sql(repo, "SELECT COUNT(*) FROM ingestion_jobs WHERE repository_id = %s", (repo_id,)) == [(1,)]
-    # One blueprint per brief: rediscovery replaced it
-    assert run_sql(repo, "SELECT COUNT(*) FROM brief_blueprints WHERE brief_id = %s", (brief_id,)) == [(1,)]
-
-
-def test_blueprint_stops_waiting_after_the_maximum_wait(briefs, clean_target):
-    repo, brief_id = briefs
-    discover(repo, brief_id, [TARGET])
-    assert repo.claim_next_blueprint("worker-a") is None
-    run_sql(repo, "UPDATE brief_blueprints SET created_at = NOW() - INTERVAL '2 days' WHERE brief_id = %s", (brief_id,))
-    assert repo.claim_next_blueprint("worker-a") is not None
+def test_verification_queues_then_reuses_an_indexed_repository(clean_target):
+    db = clean_target
+    conn = db.get_connection()
+    with conn.cursor() as cur:
+        first = BriefStore.queue_verification(cur, TARGET)
+        conn.commit()
+    assert first["state"] == "queued"
+    [(status, branch)] = sql(db, "SELECT status, default_branch FROM repositories WHERE id = %s", (first["repositoryId"],))
+    assert (status, branch) == ("PENDING", "develop")
+    sql(db, "UPDATE repositories SET status = 'READY' WHERE id = %s", (first["repositoryId"],))
+    sql(db, "UPDATE ingestion_jobs SET status = 'COMPLETED' WHERE repository_id = %s", (first["repositoryId"],))
+    with conn.cursor() as cur:
+        second = BriefStore.queue_verification(cur, TARGET)
+        conn.commit()
+    conn.close()
+    assert second["state"] == "reused" and second["repositoryId"] == first["repositoryId"]
+    assert sql(db, "SELECT COUNT(*) FROM ingestion_jobs WHERE repository_id = %s", (first["repositoryId"],)) == [(1,)]
+    skipped = BriefStore.queue_verification(None, {"fullName": "x/y", "url": "u", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"})
+    assert skipped == {"fullName": "x/y", "state": "skipped", "reason": "REPOSITORY_TOO_LARGE"}

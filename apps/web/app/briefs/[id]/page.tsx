@@ -9,6 +9,10 @@ import { Navbar } from '@/components/Navbar';
 import { StatusBadge } from '@/components/Primitives';
 import { LoadError } from '@/components/IndexingState';
 import { BlueprintSection } from '@/components/briefs/BlueprintSection';
+import { BuildPanel } from '@/components/briefs/BuildPanel';
+import { Feedback } from '@/components/briefs/Feedback';
+import { BudgetPanel, ConstraintsEditor, TaskTimeline, UnderstandingPanel } from '@/components/briefs/RunPanel';
+import { CandidateEvidence, CandidateSources } from '@/components/briefs/CandidateEvidence';
 import { formatRetryAfter, httpErrorTitle, readJsonSafe, retryAfterSeconds, shortDate } from '@/lib/ui/api';
 import { KIND_LABELS, compactNumber, discoveryProgress, discoveryStepLabel, isBriefActive } from '@/lib/ui/briefs';
 
@@ -123,6 +127,9 @@ export default function BriefDetailPage() {
 
   const active = isBriefActive(brief.status);
   const requirements = brief.requirements?.requirements || [];
+  // Results appear as soon as the task that produces them is done, not only when the whole run is
+  const taskDone = (type: string) => brief.tasks?.find((t) => t.type === type)?.status === 'done';
+  const discovered = taskDone('discover') || brief.candidates.length > 0;
   const shortlist = brief.candidates.filter((c) => c.shortlisted);
   const others = brief.candidates.filter((c) => !c.shortlisted);
   const queries = brief.discovery?.queries || [];
@@ -175,20 +182,42 @@ export default function BriefDetailPage() {
           <div className="callout callout-danger" role="alert" style={{ marginBottom: 'var(--s-6)' }}>
             <AlertCircle size={16} aria-hidden="true" />
             <div>
-              <div className="callout-title">Discovery failed.</div>
-              <div>{brief.errorMessage || 'The worker could not finish discovery.'}</div>
+              <div className="callout-title">The run failed.</div>
+              <div>{brief.errorMessage || 'The worker could not finish.'}</div>
             </div>
           </div>
         )}
 
-        {brief.decompositionMode === 'heuristic' && (
+        {brief.status === 'AWAITING_INPUT' && (
           <div className="callout callout-inferred" style={{ marginBottom: 'var(--s-6)' }}>
             <AlertTriangle size={16} aria-hidden="true" />
             <div>
-              <div className="callout-title">Requirements were extracted with keyword rules.</div>
-              <div>The AI provider did not return a usable breakdown, so these requirements are rough. Searches are based on them.</div>
+              <div className="callout-title">Research is waiting for an answer.</div>
+              <div>Answer the question marked below; only the affected steps run again.</div>
             </div>
           </div>
+        )}
+
+        <section style={{ marginBottom: 'var(--s-7)' }} aria-labelledby="run-heading">
+          <div className="rule-head">
+            <h2 id="run-heading" className="label">Run</h2>
+          </div>
+          <div className="grid-2" style={{ gap: 'var(--s-5)', alignItems: 'start' }}>
+            <TaskTimeline tasks={brief.tasks || []} />
+            <div className="stack gap-3">
+              <ConstraintsEditor brief={brief} onChanged={fetchBrief} />
+              <BudgetPanel briefId={brief.id} budget={brief.budget} stopped={brief.status === 'STOPPED'} onChanged={fetchBrief} />
+            </div>
+          </div>
+        </section>
+
+        {brief.understanding && (
+          <section style={{ marginBottom: 'var(--s-7)' }} aria-labelledby="understanding-heading">
+            <div className="rule-head">
+              <h2 id="understanding-heading" className="label">What Open Eye understood</h2>
+            </div>
+            <UnderstandingPanel brief={brief} onChanged={fetchBrief} />
+          </section>
         )}
 
         <section style={{ marginBottom: 'var(--s-7)' }}>
@@ -201,9 +230,19 @@ export default function BriefDetailPage() {
           </div>
         </section>
 
-        {brief.status === 'COMPLETED' && (
+        {discovered && (
           <>
-            {brief.blueprint && <BlueprintSection blueprint={brief.blueprint} />}
+            {brief.blueprint && (
+              <BlueprintSection
+                blueprint={brief.blueprint}
+                briefId={brief.id}
+                challenges={brief.challenges}
+                focus={brief.focus}
+                canIterate={!active}
+                onChanged={fetchBrief}
+              />
+            )}
+            {brief.blueprint?.status === 'COMPLETED' && <BuildPanel briefId={brief.id} />}
 
             <section style={{ marginBottom: 'var(--s-7)' }}>
               <div className="rule-head">
@@ -253,6 +292,9 @@ export default function BriefDetailPage() {
                   {brief.discovery?.durationMs ? ` in ${Math.round(brief.discovery.durationMs / 1000)}s` : ''}.
                   {brief.discovery?.queryPlanner === 'heuristic' && ' Queries were built from requirement keywords because the AI planner was unavailable.'}
                   {brief.discovery?.githubAuthenticated === false && ' GitHub was searched without a token, at lower rate limits.'}
+                  {brief.discovery?.registries && Object.keys(brief.discovery.registries.repositoriesFound).length > 0 &&
+                    ` Package registries pointed at ${Object.entries(brief.discovery.registries.repositoriesFound).map(([r, n]) => `${n} via ${r === 'crates' ? 'crates.io' : r}`).join(', ')}.`}
+                  {brief.discovery?.diminishingReturns && ` ${brief.discovery.diminishingReturns.skippedQueries.length} later queries were skipped: the previous ${brief.discovery.diminishingReturns.afterUnproductive} found nothing new.`}
                   {brief.discoveredAt && ` Last run ${shortDate(brief.discoveredAt)}.`}
                 </div>
                 <div className="row wrap gap-2">
@@ -276,7 +318,8 @@ const STAGE_LABEL: Record<BriefUsage['byStage'][number]['stage'], string> = {
   understanding: 'reading the brief',
   discovery: 'discovery',
   verification: 'verifying repositories',
-  blueprint: 'writing the blueprint'
+  blueprint: 'writing the blueprint',
+  execution: 'sandbox checks and builds'
 };
 
 /** What this brief's run spent, from the cost ledger, and which tuning version produced it. */
@@ -338,6 +381,13 @@ const CandidateCard: React.FC<{
           </a>
           <span className="tag">{KIND_LABELS[c.candidateKind] || c.candidateKind}</span>
           {c.duplicateOf && <span className="tag">Copy of {c.duplicateOf}</span>}
+          <CandidateSources candidate={c} />
+          {c.provenance?.includes('memory') && (
+            <Link href={`/memory`} className="tag" title={c.memory?.lastVerifiedAt ? `Remembered from earlier research, last verified ${shortDate(c.memory.lastVerifiedAt)}` : 'Remembered from earlier research'}>
+              {c.provenance.includes('search') ? 'also in memory' : 'from memory'}
+              {c.memory?.lastVerifiedAt ? ` · verified ${shortDate(c.memory.lastVerifiedAt)}` : ''}
+            </Link>
+          )}
         </div>
         <div className="row wrap gap-3 small muted">
           <span className="row gap-1"><Star size={13} aria-hidden="true" />{compactNumber(c.stars)}</span>
@@ -364,12 +414,15 @@ const CandidateCard: React.FC<{
 
       {!compact && c.assessment?.reason && <p className="small muted">{c.assessment.reason}</p>}
 
+      {!compact && <CandidateEvidence candidate={c} />}
+
       <div className="row wrap between gap-3">
         <span className="xsmall faint mono">
           score {c.finalScore.toFixed(2)}
           {c.coverageScore !== null && ` · coverage ${c.coverageScore.toFixed(2)}`} · relevance {c.relevanceScore.toFixed(2)} · health {c.healthScore.toFixed(2)}
         </span>
         <div className="row gap-2">
+          <Feedback kind="candidate" target={c.fullName} />
           {addState?.message && (
             <span className="small" role="status" style={addState.error ? { color: 'var(--danger)' } : undefined}>{addState.message}</span>
           )}

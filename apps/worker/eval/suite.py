@@ -59,6 +59,9 @@ def score_brief(brief: Dict[str, Any], ranked: List[str], shortlisted: List[str]
         "missedEssential": sorted(essential - top10),
         "shortlistSize": len(short),
         "shortlistPrecision": round(sum(1 for r in short if r in relevant) / len(short), 4) if short else None,
+        # Share of the essential solutions the system recommends. Guards precision, which a shorter
+        # shortlist raises without recommending anything better
+        "shortlistRecall": round(len(essential & set(short)) / len(essential), 4) if essential else None,
         "shortlistUnlabelled": [r for r in short if r not in relevant and r not in trap_set],
         "trapsTotal": len(trap_set),
         "trapRejection": round(sum(1 for t in trap_set if t not in short) / len(trap_set), 4) if trap_set else None,
@@ -82,6 +85,7 @@ def aggregate(per_brief: List[Dict[str, Any]]) -> Dict[str, Any]:
         "recallAt10": mean("recallAt10"),
         "recallAll": mean("recallAll"),
         "shortlistPrecision": mean("shortlistPrecision"),
+        "shortlistRecall": mean("shortlistRecall"),
         "trapRejection": mean("trapRejection"),
         "trapsSurfaced": sum(b.get("trapsSurfaced", 0) for b in per_brief),
         "trapsShortlisted": sum(len(b.get("trapsShortlisted", [])) for b in per_brief),

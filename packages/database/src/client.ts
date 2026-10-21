@@ -55,3 +55,6 @@ export async function checkConnection(): Promise<boolean> {
 export async function closePool(): Promise<void> {
   await pool.end();
 }
+
+// For callers that run several statements in one transaction
+export type { PoolClient } from 'pg';

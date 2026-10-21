@@ -2,7 +2,7 @@ import re
 from typing import Any, Dict, List, Tuple, Optional
 
 from ..providers.llm import BaseLLMProvider
-from ..providers.ledger import ledger_scope
+from ..providers.ledger import BudgetExceeded, ledger_scope
 from ..tuning import Tuning, resolve
 from .output import list_from_output
 
@@ -13,6 +13,9 @@ MAX_QUERY_WORDS = 4
 # Promoted 2026-10-21 with the kind-of-tool prompt (eval/results/suite-v1, category-queries-fresh).
 PLANNER_LISTS_CONSTRAINTS = True
 OVERALL = "(overall)"
+# Phase 3, investigate deeper: extra planned queries per focus requirement, and at most this many focus requirements
+FOCUS_EXTRA_QUERIES = 2
+MAX_FOCUS = 3
 
 _STOPWORDS = {
     "a", "an", "and", "the", "of", "for", "to", "in", "on", "with", "using", "via", "from", "by", "or",
@@ -39,20 +42,26 @@ Rules:
 7. Output strictly valid JSON."""
 
 
-def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning: Optional[Tuning] = None) -> Tuple[List[Dict[str, str]], str]:
-    """Returns ([{query, requirement}], mode). mode is "llm", or "heuristic" when the LLM output was unusable."""
+def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning: Optional[Tuning] = None,
+                 procedures: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[Dict[str, str]], str]:
+    """Returns ([{query, requirement}], mode). mode is "llm", or "heuristic" when the LLM output was unusable.
+    procedures: active learned procedures matching the brief (procedural memory), shown to the planner."""
     t = resolve(tuning)
     max_queries, max_words = t.get("discovery.max_queries"), t.get("discovery.max_query_words")
+    max_queries += len(focus_names(requirements_json)) * FOCUS_EXTRA_QUERIES
     names = [r["name"] for r in capability_requirements(requirements_json)]
     constraint_names = [r["name"] for r in sorted_requirements(requirements_json) if r["name"] not in names]
     try:
         prompt = _user_prompt(requirements_json, max_queries, t.get("discovery.planner_lists_constraints"))
+        prompt += procedures_block(procedures)
         with ledger_scope(purpose="discovery_planner"):
             raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
         planned = validate_queries(raw, names, max_queries, max_words, constraint_names)
         if len(planned) >= 2:
             return planned, "llm"
         print(f"[DiscoveryPlanner] LLM returned {len(planned)} usable queries; using requirement keywords instead")
+    except BudgetExceeded:
+        raise
     except Exception as e:
         print(f"[DiscoveryPlanner] LLM query planning failed ({e}); using requirement keywords instead")
     return heuristic_queries(requirements_json, max_queries, max_words), "heuristic"
@@ -73,9 +82,40 @@ def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERI
     expansions = requirements_json.get("queryExpansions") or []
     if expansions:
         lines.append(f"Related terms: {', '.join(expansions[:10])}")
+    # --- Phase 3: investigate deeper (focus requirements) ---
+    focus = focus_names(requirements_json)
+    if focus:
+        lines.append(f"Investigate deeper: spend {FOCUS_EXTRA_QUERIES} extra queries on each of these, naming other kinds of tool or "
+                     "synonyms than the obvious one:")
+        lines += [f"- {name}" for name in focus]
+    # --- end Phase 3 ---
     lines.append(f"""
 Return JSON: {{"queries": [{{"query": "2-3 keywords", "requirement": "exact requirement name or (overall)"}}]}} with at most {max_queries} queries.""")
     return "\n".join(lines)
+
+
+# Phase 4: procedural memory. Active procedures (maintainer-approved, measured on earlier runs) are shown
+# to the planner as hints, capped in number and size; the rules above still decide what a query may be.
+MAX_PROCEDURES_IN_PROMPT = 5
+MAX_PROCEDURES_CHARS = 800
+
+
+def procedures_block(procedures: Optional[List[Dict[str, Any]]]) -> str:
+    lines = []
+    for p in (procedures or [])[:MAX_PROCEDURES_IN_PROMPT]:
+        query = clean_query((p.get("steps") or {}).get("query"))
+        if query and p.get("requirement"):
+            lines.append(f'- For "{p["requirement"]}": the query "{query}" found the solution in {p.get("successCount", 0)} earlier briefs')
+    if not lines:
+        return ""
+    block = "\n".join(lines)[:MAX_PROCEDURES_CHARS]
+    return f"\n\nQueries that worked for similar requirements before (use them when they fit; still follow the rules):\n{block}"
+def focus_names(requirements_json: Dict[str, Any]) -> List[str]:
+    """Phase 3: requirements the user asked to investigate deeper (handlers.run_discover sets
+    focusRequirements), kept only when they name a requirement of the brief; at most MAX_FOCUS."""
+    known = {r["name"].lower(): r["name"] for r in requirements_json.get("requirements", []) if r.get("name")}
+    names = [known[n.lower()] for n in (str(x) for x in requirements_json.get("focusRequirements") or []) if n.lower() in known]
+    return list(dict.fromkeys(names))[-MAX_FOCUS:]
 
 
 def sorted_requirements(requirements_json: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -162,6 +202,11 @@ def heuristic_queries(requirements_json: Dict[str, Any], max_queries: int = MAX_
             seen.add(query.lower())
             planned.append({"query": query, "requirement": requirement})
 
+    # Phase 3: a focus requirement also gets a query from its description, before the others fill the plan
+    for name in focus_names(requirements_json):
+        r = next(r for r in requirements_json["requirements"] if r.get("name") == name)
+        add(keywords(r["name"], 3), name)
+        add(keywords(r.get("description", ""), 3), name)
     for r in capability_requirements(requirements_json):
         add(keywords(r["name"], 3), r["name"])
     for expansion in requirements_json.get("queryExpansions") or []:

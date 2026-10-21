@@ -11,6 +11,7 @@ from . import ledger
 def _metered_post(client: httpx.Client, provider: str, model: str, url: str, headers: Dict[str, str], payload: Dict[str, Any]) -> httpx.Response:
     """POST a chat completion and record it in the cost ledger: tokens when the provider reports usage,
     failures (rate limits, errors, output cut off at the length limit) as unsuccessful calls."""
+    ledger.authorize(provider)
     started = time.time()
     try:
         resp = client.post(url, headers=headers, json=payload)
@@ -116,6 +117,9 @@ class MistralLLMProvider(BaseLLMProvider):
                     time.sleep(2.0 * (attempt + 1))
                     continue
                 break
+            except ledger.BudgetExceeded:
+                # The brief's budget is used up: stop the run, never retry or report the provider as unavailable
+                raise
             except Exception as e:
                 print(f"[MistralLLMProvider] Unexpected error on attempt {attempt + 1}: {e}")
                 if attempt < 2:

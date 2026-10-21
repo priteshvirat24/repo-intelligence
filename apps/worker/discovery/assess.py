@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 
 from ..providers.llm import BaseLLMProvider
-from ..providers.ledger import ledger_scope
+from ..providers.ledger import BudgetExceeded, ledger_scope
 from ..tuning import Tuning, resolve
 from .output import list_from_output
 
@@ -47,6 +47,8 @@ def assess_candidates(
             with ledger_scope(purpose="readme_assessment"):
                 raw = list_from_output(llm.complete(_user_prompt(problem_summary, reqs, batch), t.get("prompts.readme_assessment")), "assessments")
             results.update(validate_assessments(raw, batch, reqs))
+        except BudgetExceeded:
+            raise
         except Exception as e:
             failures += 1
             last_error = e

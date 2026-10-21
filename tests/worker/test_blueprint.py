@@ -159,31 +159,46 @@ def test_generate_wraps_sources_as_untrusted_and_lists_constraints():
 
 
 class FakeWorkerGitHub:
-    def __init__(self, failing=()):
+    def __init__(self, failing=(), large=()):
         self.failing = set(failing)
+        self.large = set(large)
         self.calls = []
 
-    def fetch_repo_info(self, owner, repo):
+    def fetch_repo_info(self, owner, repo, allow_large=False):
         self.calls.append(f"{owner}/{repo}")
         if f"{owner}/{repo}" in self.failing:
+            raise ValueError("PRIVATE_REPOSITORY: Only public GitHub repositories are supported.")
+        too_large = f"{owner}/{repo}" in self.large
+        if too_large and not allow_large:
             raise ValueError("REPOSITORY_TOO_LARGE: Size 400MB exceeds limit of 100MB.")
-        return {"owner": owner, "name": repo, "default_branch": "main", "stars": 10, "license": "MIT", "primary_language": "Go", "size_kb": 10}
+        return {"owner": owner, "name": repo, "default_branch": "main", "stars": 10, "license": "MIT", "primary_language": "Go",
+                "size_kb": 400 * 1024 if too_large else 10, "too_large": too_large}
 
 
 def test_verification_targets_skip_unindexable_and_fill_up_to_the_limit():
     candidates = [
-        {"full_name": "A/Big", "shortlisted": True},
+        {"full_name": "A/Private", "shortlisted": True},
         {"full_name": "b/one", "shortlisted": True},
         {"full_name": "c/not-shortlisted", "shortlisted": False},
         {"full_name": "d/two", "shortlisted": True},
         {"full_name": "e/three", "shortlisted": True},
     ]
-    github = FakeWorkerGitHub(failing={"A/Big"})
+    github = FakeWorkerGitHub(failing={"A/Private"})
     targets = select_verification_targets(candidates, github, limit=2)
-    assert github.calls == ["A/Big", "b/one", "d/two"]
-    assert targets[0]["state"] == "skipped" and "REPOSITORY_TOO_LARGE" in targets[0]["reason"]
-    assert targets[0]["url"] == "https://github.com/a/big"
+    assert github.calls == ["A/Private", "b/one", "d/two"]
+    assert targets[0]["state"] == "skipped" and "PRIVATE_REPOSITORY" in targets[0]["reason"]
+    assert targets[0]["url"] == "https://github.com/a/private"
     assert [t["fullName"] for t in targets if "meta" in t] == ["b/one", "d/two"]
+
+
+def test_large_repositories_get_a_partial_analysis_instead_of_being_skipped():
+    # Phase 2: the size limit no longer drops CesiumJS-scale frameworks from verification
+    candidates = [{"full_name": "CesiumGS/cesium", "shortlisted": True}, {"full_name": "b/one", "shortlisted": True}]
+    targets = select_verification_targets(candidates, FakeWorkerGitHub(large={"CesiumGS/cesium"}), limit=2, focus_terms=["globe", "terrain"])
+    assert [t["fullName"] for t in targets if "meta" in t] == ["CesiumGS/cesium", "b/one"]
+    scope = targets[0]["scope"]
+    assert scope["mode"] == "partial" and "400MB" in scope["reason"] and scope["focusTerms"] == ["globe", "terrain"]
+    assert "scope" not in targets[1]
 
 
 def test_code_evidence_about_another_capability_does_not_verify_a_requirement():
