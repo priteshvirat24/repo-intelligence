@@ -17,6 +17,9 @@ def list_from_output(raw: str, key: str) -> List[Any]:
     except json.JSONDecodeError:
         value = parse_json_object(text)
     if isinstance(value, list):
+        # [{"queries": [...]}]: the requested object wrapped in an array (seen from ministral-8b in JSON mode)
+        if value and all(isinstance(v, dict) and isinstance(v.get(key), list) for v in value):
+            return [item for v in value for item in v[key]]
         return value
     if isinstance(value, dict) and isinstance(value.get(key), list):
         return value[key]

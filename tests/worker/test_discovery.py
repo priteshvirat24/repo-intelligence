@@ -333,6 +333,8 @@ def test_list_output_accepts_wrapped_bare_and_fenced_arrays():
     assert list_from_output(json.dumps({"queries": [item]}), "queries") == [item]
     assert list_from_output(json.dumps([item, item]), "queries") == [item, item]
     assert list_from_output("```json\n" + json.dumps([item]) + "\n```", "queries") == [item]
+    # The requested object wrapped in an array
+    assert list_from_output(json.dumps([{"queries": [item, item]}]), "queries") == [item, item]
     with pytest.raises(ValueError, match="LLM_INVALID_JSON"):
         list_from_output(json.dumps(item), "queries")  # one object is not the list that was asked for
 
