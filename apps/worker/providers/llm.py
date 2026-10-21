@@ -117,6 +117,9 @@ class MistralLLMProvider(BaseLLMProvider):
                     time.sleep(2.0 * (attempt + 1))
                     continue
                 break
+            except ledger.BudgetExceeded:
+                # The brief's budget is used up: stop the run, never retry or report the provider as unavailable
+                raise
             except Exception as e:
                 print(f"[MistralLLMProvider] Unexpected error on attempt {attempt + 1}: {e}")
                 if attempt < 2:

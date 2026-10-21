@@ -223,6 +223,21 @@ def test_github_client_refuses_requests_over_budget():
             client.search_repositories("globe")
 
 
+def test_llm_provider_reports_a_spent_budget_instead_of_retrying(monkeypatch):
+    # A spent budget must stop the run (status STOPPED), not look like an unavailable provider after retries
+    from apps.worker.discovery.planner import plan_queries
+    from apps.worker.providers.llm import MistralLLMProvider
+    import apps.worker.providers.llm as llm_module
+    monkeypatch.setattr(llm_module.time, "sleep", lambda s: pytest.fail("a spent budget is never retried"))
+    llm = MistralLLMProvider(api_key="k")
+    with ledger.budget_scope(ledger.Budget({"llmCalls": 0})):
+        with pytest.raises(ledger.BudgetExceeded):
+            llm.complete("plan")
+        # and the planner passes it on rather than falling back to keyword queries that still spend searches
+        with pytest.raises(ledger.BudgetExceeded):
+            plan_queries(llm, {"problemSummary": "x", "requirements": [{"name": "Queue", "description": "job queue", "criticality": "MUST"}]})
+
+
 # Claims
 
 def test_claims_merge_and_keep_the_best_grade(run):
