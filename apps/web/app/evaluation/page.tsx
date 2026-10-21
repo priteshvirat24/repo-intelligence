@@ -13,6 +13,18 @@ const SYSTEM_LABEL: Record<string, string> = {
   b1: 'Open Eye (B1)'
 };
 
+/** "b1:category-queries" -> "Open Eye (B1) · category-queries"; the default tuning needs no suffix */
+function variantLabel(variant: string): string {
+  const [system, tuning] = variant.split(':');
+  const base = SYSTEM_LABEL[system] || system.toUpperCase();
+  return tuning && tuning !== 'default' ? `${base} · ${tuning}` : base;
+}
+
+function shortVariant(variant: string): string {
+  const [system, tuning] = variant.split(':');
+  return tuning && tuning !== 'default' ? `${system.toUpperCase()} ${tuning}` : system.toUpperCase();
+}
+
 const METRICS: Array<{ key: keyof EvalRunSummary['aggregate']; label: string; help: string }> = [
   { key: 'recallAt10', label: 'Recall@10', help: 'Share of the essential solutions an expert expects that appear in the top 10' },
   { key: 'recallAll', label: 'Recall (all kept)', help: 'The same over every candidate kept, up to 40' },
@@ -54,13 +66,15 @@ export default function EvaluationPage() {
   const bySystem = useMemo(() => {
     const map = new Map<string, EvalRunSummary[]>();
     for (const run of data?.runs || []) {
-      if (!map.has(run.system)) map.set(run.system, []);
-      map.get(run.system)!.push(run);
+      if (!map.has(run.variant)) map.set(run.variant, []);
+      map.get(run.variant)!.push(run);
     }
     return map;
   }, [data]);
 
   const systems = data?.systems || [];
+  // The most recent Open Eye variant, whose misses the per-brief table lists
+  const latestB1 = data?.runs.find((r) => r.system === 'b1')?.variant;
   const draftLabels = (data?.labelsStatus || '').toLowerCase().startsWith('draft');
 
   return (
@@ -119,7 +133,7 @@ export default function EvaluationPage() {
                     <tr>
                       <th>Metric</th>
                       {systems.map((s) => (
-                        <th key={s} className="num">{SYSTEM_LABEL[s] || s} · {bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</th>
+                        <th key={s} className="num">{variantLabel(s)} · {bySystem.get(s)?.length || 0} run{(bySystem.get(s)?.length || 0) === 1 ? '' : 's'}</th>
                       ))}
                     </tr>
                   </thead>
@@ -163,8 +177,8 @@ export default function EvaluationPage() {
                   <thead>
                     <tr>
                       <th>Brief</th>
-                      {systems.map((s) => <th key={s} className="num">{s.toUpperCase()} recall@10</th>)}
-                      <th>Essential solutions missed by Open Eye</th>
+                      {systems.map((s) => <th key={s} className="num">{shortVariant(s)} recall@10</th>)}
+                      <th>Essential solutions missed by Open Eye ({latestB1 ? shortVariant(latestB1) : 'B1'}, latest)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -175,8 +189,8 @@ export default function EvaluationPage() {
                           <td key={s} className="num">{b.bySystem[s]?.error ? 'error' : pct(b.bySystem[s]?.recallAt10 ?? null)}</td>
                         ))}
                         <td className="xsmall">
-                          {b.bySystem.b1
-                            ? b.bySystem.b1.error || (b.bySystem.b1.missed.length ? b.bySystem.b1.missed.join(', ') : 'none')
+                          {latestB1 && b.bySystem[latestB1]
+                            ? b.bySystem[latestB1].error || (b.bySystem[latestB1].missed.length ? b.bySystem[latestB1].missed.join(', ') : 'none')
                             : '—'}
                         </td>
                       </tr>
@@ -200,7 +214,7 @@ export default function EvaluationPage() {
                     {data.runs.map((r) => (
                       <tr key={r.runId}>
                         <td>{shortDate(r.finishedAt)}</td>
-                        <td>{r.system.toUpperCase()}</td>
+                        <td>{shortVariant(r.variant)}</td>
                         <td>{r.mode}</td>
                         <td className="mono xsmall">{r.tuningVersion || '—'}</td>
                         <td className="mono xsmall">{r.commit}</td>

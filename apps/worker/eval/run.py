@@ -179,6 +179,7 @@ def main(argv: List[str] = None) -> int:
         "system": args.system,
         "mode": args.mode,
         "tuningVersion": tuning.version if args.system == "b1" else None,
+        "tuningName": (Path(args.tuning).stem if args.tuning else "default") if args.system == "b1" else None,
         "requirementsFrom": args.requirements_from,
         "commit": git_commit(),
         "model": config.LLM_MODEL or None,

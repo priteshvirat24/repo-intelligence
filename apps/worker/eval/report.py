@@ -21,10 +21,16 @@ def fmt(values: List[float]) -> str:
     return f"{mean:.3f}" if len(values) == 1 else f"{mean:.3f} ({min(values):.3f}–{max(values):.3f})"
 
 
+def variant(run: Dict[str, Any]) -> str:
+    """b0, b0s, or b1:<tuning name>: runs of one system with different tunings are compared, not averaged."""
+    name = run.get("tuningName")
+    return f"{run['system']}:{name}" if name else run["system"]
+
+
 def build(runs: List[Dict[str, Any]]) -> str:
     by_system: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for r in runs:
-        by_system[r["system"]].append(r)
+        by_system[variant(r)].append(r)
     first = runs[0]
     lines = [
         f"# Evaluation report: {first['suite']}",
