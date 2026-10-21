@@ -1,7 +1,9 @@
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 from ..providers.llm import BaseLLMProvider
+from ..providers.ledger import ledger_scope
+from ..tuning import Tuning, resolve
 from .output import list_from_output
 
 MAX_QUERIES = 8
@@ -34,21 +36,25 @@ Rules:
 7. Output strictly valid JSON."""
 
 
-def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any]) -> Tuple[List[Dict[str, str]], str]:
+def plan_queries(llm: BaseLLMProvider, requirements_json: Dict[str, Any], tuning: Optional[Tuning] = None) -> Tuple[List[Dict[str, str]], str]:
     """Returns ([{query, requirement}], mode). mode is "llm", or "heuristic" when the LLM output was unusable."""
+    t = resolve(tuning)
+    max_queries, max_words = t.get("discovery.max_queries"), t.get("discovery.max_query_words")
     names = [r["name"] for r in capability_requirements(requirements_json)]
     try:
-        raw = list_from_output(llm.complete(_user_prompt(requirements_json), SYSTEM_PROMPT), "queries")
-        planned = validate_queries(raw, names)
+        prompt = _user_prompt(requirements_json, max_queries)
+        with ledger_scope(purpose="discovery_planner"):
+            raw = list_from_output(llm.complete(prompt, t.get("prompts.discovery_planner")), "queries")
+        planned = validate_queries(raw, names, max_queries, max_words)
         if len(planned) >= 2:
             return planned, "llm"
         print(f"[DiscoveryPlanner] LLM returned {len(planned)} usable queries; using requirement keywords instead")
     except Exception as e:
         print(f"[DiscoveryPlanner] LLM query planning failed ({e}); using requirement keywords instead")
-    return heuristic_queries(requirements_json), "heuristic"
+    return heuristic_queries(requirements_json, max_queries, max_words), "heuristic"
 
 
-def _user_prompt(requirements_json: Dict[str, Any]) -> str:
+def _user_prompt(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES) -> str:
     lines = [f"Problem: {requirements_json.get('problemSummary', '')}"]
     domains = requirements_json.get("domains") or []
     if domains:
@@ -60,7 +66,7 @@ def _user_prompt(requirements_json: Dict[str, Any]) -> str:
     if expansions:
         lines.append(f"Related terms: {', '.join(expansions[:10])}")
     lines.append(f"""
-Return JSON: {{"queries": [{{"query": "2-3 keywords", "requirement": "exact requirement name or (overall)"}}]}} with at most {MAX_QUERIES} queries.""")
+Return JSON: {{"queries": [{{"query": "2-3 keywords", "requirement": "exact requirement name or (overall)"}}]}} with at most {max_queries} queries.""")
     return "\n".join(lines)
 
 
@@ -77,7 +83,7 @@ def capability_requirements(requirements_json: Dict[str, Any]) -> List[Dict[str,
     return [r for r in reqs if r.get("type") not in CONSTRAINT_TYPES] or reqs
 
 
-def clean_query(text: Any) -> str:
+def clean_query(text: Any, max_words: int = MAX_QUERY_WORDS) -> str:
     """Plain keywords only: drops qualifiers (word:value), quotes, operators and filler words, keeps at most 4 words."""
     words = []
     for word in str(text or "").split():
@@ -86,10 +92,10 @@ def clean_query(text: Any) -> str:
         word = re.sub(r"[^\w.+#-]", "", word).strip(".-")
         if word:
             words.append(word)
-    return " ".join(words[:MAX_QUERY_WORDS])
+    return " ".join(words[:max_words])
 
 
-def validate_queries(raw: Any, requirement_names: List[str]) -> List[Dict[str, str]]:
+def validate_queries(raw: Any, requirement_names: List[str], max_queries: int = MAX_QUERIES, max_words: int = MAX_QUERY_WORDS) -> List[Dict[str, str]]:
     """requirement_names are the capability requirements: a query the model wrote for any other
     requirement (a constraint it was told not to search for) is dropped."""
     by_lower = {name.lower(): name for name in requirement_names}
@@ -97,7 +103,7 @@ def validate_queries(raw: Any, requirement_names: List[str]) -> List[Dict[str, s
     for item in raw if isinstance(raw, list) else []:
         if not isinstance(item, dict):
             continue
-        query = clean_query(item.get("query"))
+        query = clean_query(item.get("query"), max_words)
         if len(query.split()) < 1 or len(query) < 3 or query.lower() in seen:
             continue
         named = str(item.get("requirement", "")).strip().lower()
@@ -106,7 +112,7 @@ def validate_queries(raw: Any, requirement_names: List[str]) -> List[Dict[str, s
         requirement = by_lower.get(named, OVERALL)
         seen.add(query.lower())
         planned.append({"query": query, "requirement": requirement})
-        if len(planned) >= MAX_QUERIES:
+        if len(planned) >= max_queries:
             break
     return planned
 
@@ -116,13 +122,13 @@ def keywords(text: str, limit: int = 4) -> str:
     return " ".join(words[:limit])
 
 
-def heuristic_queries(requirements_json: Dict[str, Any]) -> List[Dict[str, str]]:
+def heuristic_queries(requirements_json: Dict[str, Any], max_queries: int = MAX_QUERIES, max_words: int = MAX_QUERY_WORDS) -> List[Dict[str, str]]:
     """Requirement names reduced to keywords, MUST first, plus the decomposer's own search expansions."""
     planned, seen = [], set()
 
     def add(query: str, requirement: str):
-        query = clean_query(query)
-        if len(query) >= 3 and query.lower() not in seen and len(planned) < MAX_QUERIES:
+        query = clean_query(query, max_words)
+        if len(query) >= 3 and query.lower() not in seen and len(planned) < max_queries:
             seen.add(query.lower())
             planned.append({"query": query, "requirement": requirement})
 

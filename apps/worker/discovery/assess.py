@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional
 
 from ..providers.llm import BaseLLMProvider
+from ..providers.ledger import ledger_scope
+from ..tuning import Tuning, resolve
 from .output import list_from_output
 
 BATCH_SIZE = 4
@@ -19,8 +21,8 @@ Rules:
 6. Output strictly valid JSON."""
 
 
-def assessed_requirements(requirements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return requirements[:MAX_ASSESSED_REQUIREMENTS]
+def assessed_requirements(requirements: List[Dict[str, Any]], tuning: Optional[Tuning] = None) -> List[Dict[str, Any]]:
+    return requirements[:resolve(tuning).get("assess.max_requirements")]
 
 
 def assess_candidates(
@@ -28,18 +30,22 @@ def assess_candidates(
     problem_summary: str,
     requirements: List[Dict[str, Any]],
     candidates: List[Dict[str, Any]],
+    tuning: Optional[Tuning] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """Returns {full_name: assessment} for the candidates the LLM assessed. A batch whose output cannot be
     used is skipped (those candidates stay unassessed); if every batch fails, the last error is raised so
     the job is retried instead of finishing with no assessments."""
-    reqs = assessed_requirements(requirements)
+    t = resolve(tuning)
+    reqs = assessed_requirements(requirements, t)
+    batch_size = t.get("assess.batch_size")
     results: Dict[str, Dict[str, Any]] = {}
     failures = 0
     last_error: Optional[Exception] = None
-    batches = [candidates[i:i + BATCH_SIZE] for i in range(0, len(candidates), BATCH_SIZE)]
+    batches = [candidates[i:i + batch_size] for i in range(0, len(candidates), batch_size)]
     for batch in batches:
         try:
-            raw = list_from_output(llm.complete(_user_prompt(problem_summary, reqs, batch), SYSTEM_PROMPT), "assessments")
+            with ledger_scope(purpose="readme_assessment"):
+                raw = list_from_output(llm.complete(_user_prompt(problem_summary, reqs, batch), t.get("prompts.readme_assessment")), "assessments")
             results.update(validate_assessments(raw, batch, reqs))
         except Exception as e:
             failures += 1

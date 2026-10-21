@@ -3,6 +3,8 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..providers.llm import BaseLLMProvider
+from ..providers.ledger import ledger_scope
+from ..tuning import Tuning, resolve
 from .planner import CONSTRAINT_TYPES, sorted_requirements
 
 DECISIONS = {"reuse", "adapt", "build"}
@@ -147,10 +149,12 @@ Return JSON:
 }}"""
 
 
-def generate_blueprint(llm: BaseLLMProvider, inputs: Dict[str, Any], now: Optional[datetime] = None) -> Dict[str, Any]:
+def generate_blueprint(llm: BaseLLMProvider, inputs: Dict[str, Any], now: Optional[datetime] = None, tuning: Optional[Tuning] = None) -> Dict[str, Any]:
+    t = resolve(tuning)
     sources = build_sources(inputs)
-    raw = llm.extract_structured(_user_prompt(inputs, sources), SYSTEM_PROMPT)
-    return validate_blueprint(raw, inputs, sources, now or datetime.now(timezone.utc))
+    with ledger_scope(purpose="blueprint"):
+        raw = llm.extract_structured(_user_prompt(inputs, sources), t.get("prompts.blueprint"))
+    return {**validate_blueprint(raw, inputs, sources, now or datetime.now(timezone.utc)), "tuningVersion": t.version}
 
 
 def _text(value: Any, limit: int) -> str:

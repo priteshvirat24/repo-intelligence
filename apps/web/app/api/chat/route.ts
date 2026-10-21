@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ChatOrchestrator } from '@/lib/ai/chat';
 import { ProviderConfigError } from '@/lib/ai/providers';
+import { withLedgerScope } from '@/lib/ai/ledger';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import { ChatSourceMode } from '@repo/shared';
 
@@ -70,27 +71,30 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        const result = await orchestrator.processQuery(message.trim(), Array.isArray(history) ? history : [], {
-          mode: sourceMode,
-          onStatus: (stage, label) => send('status', { stage, label })
-        });
+        // Every LLM call made for this answer is attributed to chat in the cost ledger
+        await withLedgerScope({ scopeType: 'chat', purpose: 'chat_answer' }, async () => {
+          const result = await orchestrator.processQuery(message.trim(), Array.isArray(history) ? history : [], {
+            mode: sourceMode,
+            onStatus: (stage, label) => send('status', { stage, label })
+          });
 
-        send('metadata', {
-          sources: result.sources,
-          sourcesUsed: result.sourcesUsed,
-          requirements: result.requirements,
-          composition: result.composition,
-          architectureGraph: result.architectureGraph,
-          citations: result.citations,
-          webSources: result.webSources,
-          sourceMode,
-          trace: result.trace
-        });
+          send('metadata', {
+            sources: result.sources,
+            sourcesUsed: result.sourcesUsed,
+            requirements: result.requirements,
+            composition: result.composition,
+            architectureGraph: result.architectureGraph,
+            citations: result.citations,
+            webSources: result.webSources,
+            sourceMode,
+            trace: result.trace
+          });
 
-        for await (const chunk of result.stream) {
-          if (closed) break;
-          send('message', { text: chunk });
-        }
+          for await (const chunk of result.stream) {
+            if (closed) break;
+            send('message', { text: chunk });
+          }
+        });
       } catch (error: any) {
         console.error('Chat stream error:', error);
         send('error', toUserError(error));

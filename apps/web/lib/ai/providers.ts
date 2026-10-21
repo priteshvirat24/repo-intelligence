@@ -1,4 +1,6 @@
 
+import { recordUsage, usageOf } from './ledger';
+
 export interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;
@@ -77,6 +79,7 @@ export class MistralEmbeddingProvider implements EmbeddingProvider {
 
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize);
+      const startedAt = Date.now();
       const response = await fetchWithBackoff(
         'https://api.mistral.ai/v1/embeddings',
         {
@@ -96,10 +99,12 @@ export class MistralEmbeddingProvider implements EmbeddingProvider {
 
       if (!response.ok) {
         const errText = await response.text();
+        recordUsage({ provider: 'mistral', operation: 'embedding', model: this.model, startedAt, success: false, error: `HTTP ${response.status}` });
         throw new Error(`[MistralEmbeddingProvider] API error HTTP ${response.status}: ${errText}`);
       }
 
       const data = await response.json();
+      recordUsage({ provider: 'mistral', operation: 'embedding', model: this.model, startedAt, success: true, inputTokens: usageOf(data).inputTokens, outputTokens: 0 });
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('[MistralEmbeddingProvider] Malformed response from Mistral embeddings API');
       }
@@ -140,6 +145,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
     for (let i = 0; i < texts.length; i += batchSize) {
       const batch = texts.slice(i, i + batchSize);
+      const startedAt = Date.now();
       const response = await fetchWithBackoff(
         'https://api.openai.com/v1/embeddings',
         {
@@ -157,10 +163,12 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
 
       if (!response.ok) {
         const errText = await response.text();
+        recordUsage({ provider: 'openai', operation: 'embedding', model: this.model, startedAt, success: false, error: `HTTP ${response.status}` });
         throw new Error(`[OpenAIEmbeddingProvider] API error HTTP ${response.status}: ${errText}`);
       }
 
       const data = await response.json();
+      recordUsage({ provider: 'openai', operation: 'embedding', model: this.model, startedAt, success: true, inputTokens: usageOf(data).inputTokens, outputTokens: 0 });
       if (!data.data || !Array.isArray(data.data)) {
         throw new Error('[OpenAIEmbeddingProvider] Malformed response from OpenAI embeddings API');
       }
@@ -185,6 +193,7 @@ export class MistralLLMProvider implements LLMProvider {
 
     const isJson = (system && (system.includes('JSON') || system.includes('json'))) || prompt.includes('Return JSON');
 
+    const startedAt = Date.now();
     const res = await fetchWithBackoff(
       'https://api.mistral.ai/v1/chat/completions',
       {
@@ -206,10 +215,12 @@ export class MistralLLMProvider implements LLMProvider {
 
     if (!res.ok) {
       const errText = await res.text();
+      recordUsage({ provider: 'mistral', operation: 'chat_completion', model: this.model, startedAt, success: false, error: `HTTP ${res.status}` });
       throw new Error(`[MistralLLMProvider] HTTP ${res.status} ${res.statusText}: ${errText}`);
     }
 
     const data = await res.json();
+    recordUsage({ provider: 'mistral', operation: 'chat_completion', model: this.model, startedAt, success: true, ...usageOf(data) });
     return data.choices[0].message.content;
   }
 
@@ -220,6 +231,8 @@ export class MistralLLMProvider implements LLMProvider {
     messages.push({ role: 'user', content: prompt });
 
     let emittedAny = false;
+    const startedAt = Date.now();
+    let usage: { inputTokens: number | null; outputTokens: number | null } = { inputTokens: null, outputTokens: null };
     try {
       const res = await fetchWithBackoff(
         'https://api.mistral.ai/v1/chat/completions',
@@ -254,28 +267,33 @@ export class MistralLLMProvider implements LLMProvider {
       const decoder = new TextDecoder();
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('data: ')) {
-            const dataStr = trimmed.slice(6);
-            if (dataStr === '[DONE]') return;
-            try {
-              const parsed = JSON.parse(dataStr);
-              const delta = parsed.choices[0]?.delta?.content;
-              if (delta) {
-                emittedAny = true;
-                yield delta;
-              }
-            } catch {}
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const dataStr = trimmed.slice(6);
+              if (dataStr === '[DONE]') return;
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.usage) usage = usageOf(parsed);
+                const delta = parsed.choices[0]?.delta?.content;
+                if (delta) {
+                  emittedAny = true;
+                  yield delta;
+                }
+              } catch {}
+            }
           }
         }
+      } finally {
+        recordUsage({ provider: 'mistral', operation: 'chat_stream', model: this.model, startedAt, success: emittedAny, ...usage });
       }
     } catch (err: any) {
       // Once text has reached the client, replaying a full completion would duplicate the answer
@@ -299,6 +317,7 @@ export class OpenAILLMProvider implements LLMProvider {
     for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
+    const startedAt = Date.now();
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -313,10 +332,12 @@ export class OpenAILLMProvider implements LLMProvider {
     });
 
     if (!res.ok) {
+      recordUsage({ provider: 'openai', operation: 'chat_completion', model: this.model, startedAt, success: false, error: `HTTP ${res.status}` });
       throw new Error(`OpenAI API error: ${res.statusText}`);
     }
 
     const data = await res.json();
+    recordUsage({ provider: 'openai', operation: 'chat_completion', model: this.model, startedAt, success: true, ...usageOf(data) });
     return data.choices[0].message.content;
   }
 
@@ -326,6 +347,7 @@ export class OpenAILLMProvider implements LLMProvider {
     for (const turn of history) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: prompt });
 
+    const startedAt = Date.now();
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -336,37 +358,50 @@ export class OpenAILLMProvider implements LLMProvider {
         model: this.model,
         messages,
         temperature: 0.2,
-        stream: true
+        stream: true,
+        // The final chunk then carries token usage for the ledger
+        stream_options: { include_usage: true }
       })
     });
 
     if (!res.ok || !res.body) {
+      recordUsage({ provider: 'openai', operation: 'chat_stream', model: this.model, startedAt, success: false, error: `HTTP ${res.status}` });
       throw new Error(`OpenAI stream error: ${res.statusText}`);
     }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let usage: { inputTokens: number | null; outputTokens: number | null } = { inputTokens: null, outputTokens: null };
+    let emitted = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('data: ')) {
-          const dataStr = trimmed.slice(6);
-          if (dataStr === '[DONE]') return;
-          try {
-            const parsed = JSON.parse(dataStr);
-            const delta = parsed.choices[0]?.delta?.content;
-            if (delta) yield delta;
-          } catch {}
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const dataStr = trimmed.slice(6);
+            if (dataStr === '[DONE]') return;
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.usage) usage = usageOf(parsed);
+              const delta = parsed.choices[0]?.delta?.content;
+              if (delta) {
+                emitted = true;
+                yield delta;
+              }
+            } catch {}
+          }
         }
       }
+    } finally {
+      recordUsage({ provider: 'openai', operation: 'chat_stream', model: this.model, startedAt, success: emitted, ...usage });
     }
   }
 }

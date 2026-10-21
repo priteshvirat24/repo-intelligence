@@ -5,6 +5,7 @@ from ..providers.llm import BaseLLMProvider
 from .assess import assess_candidates, assessed_requirements
 from .github_search import GitHubSearchClient
 from .planner import capability_requirements, plan_queries, sorted_requirements
+from ..tuning import Tuning, resolve
 from . import ranking
 
 SEARCH_RESULTS_PER_QUERY = 15
@@ -17,12 +18,12 @@ MAX_STORED_CANDIDATES = 40
 SHORTLIST_SIZE = 6
 
 
-def search_attempts(query: str) -> List[Tuple[str, Optional[int]]]:
+def search_attempts(query: str, min_stars: int = MIN_STARS) -> List[Tuple[str, Optional[int]]]:
     """The query with the stars floor, then its first two keywords, then those without the floor."""
     words = query.split()
-    attempts = [(query, MIN_STARS)]
+    attempts = [(query, min_stars)]
     if len(words) > 2:
-        attempts.append((" ".join(words[:2]), MIN_STARS))
+        attempts.append((" ".join(words[:2]), min_stars))
     attempts.append((attempts[-1][0], None))
     return attempts
 
@@ -40,7 +41,9 @@ class DiscoveryRunner:
         github: GitHubSearchClient,
         on_step: Optional[Callable[[str], None]] = None,
         sleep: Callable[[float], None] = time.sleep,
+        tuning: Optional[Tuning] = None,
     ):
+        self.tuning = resolve(tuning)
         self.llm = llm
         self.github = github
         self.on_step = on_step or (lambda step: None)
@@ -49,28 +52,29 @@ class DiscoveryRunner:
         self.search_interval = 2.1 if github.authenticated else 6.5
 
     def run(self, requirements_json: Dict[str, Any]) -> Dict[str, Any]:
+        t = self.tuning
         started = time.time()
         requirements = sorted_requirements(requirements_json)
         if not requirements:
             raise ValueError("BRIEF_HAS_NO_REQUIREMENTS: the brief was not decomposed into any requirements.")
 
         self.on_step("PLANNING_QUERIES")
-        planned, planner_mode = plan_queries(self.llm, requirements_json)
+        planned, planner_mode = plan_queries(self.llm, requirements_json, t)
 
         self.on_step("SEARCHING_GITHUB")
         results, searched_as, calls = [], {}, 0
         for query in planned:
             items, seen, attempts = [], set(), []
-            for text, min_stars in search_attempts(query["query"]):
+            for text, min_stars in search_attempts(query["query"], t.get("discovery.min_stars")):
                 if calls:
                     self.sleep(self.search_interval)
                 calls += 1
                 attempts.append(f"{text} stars:>={min_stars}" if min_stars else text)
-                for item in self.github.search_repositories(text, per_page=SEARCH_RESULTS_PER_QUERY, min_stars=min_stars):
+                for item in self.github.search_repositories(text, per_page=t.get("discovery.results_per_query"), min_stars=min_stars):
                     if item["full_name"].lower() not in seen:
                         seen.add(item["full_name"].lower())
                         items.append(item)
-                if len(items) >= ENOUGH_RESULTS:
+                if len(items) >= t.get("discovery.enough_results"):
                     break
             results.append((query, items))
             searched_as[query["query"]] = attempts
@@ -80,38 +84,39 @@ class DiscoveryRunner:
         now = ranking.utc_now()
         for c in merged:
             c["candidate_kind"] = "curated_list" if ranking.looks_like_curated_list(c) else "unknown"
-            c["health_score"] = ranking.health_score(c, now)
-            c["relevance_score"] = ranking.relevance_score(c, requirements_json, len(planned))
+            c["health_score"] = ranking.health_score(c, now, t)
+            c["relevance_score"] = ranking.relevance_score(c, requirements_json, len(planned), t)
             c["coverage_score"] = None
             c["assessment"] = {}
-        merged.sort(key=ranking.pre_score, reverse=True)
+        merged.sort(key=lambda c: ranking.pre_score(c, t), reverse=True)
 
         self.on_step("READING_READMES")
-        to_assess = [c for c in merged if not c.get("duplicate_of") and c["candidate_kind"] != "curated_list"][:README_ASSESS_LIMIT]
+        to_assess = [c for c in merged if not c.get("duplicate_of") and c["candidate_kind"] != "curated_list"][:t.get("discovery.readme_assess_limit")]
         for c in to_assess:
             c["readme"] = self.github.fetch_readme(c["full_name"])
         capabilities = capability_requirements(requirements_json)
-        assessments = assess_candidates(self.llm, requirements_json.get("problemSummary", ""), capabilities, to_assess) if to_assess else {}
+        assessments = assess_candidates(self.llm, requirements_json.get("problemSummary", ""), capabilities, to_assess, t) if to_assess else {}
 
         self.on_step("RANKING")
-        assessed_reqs = assessed_requirements(capabilities)
+        assessed_reqs = assessed_requirements(capabilities, t)
         for c in merged:
             c.pop("readme", None)
             assessment = assessments.get(c["full_name"])
             if assessment:
                 c["assessment"] = assessment
                 c["candidate_kind"] = assessment["kind"] if assessment["kind"] != "unknown" else c["candidate_kind"]
-                c["coverage_score"] = ranking.coverage_score(assessment["coverage"], assessed_reqs)
-            c["final_score"] = ranking.final_score(c)
+                c["coverage_score"] = ranking.coverage_score(assessment["coverage"], assessed_reqs, t)
+            c["final_score"] = ranking.final_score(c, t)
         merged.sort(key=lambda c: c["final_score"], reverse=True)
-        stored = merged[:MAX_STORED_CANDIDATES]
-        ranking.select_shortlist(stored, SHORTLIST_SIZE)
+        stored = merged[:t.get("discovery.max_stored_candidates")]
+        ranking.select_shortlist(stored, t.get("discovery.shortlist_size"))
         for rank, c in enumerate(stored, start=1):
             c["rank"] = rank
 
         query_counts = {q["query"]: len(items) for q, items in results}
         metrics = {
             "queryPlanner": planner_mode,
+            "tuningVersion": t.version,
             "queries": [
                 {"query": q["query"], "requirement": q["requirement"], "results": query_counts[q["query"]], "searchedAs": searched_as[q["query"]]}
                 for q in planned

@@ -3,10 +3,19 @@ import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..tuning import Tuning, resolve
 from .planner import OVERALL, capability_requirements
 
+# Defaults for the tuning registry (apps/worker/tuning.py); code reads the active Tuning, not these
 CRITICALITY_WEIGHT = {"MUST": 1.0, "SHOULD": 0.6, "NICE_TO_HAVE": 0.3}
 COVERAGE_VALUE = {"yes": 1.0, "partial": 0.5, "no": 0.0, "unknown": 0.0}
+HEALTH_WEIGHTS = {"stars": 0.60, "recency": 0.25, "license": 0.15}
+RELEVANCE_WEIGHTS = {"requirements": 0.40, "queries": 0.20, "position": 0.20, "overlap": 0.20}
+PRE_WEIGHTS = {"relevance": 0.75, "health": 0.25}
+FINAL_WEIGHTS = {"coverage": 0.45, "relevance": 0.25, "health": 0.30}
+UNASSESSED_FACTOR = 0.6
+NON_IMPLEMENTATION_FACTOR = 0.5
+DUPLICATE_FACTOR = 0.3
 # Kinds that are not themselves a starting point to build on
 NON_IMPLEMENTATION_KINDS = {"curated_list", "tutorial"}
 
@@ -83,9 +92,10 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
-def health_score(candidate: Dict[str, Any], now: datetime) -> float:
+def health_score(candidate: Dict[str, Any], now: datetime, tuning: Optional[Tuning] = None) -> float:
     """Adoption, maintenance and reusability: stars (log scale, 10k ~ 1.0), last push, and a licence.
     Adoption weighs most: a fresh push alone is what most abandoned-on-arrival projects also have."""
+    w = resolve(tuning).get("ranking.health_weights")
     stars = min(1.0, math.log10(candidate["stars"] + 1) / 4.0)
     pushed = _parse_time(candidate.get("pushed_at"))
     if pushed is None:
@@ -94,15 +104,17 @@ def health_score(candidate: Dict[str, Any], now: datetime) -> float:
         days = (now - pushed).days
         recency = 1.0 if days <= 180 else 0.8 if days <= 365 else 0.5 if days <= 730 else 0.25 if days <= 1460 else 0.1
     license_ok = 1.0 if candidate.get("license") and candidate["license"] != "NOASSERTION" else 0.4
-    return round(0.60 * stars + 0.25 * recency + 0.15 * license_ok, 4)
+    return round(w["stars"] * stars + w["recency"] * recency + w["license"] * license_ok, 4)
 
 
-def relevance_score(candidate: Dict[str, Any], requirements_json: Dict[str, Any], query_count: int) -> float:
+def relevance_score(candidate: Dict[str, Any], requirements_json: Dict[str, Any], query_count: int, tuning: Optional[Tuning] = None) -> float:
     """How strongly the search itself ties the repository to the brief, before any README is read."""
+    t = resolve(tuning)
+    weight, w = t.get("ranking.criticality_weight"), t.get("ranking.relevance_weights")
     reqs = capability_requirements(requirements_json)
-    total_weight = sum(CRITICALITY_WEIGHT.get(r.get("criticality"), 0.6) for r in reqs) or 1.0
+    total_weight = sum(weight.get(r.get("criticality"), 0.6) for r in reqs) or 1.0
     matched = set(candidate["matched_requirements"])
-    requirement_share = sum(CRITICALITY_WEIGHT.get(r.get("criticality"), 0.6) for r in reqs if r["name"] in matched) / total_weight
+    requirement_share = sum(weight.get(r.get("criticality"), 0.6) for r in reqs if r["name"] in matched) / total_weight
     query_share = len(candidate["matched_queries"]) / max(1, query_count)
     position = 1.0 / (1.0 + candidate["best_position"] / 5.0)
 
@@ -116,34 +128,40 @@ def relevance_score(candidate: Dict[str, Any], requirements_json: Dict[str, Any]
     ]))
     overlap = len(brief_terms & repo_terms) / max(1, min(len(repo_terms), 12))
 
-    return round(min(1.0, 0.40 * requirement_share + 0.20 * min(1.0, query_share * 2) + 0.20 * position + 0.20 * min(1.0, overlap)), 4)
+    return round(min(1.0, w["requirements"] * requirement_share + w["queries"] * min(1.0, query_share * 2)
+                     + w["position"] * position + w["overlap"] * min(1.0, overlap)), 4)
 
 
-def coverage_score(coverage: Dict[str, str], assessed_requirements: List[Dict[str, Any]]) -> float:
+def coverage_score(coverage: Dict[str, str], assessed_requirements: List[Dict[str, Any]], tuning: Optional[Tuning] = None) -> float:
     """Criticality-weighted share of the assessed requirements the README shows the repository meets."""
-    total = sum(CRITICALITY_WEIGHT.get(r.get("criticality"), 0.6) for r in assessed_requirements) or 1.0
+    t = resolve(tuning)
+    weight, value = t.get("ranking.criticality_weight"), t.get("ranking.coverage_value")
+    total = sum(weight.get(r.get("criticality"), 0.6) for r in assessed_requirements) or 1.0
     got = sum(
-        CRITICALITY_WEIGHT.get(r.get("criticality"), 0.6) * COVERAGE_VALUE.get(coverage.get(r["name"], "unknown"), 0.0)
+        weight.get(r.get("criticality"), 0.6) * value.get(coverage.get(r["name"], "unknown"), 0.0)
         for r in assessed_requirements
     )
     return round(got / total, 4)
 
 
-def pre_score(candidate: Dict[str, Any]) -> float:
-    return round(0.75 * candidate["relevance_score"] + 0.25 * candidate["health_score"], 4)
+def pre_score(candidate: Dict[str, Any], tuning: Optional[Tuning] = None) -> float:
+    w = resolve(tuning).get("ranking.pre_weights")
+    return round(w["relevance"] * candidate["relevance_score"] + w["health"] * candidate["health_score"], 4)
 
 
-def final_score(candidate: Dict[str, Any]) -> float:
+def final_score(candidate: Dict[str, Any], tuning: Optional[Tuning] = None) -> float:
     """Assessed candidates are ranked mainly on README coverage; unassessed ones are discounted so they
     never outrank a repository whose README was actually read."""
+    t = resolve(tuning)
     if candidate.get("coverage_score") is None:
-        score = 0.6 * pre_score(candidate)
+        score = t.get("ranking.unassessed_factor") * pre_score(candidate, t)
     else:
-        score = 0.45 * candidate["coverage_score"] + 0.25 * candidate["relevance_score"] + 0.30 * candidate["health_score"]
+        w = t.get("ranking.final_weights")
+        score = w["coverage"] * candidate["coverage_score"] + w["relevance"] * candidate["relevance_score"] + w["health"] * candidate["health_score"]
     if candidate.get("candidate_kind") in NON_IMPLEMENTATION_KINDS:
-        score *= 0.5
+        score *= t.get("ranking.non_implementation_factor")
     if candidate.get("duplicate_of"):
-        score *= 0.3
+        score *= t.get("ranking.duplicate_factor")
     return round(score, 4)
 
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { getLLMProvider, ProviderConfigError } from '@/lib/ai/providers';
 import { OpenProblemDecomposer } from '@/lib/ai/open_query';
+import { withLedgerScope } from '@/lib/ai/ledger';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import {
   BriefParseError,
@@ -94,7 +95,10 @@ export async function POST(req: NextRequest) {
     }
 
     const input = `Project brief: ${finalTitle}\n\n${parsed.text.slice(0, DECOMPOSITION_INPUT_CHARS)}`;
-    const { requirements, mode } = await new OpenProblemDecomposer(llm).decomposeDetailed(input);
+    const { requirements, mode } = await withLedgerScope(
+      { scopeType: 'brief_upload', scopeId: contentHash.slice(0, 16), purpose: 'brief_decomposition' },
+      () => new OpenProblemDecomposer(llm).decomposeDetailed(input)
+    );
 
     const inserted = await query(
       `INSERT INTO briefs (title, source_type, source_filename, brief_text, content_hash, requirements_json, decomposition_mode)

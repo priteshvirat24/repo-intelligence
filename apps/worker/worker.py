@@ -34,6 +34,8 @@ from .discovery.github_search import GitHubSearchClient, GitHubRateLimited
 from .discovery.runner import DiscoveryRunner
 from .discovery.verification import select_verification_targets
 from .discovery.blueprint import generate_blueprint
+from .providers import ledger
+from . import tuning as tuning_registry
 
 # Error messages that mean "try again later" rather than "this repository cannot be indexed"
 _TRANSIENT_MARKERS = (
@@ -131,6 +133,8 @@ class IngestionWorker:
         self.active_blueprint: Optional[Dict[str, Any]] = None
         self.db = DatabaseRepository()
         self.briefs = BriefRepository(self.db)
+        # Every LLM and embedding call is recorded in provider_usage
+        ledger.add_sink(ledger.DatabaseSink(self.db))
         self.llm = get_llm_provider()
         self.embedding_provider = get_embedding_provider()
         if self.embedding_provider.get_dimensions() != config.EMBEDDING_DIMENSIONS:
@@ -725,12 +729,15 @@ class IngestionWorker:
         self.active_brief = brief
         github = GitHubSearchClient()
         try:
+            active = tuning_registry.load_active(self.db)
             runner = DiscoveryRunner(
-                llm=self.llm,
+                llm=self._llm_for(active, "models.discovery"),
                 github=github,
+                tuning=active,
                 on_step=lambda step: self.briefs.update_step(brief_id, step, self.worker_id),
             )
-            result = runner.run(brief["requirements_json"] or {})
+            with ledger.ledger_scope(tuning_version=active.version):
+                result = runner.run(brief["requirements_json"] or {})
             # The strongest shortlisted repositories go through the normal indexer so the blueprint can rest
             # on code evidence; they are queued in the same transaction that stores the candidates
             targets = select_verification_targets(result["candidates"], GitHubWorkerClient(), config.BRIEF_VERIFY_COUNT)
@@ -762,7 +769,9 @@ class IngestionWorker:
         try:
             inputs = self.briefs.load_blueprint_inputs(blueprint)
             self.briefs.update_blueprint_step(blueprint_id, "DESIGNING", self.worker_id)
-            result = generate_blueprint(self.llm, inputs)
+            active = tuning_registry.load_active(self.db)
+            with ledger.ledger_scope(tuning_version=active.version):
+                result = generate_blueprint(self._llm_for(active, "models.blueprint"), inputs, tuning=active)
             self.briefs.persist_blueprint(blueprint_id, result, self.worker_id)
             decisions = [c["decision"] for c in result["components"]]
             print(f"[{self.worker_id}] Blueprint {blueprint_id} done: {decisions.count('reuse')} reuse, {decisions.count('adapt')} adapt, {decisions.count('build')} build, {len(result['sources'])} sources", flush=True)
@@ -781,25 +790,33 @@ class IngestionWorker:
         finally:
             self.active_blueprint = None
 
+    def _llm_for(self, active: "tuning_registry.Tuning", key: str):
+        """The model the active tuning routes this task to, or the worker's default provider."""
+        model = active.get(key)
+        return get_llm_provider(model=model) if model else self.llm
+
     def run_next(self) -> bool:
         """Processes one unit of work: repository indexing first (it is what blueprints wait for), then
         blueprints whose repositories are done, then brief discovery. Returns False when nothing is waiting."""
         job = self.db.claim_next_job(worker_id=self.worker_id)
         if job:
             self.db.record_heartbeat(self.worker_id, current_job_id=job["id"], status="BUSY")
-            self.process_job(job)
+            with ledger.ledger_scope(scope_type="repository_job", scope_id=str(job["id"])):
+                self.process_job(job)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         blueprint = self.briefs.claim_next_blueprint(self.worker_id)
         if blueprint:
             self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"blueprintId": str(blueprint["id"])})
-            self.process_blueprint(blueprint)
+            with ledger.ledger_scope(scope_type="blueprint", scope_id=str(blueprint["id"])):
+                self.process_blueprint(blueprint)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         brief = self.briefs.claim_next_brief(self.worker_id)
         if brief:
             self.db.record_heartbeat(self.worker_id, status="BUSY", metadata={"briefId": str(brief["id"])})
-            self.process_brief(brief)
+            with ledger.ledger_scope(scope_type="brief", scope_id=str(brief["id"])):
+                self.process_brief(brief)
             self.db.record_heartbeat(self.worker_id, status="ALIVE")
             return True
         return False
