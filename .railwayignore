@@ -1,0 +1,4 @@
+# Local-only folders that must never be uploaded by `railway up` (agent worktrees, evaluation snapshots)
+.claude/
+eval/snapshots/
+eval/work/

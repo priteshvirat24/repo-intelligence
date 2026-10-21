@@ -4,6 +4,9 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
+    "preDeployCommand": [
+      "pnpm --filter @repo/database migrate"
+    ],
     "startCommand": "pnpm --filter @repo/web run start",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 120,
