@@ -91,7 +91,7 @@ The rule that has held since P0 stays: **the database is the only contract betwe
 | Run graph (`apps/worker/orchestrator`) | Creates a mission's tasks, claims ready ones, fingerprints inputs, invalidates dependents, enforces budgets | Built | D§5, A1, A2, A4 |
 | Indexer (`apps/worker/worker.py`, `analyzer/`) | Clone, analysis passes, evidence gate (E2); partial analysis of large repositories | Built | D§5.4, D§6.1 |
 | Connector gateway and registry (`apps/worker/connectors`) | The single exit for source calls: cache, budget, SSRF check, pacing, untrusted tagging, provenance | Built; GitHub search uses its own metered client outside it (gap) | D§8, A4, A6 |
-| Scraper service (`apps/worker/scraper`) | Renders permitted pages that need a browser | Built; uses a stealth browser that conflicts with D§2.4 (gap) | D§8 layer 4 |
+| Scraper service (`apps/worker/scraper`) | Renders pages that need a browser and reads protected public pages with the stealth browser | Built; the limits of D§14.14 are partly built (gap) | D§8 layer 4, D§14.14 |
 | Sandbox (`apps/worker/sandbox`) | Ephemeral isolated environments for E1 checks and builds | Built; E2B adapter not yet run against the live service (gap) | A7 |
 | Build runner (`apps/worker/builder`) | Authorised builds, separate from the run graph | Built | D§5.8, D§6.3 |
 | Idle jobs | Memory revalidation and distillation; evolution monitor and rollback | Built | D§9.2, D§10.2 |
@@ -279,10 +279,10 @@ PyPI has no search API, so Python packages are found through GitHub and search, 
 | 1. Search indexes and structured APIs | Connectors above | Built |
 | 2. Direct repository and docs retrieval | Indexer (shallow clone; sparse checkout for large repositories); docs connector | Built |
 | 3. Structured crawling of permitted sites | A crawler with allowed domains, sitemap first, robots, throttling, page caps from the budget | Gap; the tool is chosen in TECHNOLOGY_DECISIONS.md |
-| 4. Browser rendering of permitted pages | Scraper service | Built, but must change (below) |
+| 4. Browser rendering, including the stealth tier | Scraper service | Built; its limits are partly built (below) |
 | 5. Targeted deeper investigation | `deepen` re-runs discovery with extra queries for one requirement; re-planning rounds (4.2) | Partly built |
 
-**The scraper conflicts with the definition; resolving it is decision 14, still open [D§2.4, D§8 access, D§14.6, D§14.14].** It uses Scrapling's stealth fetcher with Camoufox, a browser built to evade fingerprinting. It routes a list of "protected" domains straight to it and retries pages that answered with a challenge. D§2.4 rules out fingerprint evasion, and D§14.6 allows a browser only to render permitted pages. In the end state, rendering uses a standard headless browser that identifies itself. A challenge page, a 403 or a sign-in wall is reported as blocked, and the protected-domain routing is removed. The SSRF checks and the `AUTH_REQUIRED` handling stay.
+**The scraper's stealth browser is a core part of research [D§14.14, TD-09].** It uses Scrapling's stealth fetcher with Camoufox. It sends a configurable list of sites (LinkedIn, X, Bloomberg, WSJ, Medium) straight to the browser and switches to it when a page answers 403 or 999 or serves a bot challenge. It stays inside fixed limits: public content only, sign-in walls reported as `AUTH_REQUIRED`, no CAPTCHA solving, no paywall bypass, rate limits respected. The SSRF checks, the loopback binding and the 2-session cap are built. Still to build: back off on 429 instead of escalating, check robots.txt on `/scrape`, move the site list into configuration, pace per domain, and record each stealth fetch with its reason in the ledger and the mission's sources.
 
 ### 5.5 Research plan
 
@@ -466,7 +466,7 @@ The full plan is [EVALUATION_PLAN.md](EVALUATION_PLAN.md). This section records 
 | Secrets | Provider keys only in the platform's secret store, used by the gateway and providers; never in prompts, reports, logs or memory | Built | D§11 |
 | Supply chain | Licence, advisories and Scorecard for every shortlisted candidate | Built | D§11 |
 | Untrusted content | Gateway tags all fetched text; prompts carry it only in untrusted blocks; schema validation; instruction-like text logged | Built; logged to stdout, not the audit log | D§11 |
-| Access to sites | robots honoured; SSRF checks; login walls reported as blocked; no CAPTCHA solving; no fingerprint evasion | Gap: stealth browser in the scraper (5.4) | D§2.4, D§8, D§14.6 |
+| Access to sites | robots honoured; SSRF checks; login walls reported as blocked; no CAPTCHA solving; rate limits respected; stealth browser only for public pages | Gap: 429 still escalates, `/scrape` skips robots, stealth use not recorded (5.4) | D§2.4, D§8, D§14.6, D§14.14 |
 | Sign-in | GitHub sign-in; every request scoped to its workspace; a public deployment refuses to start or serve without sign-in configured | Gap: sign-in is optional, and without it every visitor shares one workspace as maintainer | D§11, A8 |
 | Approvals | Build start and delivery need a maintainer's explicit approval; spending above budget needs the user | Built | D§7 |
 | Build delivery | A GitHub App with per-repository installation and minimal permissions | Gap: a single token (`GITHUB_BUILD_TOKEN`) | D§7, D§11 |
@@ -488,7 +488,7 @@ Each choice names the requirement it serves. The full record, with evidence and 
 | Embeddings | mistral-embed (1024 dimensions) for indexed chunks | Changing model means re-embedding everything | A retrieval change wins on the suite |
 | Package data | deps.dev and OSV.dev | Official, free, cross-ecosystem | — |
 | Search | Tavily behind the connector contract | Integrated and cached | Docs and article recall is the weak metric |
-| Rendering | A standard headless browser behind the scraper service | Permitted pages only [D§14.6]; replaces the stealth browser | — |
+| Rendering | Scrapling with Camoufox (stealth browser) behind the scraper service | Reads public pages that turn away standard browsers [D§14.14] | — |
 | Crawling | To be decided (Scrapy is the candidate) | Layer 3 needs robots, throttling and caps | When layer 3 is built |
 | Sandbox | E2B on Railway; Docker locally | Railway containers cannot host nested isolation (A7) | E2B cold start, egress control or cost fails the build-mode targets |
 | Build delivery | A GitHub App | Per-repository permissions, auditable pull requests | — |
@@ -523,7 +523,7 @@ Phases, dependencies, completion conditions and release points are in [ROADMAP.m
 | Report | Nine of sixteen sections built, two partial | All sixteen, each with "nothing to report, because…" when empty | D§6.2 | Q1–Q4 |
 | Requirement classes | v1 taxonomy | v2 classes and migration of stored blueprints and labels (7.2) | D§5.6, D§14.8 | Q1 |
 | Audit log | Ledger, evolution events, revalidation checks | One append-only audit log and a view per mission | D§11, D§9.2 | Q1 |
-| Scraper | Stealth browser, protected-domain routing | Standard headless rendering; challenges reported as blocked | D§2.4, D§14.6 | Q1 |
+| Scraper | Stealth browser; hard-coded site list; escalates on 429 | Stealth browser within D§14.14 limits: 429 backoff, robots on every fetch, configurable site list, per-domain pace, recorded use | D§2.4, D§14.14 | Q1 |
 | Governance | Any maintainer governs; anyone may opt into execution | Operator-workspace maintainers govern; project maintainers opt in | D§14.9, D§14.10 | Q1 |
 | Mission controls | Change constraints, answers, budget | Pause, resume, stop with partial results kept (Q1); exclude a source (Q4) | D§3.3 | Q1, Q4 |
 | Entry point | Studio chat at `/` | Brief form at `/`; library pages only as evidence views | D§3.1, D§3.2 | Q1 |

@@ -83,7 +83,7 @@ External systems (code hosts, registries, documentation sites, search providers,
 - **Not a chatbot over search results.** Its answers are decisions backed by graded evidence, not summaries of whatever it found.
 - **Not a RAG application.** Retrieval is one internal capability. The products are the blueprint and the verified build.
 - **Not a generic multi-agent workflow.** Roles exist only where they produce a checked output (section 5.10).
-- **Not a way around access controls.** It never bypasses logins, paywalls, CAPTCHAs, rate limits or site restrictions, including by fingerprint evasion.
+- **Not a way around access controls.** It never bypasses logins, paywalls, CAPTCHAs or rate limits, and never reads what a site keeps for signed-in users. To read public pages that turn away automated clients, it uses a stealth browser within fixed limits (decision 14).
 - **Not self-modifying.** It never changes its own code, permissions or security boundaries on its own judgement (section 10).
 
 ## 3. The end-state experience
@@ -495,14 +495,14 @@ The full strategy is in [RESEARCH_STRATEGY.md](RESEARCH_STRATEGY.md). It must me
 1. search indexes and structured APIs, for discovery;
 2. direct repository and documentation retrieval, for high-value candidates;
 3. structured crawling of permitted sites, for extraction;
-4. browser rendering, for permitted pages that need it;
+4. browser rendering, for pages that need it and for public pages behind bot protection (decision 14);
 5. targeted deeper investigation, while evidence stays incomplete.
 
 **Efficiency.** Caching, de-duplication, incremental retrieval, concurrency limits and source-aware scheduling are required. The aim is enough reliable evidence for the right decision, not the most pages.
 
 **Access.**
-- Site terms, robots directives, rate limits, authentication boundaries, copyright and software licences are respected.
-- Browser technology renders pages; it never grants permission.
+- Robots directives, rate limits, authentication boundaries, copyright and software licences are respected. Site terms are respected too, except where the owner accepts the risk of reading a listed site's public pages with the stealth browser (decision 14).
+- Browser technology renders pages. The stealth browser lets Open Eye read public pages that turn away automated clients (decision 14); it never gets past a login, a paywall, a CAPTCHA or a rate limit.
 - A sign-in wall is reported as blocked, not worked around.
 
 **Tool adoption.** No tool is adopted because it exists. Each candidate tool is evaluated for capability, limitations, licence, operating cost, integration effort and maintenance burden, and the decision is recorded in [TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md).
@@ -638,7 +638,7 @@ Cases are added over time but never removed to improve the numbers.
 3. **Default budget:** set from measured cost on the benchmark.
 4. **Third-party code execution:** per-project opt-in.
 5. **Licence policy default:** copyleft allowed and flagged, overridable per project.
-6. **Browser research:** for rendering permitted pages only, never for getting past restrictions.
+6. **Browser research:** for rendering public pages, including through the stealth browser of decision 14; never for signing in, solving CAPTCHAs, passing paywalls or getting around rate limits.
 7. **L2–L3 approval:** a maintainer, with results visible to users.
 
 **New in v2.0** (proposed defaults in *italics*):
@@ -649,7 +649,15 @@ Cases are added over time but never removed to improve the numbers.
 11. **Sharing across a team:** *Default: findings about public resources are shared; private project content, episodes and procedures stay in the workspace unless a maintainer shares them.*
 12. **Held-out evaluation:** *Default: a held-out set, never used to design or tune changes, confirms every promotion from L1 to L3. It holds at least 5 briefs now, growing to a quarter of the benchmark as the suite grows. Until it is large enough to show a gain, it can only veto a change, never prove one.*
 13. **Commercial services in recommendations:** *Default: allowed when they fit the constraints, always alongside the best open alternative and its cost.*
-14. **Stealth browser in the scraper (open: on 2026-10-22 the owner kept the stealth browser for now):** the scraper engine sends a fixed list of domains straight to the Camoufox stealth browser (linkedin.com, twitter.com, x.com, bloomberg.com, wsj.com, medium.com). It also switches any page to it when the site answers 403, 429 or a bot challenge. That uses fingerprint evasion to get past a site's bot protection and rate limits, which section 2.4 and decision 6 exclude. *Proposed resolution, not yet adopted: remove the named-site routing and the escalation on 403, 429 and challenge pages now. Treat those responses as blocked (section 7). Replace Camoufox with a standard headless browser that identifies itself, used only for rendering ([TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) TD-09).*
+14. **Stealth browser in the scraper (adopted on 2026-10-22 by the owner):** the stealth browser is a core part of research. Many public sources that matter to engineering research (LinkedIn and X posts, Medium articles, documentation behind bot protection) turn away plain HTTP clients and standard headless browsers. Without it, Open Eye loses evidence that people can read without signing in. The scraper keeps Scrapling with Camoufox, sends a configurable list of sites straight to it, and switches to it when a site answers 403 or 999 or serves a bot challenge. It works within these limits; the ones marked *gap* are not built yet:
+    - **Public content only.** It never signs in, never uses a person's cookies or accounts, and reports a sign-in wall as `AUTH_REQUIRED`, never as content (built).
+    - **No CAPTCHA solving.** Challenges the browser does not pass on its own are reported as blocked; Scrapling's challenge solver stays off (built).
+    - **No paywall bypass.** Text a paywall hides is not fetched; a paywalled page counts as partial evidence (built in effect; *gap:* paywalls are not detected and labelled).
+    - **Rate limits are respected.** A 429 means wait and retry later with backoff, never switch to the stealth browser (*gap:* the engine still escalates on 429).
+    - **Robots directives are respected** for every fetch, not only crawls (*gap:* `/scrape` does not check robots.txt; `/crawl` does).
+    - **Light load.** At most 2 browser sessions, images and media off, a per-domain pace, and fetches counted against the mission's source budget (sessions and resources built; *gap:* no per-domain pace).
+    - **Visible use.** Each stealth fetch is recorded with its reason (listed site or escalation) and shown in the mission's sources (*gap*).
+    - **Owner-accepted risk.** Some listed sites forbid automated access in their terms. The owner accepts that risk for public pages; an operator can remove sites from the list or turn the stealth tier off ([TECHNOLOGY_DECISIONS.md](TECHNOLOGY_DECISIONS.md) TD-09).
 
 ## Appendix A: Where the built system stands (2026-10-22)
 
@@ -660,7 +668,7 @@ For orientation only; this definition does not depend on it. The objective check
 | Experience (3) | Briefs page, brief workspace with run timeline, understanding, budget, candidates and blueprint; `/memory`, `/evolution`, `/evaluation`; the repository Studio at `/` (questions over indexed repositories) | No single mission workspace with pause and resume; actual, planned and example events are not labelled; excluding a source is not built; the Studio sits outside the six workspaces |
 | Brief understanding (5.1) | Structured specification, acceptance criteria, at most 3 questions with a blocking flag, research proceeds on assumptions | Existing-asset (repository) intake for UC2; exclusions as a field |
 | Planning (5.2) | Query planning by kind of tool; memory read before research; diminishing-returns stop | No explicit research plan with expected information gain; no re-planning on findings |
-| Discovery (5.3) | GitHub, npm, crates.io, deps.dev, OSV, Stack Exchange and Tavily through a gateway with budget and cache; an arXiv connector exists but no task calls it yet; the scraper escalates to a stealth browser (decision 14) | No GitHub code or issue search, no commercial-service discovery; dependents and alternatives are not followed |
+| Discovery (5.3) | GitHub, npm, crates.io, deps.dev, OSV, Stack Exchange and Tavily through a gateway with budget and cache; an arXiv connector exists but no task calls it yet; the scraper reads protected public pages with the stealth browser (decision 14) | No GitHub code or issue search, no commercial-service discovery; dependents and alternatives are not followed |
 | Inspection (5.4) | Clone, analysis passes, evidence gate (E2); partial analysis of large repositories; docs evidence (E3); opt-in sandbox E1 checks | E1 only for npm and PyPI packages; duplicate and fork detection is basic |
 | Comparison (5.5) | Ranking with health, relevance and coverage; inventory actions | No brief-specific criteria and weights shown; no written comparison section |
 | Gap analysis (5.6) | Six classes enforced against evidence (v1 taxonomy) | Migrate to the v2 classes (decision 8) |
@@ -684,3 +692,4 @@ For orientation only; this definition does not depend on it. The objective check
 - **Memory:** now seven layers (adding episodic, procedural and team), with admission by utility, applicability checks and access control.
 - **Evolution:** each hypothesis must state what would reject it; held-out evaluation; metrics guarded against gaming (learned from the first tuning pass).
 - **Discipline and claims:** scope and decision discipline is its own section, and no superiority claim may be made without comparative evidence.
+- **Access:** the stealth browser is adopted as a core part of research, within the limits of decision 14. Section 2.4, section 8 and decision 6 now allow it for public pages; logins, paywalls, CAPTCHAs and rate limits stay out of bounds.

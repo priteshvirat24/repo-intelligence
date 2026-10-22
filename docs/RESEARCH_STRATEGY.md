@@ -27,7 +27,7 @@ Contents:
 - **Authoritative before secondary.** The project's own code, docs and registry entries come before articles and forum posts that describe it **[D§5.3]**.
 - **Several independent strategies.** When one strategy finds too little, others are tried, each with its own trigger (section 6) **[D§5.3]**.
 - **Signals are not conclusions.** Stars, downloads, search rank and recency rank candidates; they never grade a capability **[D§5.3]**.
-- **Access is never forced.** Robots directives, site terms, rate limits and sign-in walls are respected. A blocked source is reported as blocked **[D§2.4, D§7, D§8 access]**.
+- **Access is never forced.** Robots directives, rate limits and sign-in walls are respected. The stealth browser reads public pages that turn away automated clients, within the limits of decision 14. A blocked source is reported as blocked **[D§2.4, D§7, D§8 access, D§14.14]**.
 - **Retrieved content is data.** It never instructs the system **[D§11]**.
 
 ## 2. Tool registry
@@ -79,9 +79,9 @@ Every discovery and execution tool has one registry record **[D§8 tool registry
 | Semantic Scholar | planned | search, metadata | keywords or paper id → papers, citations | E4 |
 | Docs fetcher (plain HTTP) | in use | fetch | public URL → page text with headings | E3 (via quote check) |
 | Firecrawl | in use (web app only) | fetch | URL → Markdown | E3 (via quote check) |
-| Browser tier: Scrapling with Camoufox | in use (optional); replacement proposed, decision 14 open (TD-09) | fetch | URL → rendered Markdown, links | E3 (via quote check) |
+| Browser tier: Scrapling with Camoufox | in use (optional); the stealth tier, kept by decision 14 (TD-09) | fetch | URL → rendered Markdown, links | E3 (via quote check) |
 | Scrapy | candidate | crawl | start URL, allowed domain → many pages | E3 (via quote check) |
-| Playwright with a stock browser | candidate replacement for the browser tier (TD-09) | fetch | URL → rendered page | E3 (via quote check) |
+| Playwright with a stock browser | for build-mode UI tests in the sandbox only (TD-09) | fetch | URL → rendered page | E3 (via quote check) |
 | Docker sandbox | in use (local) | execute | files, commands, limits → exit code, output | E1 |
 | E2B sandbox | in use (hosted, not yet run live) | execute | files, commands, limits → exit code, output | E1 |
 
@@ -122,7 +122,7 @@ Every discovery and execution tool has one registry record **[D§8 tool registry
 | Tavily | Pages on a project's own docs site; comparisons and alternatives (S4) | Fetching page content for evidence (fetch the page itself) |
 | arXiv, Semantic Scholar | The brief needs an algorithm or a benchmark | Ordinary library and tool selection |
 | Docs fetcher | Any permitted public docs page | Pages behind sign-in; pages disallowed by robots.txt |
-| Browser tier | A permitted page that answered but has no content without JavaScript | A page that refused access (401, 403, 429, challenge page): that is blocked, not a rendering problem |
+| Browser tier | A page that answered but has no content without JavaScript; a public page that answered 403 or 999 or served a bot challenge; a site on the stealth list | A sign-in wall (401, `AUTH_REQUIRED`), a paywall, a CAPTCHA the browser does not pass on its own, or a 429: those are blocked or rate-limited, not rendering problems |
 | Docker, E2B | Raising a critical E2 or E3 claim to E1 in an opted-in project | Any project without the opt-in; any code that needs secrets |
 
 ## 3. Source types and tools
@@ -150,7 +150,7 @@ Each layer is used only where the one before is insufficient **[D§8]**. Layer 0
 | 1. Search indexes and structured APIs | Discovery; registry, licence and advisory facts | A question has no current answer in memory | Further searches add no candidate that ranks among those worth inspecting (section 5.4); the candidates go to layer 2 |
 | 2. Direct repository and documentation retrieval | Shortlisted candidates: clone, README, docs homepage, registry entries | A candidate is shortlisted, or a decision depends on it | Every requirement the candidate is meant to cover has a graded claim, or the source is blocked or unavailable (recorded) |
 | 3. Structured crawling of permitted sites | More pages of the same docs site when the first pages do not settle a requirement | Layer 2 read the docs homepage and searched pages, a MUST requirement is still E4 or unresolved for a shortlisted candidate, and robots.txt permits it | A quote settles it, the page cap is reached, or the site has no more relevant pages |
-| 4. Browser rendering | A permitted page that returned no content without JavaScript | A page answered (2xx) but its text is empty or only a script shell | The page is rendered, or it turns out to need sign-in (`AUTH_REQUIRED`, blocked) |
+| 4. Browser rendering | A page that returned no content without JavaScript, or a public page behind bot protection | A page answered (2xx) with only a script shell, or answered 403, 999 or a bot challenge, or is on the stealth list | The page is rendered, or it turns out to need sign-in (`AUTH_REQUIRED`, blocked) |
 | 5. Targeted deeper investigation | A decision that is still open: code search, issue search, execution (E1), or the user's "investigate deeper" | A MUST requirement is class 6, evidence conflicts, or a critical claim needs E1 | The decision is settled, the evidence is shown to be unavailable, or the budget for the question is spent |
 
 A refusal (401, 403, 429, a challenge page, a sign-in wall) never moves a request to a higher layer. It ends that source for this request and is reported (section 7.5).
@@ -250,7 +250,7 @@ Cache TTLs govern responses. Freshness of *findings* is separate and follows the
 - **robots.txt** is checked for every page under the agent name `OpenEyeBot`. 404 means no rules; 401 or 403 means the site is closed to crawlers; a 5xx or 429 on robots.txt postpones the site (treated as disallowed until it answers).
 - **Identification:** requests carry an identifying User-Agent with a contact URL. The browser tier must do the same (*to verify* what it sends today).
 - **Terms notes** in each registry record (crates.io crawler policy, arXiv terms, Stack Exchange attribution) are applied as pacing and attribution rules.
-- **Blocked, not bypassed.** A sign-in wall, paywall, CAPTCHA, challenge page or 401, 403 or 429 is reported as `blocked` with its reason, never indexed, and never escalated to the browser tier. Browser technology renders pages; it never grants permission **[D§8 access, D§14.6]**.
+- **Blocked, not bypassed.** A sign-in wall, paywall or CAPTCHA the browser does not pass on its own is reported as `blocked` with its reason and never indexed. A 429 means back off and retry, then `rate_limited`; it is never escalated. A 403, 999 or bot challenge on a public page escalates once to the stealth browser, and is reported as blocked if that fails **[D§8 access, D§14.6, D§14.14]**.
 - **Reporting:** blocked and unavailable sources appear in the report's uncertainty section (section 14) **[D§6.2, D§7 failure]**.
 - **Copyright and licences:** only the passages needed as evidence are kept as quotes; whole pages live only in the cache until their TTL. Inspected code is analysed, never copied into deliverables beyond evidence quotes.
 
@@ -341,7 +341,7 @@ Conflicts are never settled silently **[D§5.10 shared state]**. The rules, in o
 | Papers | `connectors/arxiv.py` registered | Not called by any task; Semantic Scholar absent |
 | Pacing | Per connector id | Docs pacing is per connector, not per host |
 | robots.txt | `connectors/docs.py`, `scraper/api.py` | A 5xx or 429 on robots.txt is treated as "no rules" instead of postponing |
-| Browser tier | `scraper/engine.py`: SSRF checks, `AUTH_REQUIRED` detection, same-site robots-aware crawl, 2 sessions | **Escalates to the stealth browser on 403, 429, 999 and challenge pages, and sends listed sites (LinkedIn, X, Bloomberg, WSJ, Medium) straight to it.** That conflicts with section 7.5 and [D§2.4, D§14.6]; TD-09 replaces the engine with a standard headless browser |
+| Browser tier | `scraper/engine.py`: SSRF checks, `AUTH_REQUIRED` detection, same-site robots-aware crawl, 2 sessions | Stealth browser kept by decision 14: escalation on 403, 999 and challenge pages, listed sites sent straight to it. **Gaps against D§14.14:** it also escalates on 429; `/scrape` skips robots.txt; the site list is hard-coded; stealth fetches are not recorded with a reason |
 | E2 | `analyzer/evidence.py` evidence gate; `github/clone.py` shallow and sparse | — |
 | E1 | `execution.py`, `sandbox/docker.py`, `sandbox/e2b.py` | npm and PyPI packages only; E2B not yet run against the live service |
 | Conflicts | Licence conflict claim in `docs_evidence.py` | Rules 1, 2, 4, 5 of 8.6 are not applied; refuting E1 evidence does not yet block classes 1–4 |

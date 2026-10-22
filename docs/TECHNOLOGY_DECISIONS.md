@@ -34,7 +34,7 @@ A decision changes only through a new entry that supersedes the old one, with it
 | TD-06 | Embeddings | `mistral-embed`, 1024 dimensions | accepted |
 | TD-07 | Web search | Tavily behind the connector contract | accepted |
 | TD-08 | Single-page extraction | Firecrawl in the web app only; plain HTTP in the research path | accepted (web app); rejected (research path) |
-| TD-09 | Browser rendering | Scrapling with Camoufox in use; proposed replacement by a standard headless browser (Playwright the leading candidate) | open: decision 14 |
+| TD-09 | Browser rendering | Scrapling with Camoufox, the stealth browser, kept as a core tier | accepted: decision 14 |
 | TD-10 | Site crawling | Scrapy not adopted; bounded crawl over the gateway first | pending |
 | TD-11 | Package and vulnerability data | deps.dev and OSV.dev | accepted |
 | TD-12 | Code host access | GitHub REST and git (shallow, sparse) | accepted; code and issue search pending |
@@ -132,26 +132,28 @@ A decision changes only through a new entry that supersedes the old one, with it
 - **Consequences:** one fetch path for evidence, with one set of cache, ledger, access and replay rules.
 - **Revisit when:** measured E3 yield is lost because plain HTTP misses page content, and the browser tier cannot recover it within budget.
 
-### TD-09 Browser rendering: Scrapling with Camoufox; a standard headless browser
-**Status:** accepted on 2026-10-21 by product decision and kept by the owner on 2026-10-22, pending decision 14 ([PRODUCT_DEFINITION.md](PRODUCT_DEFINITION.md) §14). The proposal for the end state is to reject it: PRODUCT_DEFINITION v2.0 excludes fingerprint evasion. A standard headless browser that identifies itself replaces it (pending: Playwright with a stock browser is the leading candidate).
-- **Context:** layer 4 renders permitted pages that need JavaScript **[D§8 layered retrieval]**. Browser technology never grants permission, and getting past restrictions by fingerprint evasion is excluded **[D§2.4, D§8 access, D§14.6]**.
+### TD-09 Browser rendering: Scrapling with Camoufox, the stealth browser
+**Status:** accepted on 2026-10-21 by product decision; confirmed by the owner on 2026-10-22 as a core part of research (decision 14, [PRODUCT_DEFINITION.md](PRODUCT_DEFINITION.md) §14).
+- **Context:** layer 4 renders pages that need JavaScript and reads public pages that turn away automated clients **[D§8 layered retrieval, D§14.14]**. It never gets past a login, a paywall, a CAPTCHA or a rate limit **[D§2.4, D§8 access, D§14.6]**.
 - **Options:**
 
 | Option | For | Against |
 |---|---|---|
-| Scrapling with Camoufox | Deployed; fast HTTP tier first, browser second, in one time budget | Camoufox is a Firefox build made to resist fingerprinting, which [D§2.4] excludes; heavy image |
-| Playwright with a stock browser | Widely used; no fingerprint spoofing; also serves build-mode UI tests | Not integrated yet |
-| Scrapling's non-stealth browser fetcher | Keeps one library | *To verify* which engine and fingerprint it uses in Scrapling 0.5 |
-| No browser tier | Least machinery | Permitted pages that need JavaScript stay unread |
+| Scrapling with Camoufox | Deployed; fast HTTP tier first, browser second, in one time budget; reads public pages that block standard browsers | Heavy image; some listed sites forbid automated access in their terms (risk the owner accepts) |
+| Playwright with a stock browser | Widely used; also serves build-mode UI tests | Turned away by the sites the stealth tier exists for |
+| Scrapling's non-stealth browser fetcher | Keeps one library | Same weakness as a stock browser |
+| No browser tier | Least machinery | Pages that need JavaScript, and protected public pages, stay unread |
 
-- **Evidence:** `scraper/engine.py`: Scrapling `Fetcher`, then `StealthyFetcher` (Camoufox) headless with images and media off; SSRF checks on requested and final URLs; sign-in walls returned as `AUTH_REQUIRED`; service on loopback unless a shared secret is set; 2 concurrent sessions (`scraper/api.py`). The worker image adds browser libraries and `python -m camoufox fetch` (`apps/worker/Dockerfile`). The research path uses it only when `WORKER_SCRAPER_URL` is set; the web app uses it for user-added pages. **The conflict:** the engine escalates to the stealth browser on 403, 429, 999 and Cloudflare challenge pages, and sends LinkedIn, X, Bloomberg, WSJ and Medium straight to it.
+- **Evidence:** `scraper/engine.py`: Scrapling `Fetcher`, then `StealthyFetcher` (Camoufox) headless with images and media off; Scrapling's challenge solver is not enabled; SSRF checks on requested and final URLs; sign-in walls returned as `AUTH_REQUIRED`; service on loopback unless a shared secret is set; 2 concurrent sessions (`scraper/api.py`); `/crawl` honours robots.txt. The worker image adds browser libraries and `python -m camoufox fetch` (`apps/worker/Dockerfile`). The research path uses it only when `WORKER_SCRAPER_URL` is set; the web app uses it for user-added pages. `PROTECTED_DOMAINS` (LinkedIn, X, Bloomberg, WSJ, Medium) go straight to the browser; 403, 429, 999 and challenge pages escalate to it.
 - **Decision:**
-  1. Replace the rendering engine with a standard headless browser that sends an identifying User-Agent, behind the same scraper service. Keep the service's SSRF checks, `AUTH_REQUIRED` handling, loopback binding and session limit.
-  2. Report 401, 403, 429, 999, challenge pages and sign-in walls as blocked; never escalate them. Render only pages that answered but have no content without JavaScript (RS§4, RS§7.5).
-  3. Remove the protected-domain routing.
-  4. Keep Scrapling's fast HTTP tier only if it can run without browser impersonation (*to verify*); otherwise the gateway's plain HTTP client serves that tier.
-- **Consequences:** until the replacement lands, the browser tier stays off in the research path (`WORKER_SCRAPER_URL` unset), and the web app's use of it is a known conflict. The worker image shrinks once Camoufox is removed.
-- **Revisit when:** the replacement engine is measured on permitted JavaScript-only docs pages; choose between Playwright and Scrapling's non-stealth fetcher on that result. Build-mode UI tests run Playwright inside the sandbox, never on application hosts.
+  1. Keep Camoufox as the browser tier, behind the scraper service, with its SSRF checks, `AUTH_REQUIRED` handling, loopback binding and session limit.
+  2. Keep the listed-site routing and the escalation on 403, 999 and challenge pages. Make the site list configuration, not code, so an operator can change it or turn the stealth tier off.
+  3. Stop escalating on 429: back off and retry within the mission's budget, then report the source as rate-limited.
+  4. Check robots.txt on `/scrape` as `/crawl` already does.
+  5. Never enable CAPTCHA solving, use a person's cookies or accounts, or return a sign-in wall or paywall as content.
+  6. Record each stealth fetch with its reason (listed site or escalation), count it against the mission's source budget, and pace requests per domain.
+- **Consequences:** the research path can turn on the browser tier (`WORKER_SCRAPER_URL`) once items 3, 4 and 6 land; until then it is on only for the web app's user-added pages. The worker image keeps the Camoufox download.
+- **Revisit when:** a listed site's terms or a legal review rules its automated access out, or measured E3 yield from the stealth tier stays low enough that its image and upkeep cost more than the evidence it adds. Build-mode UI tests run Playwright inside the sandbox, never on application hosts.
 
 ### TD-10 Site crawling: Scrapy
 **Status:** pending: a candidate, not adopted. SYSTEM_DESIGN v0.1 had chosen it; this record supersedes that.
@@ -256,5 +258,5 @@ SYSTEM_DESIGN.md v0.1, derived from the product definition v1.0, listed technolo
 - **Scrapy** was chosen for site crawling; here it is a candidate, not adopted (TD-10).
 - **LLM defaults** were Claude models; the code runs Mistral `ministral-8b-latest`, and stronger-model routing is pending (TD-05).
 - **Firecrawl** was kept for single-page extraction; here it stays in the web app only (TD-08).
-- **Rendering:** Scrapling with Camoufox, adopted on 2026-10-21 for pages that "refuse plain HTTP clients", is replaced by a standard headless browser for permitted pages only, and refusals are reported as blocked (TD-09).
+- **Rendering:** Scrapling with Camoufox, adopted on 2026-10-21 for pages that "refuse plain HTTP clients", stays as the stealth browser tier, now with explicit limits: no escalation on 429, robots on every fetch, recorded use (TD-09).
 - **Sandbox:** E2B is implemented without the planned spike; the spike is still owed (TD-13).
