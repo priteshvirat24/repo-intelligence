@@ -74,7 +74,7 @@ flowchart TD
     C --> E["Semantic chunking (section 4)"]
     D --> F["Symbol outlines per file"]
     F --> G["LLM pass 1: cartography<br>purpose, domains, subsystems"]
-    G --> H["LLM pass 2: module analysis<br>up to 6 subsystems"]
+    G --> H["LLM pass 2: module analysis<br>up to MAX_SUBSYSTEMS (default 8) subsystems"]
     H --> I["LLM pass 3: synthesis<br>capabilities, features, concepts, techniques,<br>use cases, components, interfaces, limitations"]
     I --> J["Evidence gate<br>keep capabilities only with verified evidence"]
     E --> K["Select up to 1500 chunks<br>spread across files"]

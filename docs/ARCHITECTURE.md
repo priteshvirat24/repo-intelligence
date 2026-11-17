@@ -185,7 +185,7 @@ flowchart TD
     B --> C["FILE_FILTERING<br>code: py ts tsx js jsx mjs cjs go rs c h cc cpp hpp java + patch<br>docs, manifests; skip binaries, vendor, symlinks<br>budgets: 2000 files, 500 KB/file, 20 MB text"]
     C --> D["MANIFEST_ANALYSIS<br>requirements.txt, pyproject (tomllib), setup.py,<br>package.json, go.mod, Cargo.toml, Dockerfile"]
     D --> E["AST_ANALYSIS<br>tree-sitter: Python, JS/TS/TSX, Go, Rust, C, C++, Java<br>symbol outlines + chunking (512-token chunks, secrets redacted)"]
-    E --> F["CAPABILITY_EXTRACTION: 3 LLM passes<br>1. Cartography: purpose, domains, subsystems<br>2. Module analysis: up to 6 subsystems<br>3. Synthesis: capabilities, features, concepts,<br>techniques, use cases, components, interfaces, limitations"]
+    E --> F["CAPABILITY_EXTRACTION: 3 LLM passes<br>1. Cartography: purpose, domains, subsystems<br>2. Module analysis: up to MAX_SUBSYSTEMS (default 8) subsystems<br>3. Synthesis: capabilities, features, concepts,<br>techniques, use cases, components, interfaces, limitations"]
     F --> G{"Synthesis empty?"}
     G -->|yes| R["Retryable error<br>(existing data untouched)"]
     G -->|no| H["Evidence gate (4.3)<br>keep only capabilities with verified evidence"]
