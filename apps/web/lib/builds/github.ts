@@ -42,7 +42,9 @@ export async function openPullRequest(input: PullRequestInput): Promise<PullRequ
         'User-Agent': 'open-eye-build',
         ...(body ? { 'Content-Type': 'application/json' } : {})
       },
-      body: body ? JSON.stringify(body) : undefined
+      body: body ? JSON.stringify(body) : undefined,
+      // A hung call must not leave the delivery claimed for ever
+      signal: AbortSignal.timeout(30_000)
     });
     const data = await res.json().catch(() => ({}));
     return { ok: res.ok, status: res.status, data };

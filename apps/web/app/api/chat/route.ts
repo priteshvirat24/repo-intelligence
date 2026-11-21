@@ -4,6 +4,7 @@ import { ProviderConfigError } from '@/lib/ai/providers';
 import { withLedgerScope } from '@/lib/ai/ledger';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import { ChatSourceMode } from '@repo/shared';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,6 +28,8 @@ function toUserError(error: any): { error: string; kind: ErrorKind; retryAfter?:
 const VALID_MODES: ChatSourceMode[] = ['INTERNAL', 'WEB', 'BOTH'];
 
 export async function POST(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   // Rate limit: 20 chat queries per minute per IP
   const rateLimit = checkRateLimit(req, 'chat_query', { maxRequests: 20, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {

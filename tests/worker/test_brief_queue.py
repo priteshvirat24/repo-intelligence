@@ -343,3 +343,21 @@ def test_worker_heartbeat_reports_busy_during_long_work():
     stub.running = False
     stop.set()
     assert beats and beats[0]["status"] == "BUSY" and beats[0]["metadata"] == {"briefId": "b1", "task": "blueprint"}
+
+
+def test_unchanged_inputs_keep_blocking_questions_open(run, monkeypatch):
+    # The brief is touched in a way the fingerprint ignores (allowExecution toggled, blank answers): understand
+    # runs again with the same inputs and must not be marked done, or research continues without the answers
+    from apps.worker import worker as worker_module
+    db, store, brief_id = run
+    understand = store.claim_next("w1")
+    store.await_input(understand, {"requirements": [], "blockingQuestions": ["Which cloud?"]}, "fp", "w1")
+    sql(db, "UPDATE tasks SET status = 'stale' WHERE brief_id = %s AND type = 'understand'", (brief_id,))
+    task = store.claim_next("w1")
+    assert task["type"] == "understand"
+    monkeypatch.setattr(worker_module, "fingerprint", lambda ctx: "fp")
+    worker = object.__new__(worker_module.IngestionWorker)
+    worker.worker_id, worker.tasks, worker.db, worker.active_task = "w1", store, db, None
+    worker.process_task(task)
+    assert statuses(db, brief_id)["understand"] == "awaiting_input"
+    assert store.claim_next("w1") is None

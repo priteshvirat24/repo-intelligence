@@ -359,3 +359,12 @@ def test_github_repository_urls_from_registry_metadata():
     assert github_full_name("https://gitlab.com/a/b") is None
     assert github_full_name("https://github.com/orgs/foo") is None
     assert github_full_name(None) is None
+
+
+def test_an_accepted_400_is_returned_but_not_cached():
+    # Stack Exchange's quota error (400, error 502) clears by itself: caching it would silence the source for days
+    gw, recorder = gateway({"GET api.stackexchange.com/2.3/search/advanced": (400, {"error_id": 502, "error_name": "throttle_violation"})})
+    for _ in range(2):
+        with pytest.raises(SourceUnavailable, match="throttle_violation"):
+            StackExchangeConnector(gw, key="").search("bullmq")
+    assert len(recorder.requests) == 2

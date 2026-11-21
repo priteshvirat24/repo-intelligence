@@ -35,6 +35,20 @@ export async function requestContext(): Promise<RequestContext> {
   return { userId: session.userId, workspaceId: res.rows[0].workspace_id, role: res.rows[0].role, authenticated: true };
 }
 
+/**
+ * For routes over the shared library, chat and search: the caller's context, or the 401 to return. Without
+ * sign-in configured this lets everyone through (single-workspace mode), exactly as requestContext() does.
+ */
+export async function contextOrRefusal(): Promise<{ ctx: RequestContext; refusal?: never } | { ctx?: never; refusal: NextResponse }> {
+  try {
+    return { ctx: await requestContext() };
+  } catch (error) {
+    const refusal = authErrorResponse(error);
+    if (refusal) return { refusal };
+    throw error;
+  }
+}
+
 export function authErrorResponse(error: unknown): NextResponse | null {
   if (error instanceof AuthRequired) {
     return NextResponse.json({ error: error.message, kind: 'auth_required' }, { status: 401 });

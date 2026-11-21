@@ -46,8 +46,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string;
 
     // One delivery at a time per build: claim it before touching GitHub
     const claimed = await query(
-      `UPDATE builds SET delivery_json = jsonb_build_object('state', 'delivering', 'repo', $2::text, 'branch', $3::text), updated_at = NOW()
-       WHERE id = $1 AND status IN ('succeeded', 'awaiting_approval') AND (delivery_json IS NULL OR delivery_json->>'state' = 'failed')
+      // A claim left 'delivering' for 10 minutes (the process restarted mid-delivery) may be taken over
+      `UPDATE builds SET delivery_json = jsonb_build_object('state', 'delivering', 'repo', $2::text, 'branch', $3::text, 'since', NOW()), updated_at = NOW()
+       WHERE id = $1 AND status IN ('succeeded', 'awaiting_approval')
+         AND (delivery_json IS NULL OR delivery_json->>'state' = 'failed'
+              OR (delivery_json->>'state' = 'delivering' AND updated_at < NOW() - INTERVAL '10 minutes'))
        RETURNING id`,
       [build.id, decision.value.repo, decision.value.branch]
     );

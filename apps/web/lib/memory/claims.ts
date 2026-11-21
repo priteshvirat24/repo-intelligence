@@ -79,7 +79,10 @@ interface LockedClaim {
   evidence: any[];
 }
 
-async function claimForUpdate(client: PoolClient, claimId: string, workspaceId: string): Promise<LockedClaim | null> {
+/** A correction of a global claim by someone who does not govern the shared memory (it would change it for everyone). */
+export class ClaimCorrectionDenied extends Error {}
+
+async function claimForUpdate(client: PoolClient, claimId: string, workspaceId: string, governsShared: boolean): Promise<LockedClaim | null> {
   const res = await client.query(
     `SELECT c.id, c.subject, c.grade, c.status, c.brief_id AS "briefId", c.evidence_json AS evidence, b.workspace_id AS "workspaceId"
      FROM claims c LEFT JOIN briefs b ON b.id = c.brief_id WHERE c.id = $1 FOR UPDATE OF c`,
@@ -88,6 +91,7 @@ async function claimForUpdate(client: PoolClient, claimId: string, workspaceId: 
   const row = res.rows[0];
   // Project-scoped claims belong to their brief's workspace; global claims are facts about public code
   if (!row || (row.briefId && row.workspaceId !== workspaceId)) return null;
+  if (!row.briefId && !governsShared) throw new ClaimCorrectionDenied('Only an operator maintainer can correct a shared claim.');
   return row;
 }
 
@@ -154,8 +158,8 @@ export interface CorrectionResult {
  * reliability, the blueprint of every brief in the workspace that cites it is re-written, and the runs that
  * relied on it record the refutation (procedures they used count it as a failure). Call inside a transaction.
  */
-export async function refuteClaim(client: PoolClient, claimId: string, reason: string, workspaceId: string, userId: string | null): Promise<CorrectionResult | null> {
-  const claim = await claimForUpdate(client, claimId, workspaceId);
+export async function refuteClaim(client: PoolClient, claimId: string, reason: string, workspaceId: string, userId: string | null, governsShared: boolean): Promise<CorrectionResult | null> {
+  const claim = await claimForUpdate(client, claimId, workspaceId, governsShared);
   if (!claim) return null;
   const item = { method: 'user_refutation', grade: 'E5', reason: reason.slice(0, 1000), previousGrade: claim.grade, by: userId || undefined, at: new Date().toISOString() };
   await client.query(
@@ -191,12 +195,14 @@ export async function refuteClaim(client: PoolClient, claimId: string, reason: s
 }
 
 /** The user confirms a claim: recorded as evidence (a person's word does not raise the grade); its sources gain reliability. */
-export async function confirmClaim(client: PoolClient, claimId: string, note: string, workspaceId: string, userId: string | null): Promise<CorrectionResult | null> {
-  const claim = await claimForUpdate(client, claimId, workspaceId);
+export async function confirmClaim(client: PoolClient, claimId: string, note: string, workspaceId: string, userId: string | null, governsShared: boolean): Promise<CorrectionResult | null> {
+  const claim = await claimForUpdate(client, claimId, workspaceId, governsShared);
   if (!claim) return null;
+  // One person's confirmation counts once towards source reliability, however often it is repeated
+  const alreadyConfirmed = (claim.evidence || []).some((e: any) => e?.method === 'user_confirmation' && (e.by ?? null) === (userId ?? null));
   const item = { method: 'user_confirmation', note: note.slice(0, 1000) || undefined, by: userId || undefined, at: new Date().toISOString() };
   await client.query(`UPDATE claims SET evidence_json = evidence_json || $2::jsonb, updated_at = NOW() WHERE id = $1`, [claimId, JSON.stringify([item])]);
-  await recordClaimEvent(client, claim.subject, claim.evidence, 'verified');
-  if (claim.briefId) await recordEvent(client, claim.briefId, 'confirmed', { claimId, subject: claim.subject, by: userId });
+  if (!alreadyConfirmed) await recordClaimEvent(client, claim.subject, claim.evidence, 'verified');
+  if (claim.briefId && !alreadyConfirmed) await recordEvent(client, claim.briefId, 'confirmed', { claimId, subject: claim.subject, by: userId });
   return { claimId, status: claim.status, invalidatedBriefs: [] };
 }

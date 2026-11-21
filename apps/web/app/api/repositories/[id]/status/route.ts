@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
+import { contextOrRefusal } from '@/lib/auth/context';
+import { isUuid } from '@/lib/briefs/store';
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  if (!isUuid(params.id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   try {
     const { id } = params;
 

@@ -72,7 +72,10 @@ class RecordingTransport(httpx.BaseTransport):
         response = self.inner.handle_request(request)
         response.read()
         self.fetched += 1
-        if self.mode in ("record", "fill") and response.status_code < 500 and response.status_code != 429:
+        # GitHub signals primary and secondary rate limits with 403 (remaining 0, or a retry-after header)
+        rate_limited = response.status_code == 403 and (
+            response.headers.get("x-ratelimit-remaining") == "0" or "retry-after" in response.headers)
+        if self.mode in ("record", "fill") and response.status_code < 500 and response.status_code != 429 and not rate_limited:
             # Transient failures are not recorded: replay must reproduce the world, not a bad minute
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps({

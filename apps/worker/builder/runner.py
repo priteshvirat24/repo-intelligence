@@ -3,6 +3,7 @@ The build runner: claims authorised builds (same claim/lock rules as tasks, sepa
 graph), runs the coding loop in the sandbox inside the brief's budget, and stores the change set, its diff
 and the test report. It never delivers anything: delivery is a separate, explicitly approved request.
 """
+import sys
 import threading
 from typing import Any, Callable, Dict, Optional
 
@@ -35,7 +36,7 @@ class BuildStore:
                     f"""
                     UPDATE builds SET status = 'failed', locked_at = NULL, locked_by = NULL, finished_at = NOW(), updated_at = NOW(),
                         error_message = COALESCE(error_message, 'Build abandoned after repeated worker failures')
-                    WHERE status = 'running' AND {stale} AND attempts >= {config.MAX_JOB_ATTEMPTS}
+                    WHERE (status = 'queued' OR (status = 'running' AND {stale})) AND attempts >= {config.MAX_JOB_ATTEMPTS}
                     """
                 )
                 cur.execute(
@@ -140,8 +141,11 @@ def process_build(db: DatabaseRepository, build: Dict[str, Any], llm_for: Callab
         while not stop_beat.wait(60):
             try:
                 store.heartbeat(build_id, worker_id)
-            except Exception:
-                return
+            except JobLostError:
+                return  # no longer ours; the main flow notices at its next update
+            except Exception as beat_error:
+                # A database blip must not end the heartbeat, or a long iteration gets reclaimed and run twice
+                print(f"[{worker_id}] Build heartbeat failed for {build_id}: {beat_error}", file=sys.stderr)
 
     threading.Thread(target=beat, name=f"build-heartbeat-{build_id[:8]}", daemon=True).start()
     try:

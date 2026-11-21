@@ -3,11 +3,14 @@ import { query } from '@repo/database';
 import { validateGitHubUrl } from '@/lib/validation/url';
 import { UniversalIngestionService } from '@/lib/ai/universal_ingestion';
 import { checkRateLimit } from '@/lib/security/rate_limit';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 // Reads live database state: must never be prerendered/cached at build time
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
@@ -50,6 +53,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   // Rate limit: 10 repository ingestion requests per minute per IP
   const rateLimit = checkRateLimit(req, 'submit_repo', { maxRequests: 10, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {

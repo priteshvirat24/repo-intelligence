@@ -65,6 +65,12 @@ function displayName(r: { title?: string | null; sourceUrl?: string | null; cano
   return r.title || 'this source';
 }
 
+// Tabs that group several resource types; their counts come from the same groups in GET /api/resources
+const TAB_TYPES: Record<string, string[]> = {
+  web_page: ['web_page', 'documentation_site', 'article', 'generic_url'],
+  pdf: ['pdf', 'research_paper', 'document']
+};
+
 function ResourcesPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -113,7 +119,7 @@ function ResourcesPageContent() {
     try {
       const params = new URLSearchParams();
       if (appliedQuery.trim()) params.set('search', appliedQuery.trim());
-      if (activeFilter !== 'all') params.set('type', activeFilter);
+      if (activeFilter !== 'all') params.set('type', (TAB_TYPES[activeFilter] || [activeFilter]).join(','));
       const res = await fetch(`/api/resources?${params.toString()}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();

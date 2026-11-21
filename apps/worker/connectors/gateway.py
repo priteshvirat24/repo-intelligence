@@ -232,7 +232,9 @@ class Gateway:
         retrieved_at = utc_now_iso()
         result = GatewayResponse(status, text, str(response.url) if response.url else current, response.headers.get("content-type"),
                                  retrieved_at, False, content_hash(text))
-        if self.cache is not None:
+        # A 400 a connector accepts to read its error body (Stack Exchange's quota error 502) can clear by itself,
+        # so it is returned but never cached: caching it would silence the source for the whole TTL
+        if self.cache is not None and status not in (400, 429):
             expires = datetime.now(timezone.utc) + timedelta(seconds=ttl if ttl is not None else connector.cache_ttl)
             self.cache.put(key, {"connector": connector.id, "operation": operation, "url": _public_url(result.url),
                                  "status": status, "content_type": result.content_type, "body": text,

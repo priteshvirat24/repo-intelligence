@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
 import { checkRateLimit } from '@/lib/security/rate_limit';
+import { contextOrRefusal } from '@/lib/auth/context';
+import { isUuid } from '@/lib/briefs/store';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  if (!isUuid(params.id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const rateLimit = checkRateLimit(req, 'cancel_resource', { maxRequests: 20, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {
     return rateLimit.response;

@@ -3,8 +3,11 @@ import { query } from '@repo/database';
 import { UniversalIngestionService } from '@/lib/ai/universal_ingestion';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import { ResourceTypeDetector } from '@/lib/adapters/detector';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 export async function GET(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';
@@ -51,8 +54,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (type && type !== 'all') {
-      params.push(type);
-      conditions.push(`r.resource_type = $${params.length}`);
+      // One type, or a comma-separated group (the library's "Web & docs" and "PDFs & papers" tabs)
+      params.push(type.split(',').map((t) => t.trim()).filter(Boolean));
+      conditions.push(`r.resource_type = ANY($${params.length}::text[])`);
     }
 
     if (status) {
@@ -98,6 +102,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   const rateLimit = checkRateLimit(req, 'add_resource', { maxRequests: 15, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {
     return rateLimit.response;

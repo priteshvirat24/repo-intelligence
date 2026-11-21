@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 // Reads live database state: must never be prerendered/cached at build time
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   try {
     // 1. Fetch Repository summaries
     const reposRes = await query(`

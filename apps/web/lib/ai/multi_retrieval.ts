@@ -92,10 +92,14 @@ export class MultiLevelHybridRetrievalEngine {
       }
     }
 
-    // FTS query prioritized by distinctive technical terms; fallback to full clean text
-    const ftsSearchText = distinctiveTokens.length > 0
-      ? distinctiveTokens.slice(0, 20).join(' ')
-      : requirements.problemSummary.replace(/[^a-zA-Z0-9\s-]/g, ' ').trim();
+    // FTS query prioritized by distinctive technical terms; fallback to full clean text. The words are OR-ed
+    // (websearch_to_tsquery syntax): plainto_tsquery would AND them, so a row had to contain every one of up to
+    // 20 words and the keyword half of the hybrid search almost never matched. ts_rank_cd still favours rows
+    // that match more of them.
+    const ftsWords = distinctiveTokens.length > 0
+      ? distinctiveTokens.slice(0, 20)
+      : requirements.problemSummary.replace(/[^a-zA-Z0-9\s-]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
+    const ftsSearchText = ftsWords.map(w => w.replace(/^-+/, '')).filter(Boolean).join(' or ');
 
     const vectorSearchText = [
       requirements.problemSummary,
@@ -148,14 +152,14 @@ export class MultiLevelHybridRetrievalEngine {
               WHEN ko.embedding IS NOT NULL THEN 1.0 - (ko.embedding <=> $1::vector)
               ELSE 0.5
             END as vector_sim,
-            ts_rank_cd(ko.tsv_content, plainto_tsquery('english', $2)) as text_rank
+            ts_rank_cd(ko.tsv_content, websearch_to_tsquery('english', $2)) as text_rank
           FROM knowledge_objects ko
           JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
           WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
               (ko.embedding IS NOT NULL AND 1.0 - (ko.embedding <=> $1::vector) > 0.40)
-              OR ko.tsv_content @@ plainto_tsquery('english', $2)
+              OR ko.tsv_content @@ websearch_to_tsquery('english', $2)
               OR ko.name ILIKE ANY($3::text[])
               OR res.title ILIKE ANY($3::text[])
             )
@@ -187,13 +191,13 @@ export class MultiLevelHybridRetrievalEngine {
             ko.confidence,
             ko.metadata_json,
             NULL::float as vector_sim,  -- keyword-only match: no vector similarity was computed
-            ts_rank_cd(ko.tsv_content, plainto_tsquery('english', $1)) as text_rank
+            ts_rank_cd(ko.tsv_content, websearch_to_tsquery('english', $1)) as text_rank
           FROM knowledge_objects ko
           JOIN resources res ON (ko.resource_id = res.id OR ko.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
           WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
-              ko.tsv_content @@ plainto_tsquery('english', $1)
+              ko.tsv_content @@ websearch_to_tsquery('english', $1)
               OR ko.name ILIKE ANY($2::text[])
               OR res.title ILIKE ANY($2::text[])
             )
@@ -225,7 +229,7 @@ export class MultiLevelHybridRetrievalEngine {
             c.content,
             c.metadata_json as chunk_meta,
             1.0 - (c.embedding <=> $1::vector) as vector_sim,
-            ts_rank_cd(c.tsv_content, plainto_tsquery('english', $2)) as text_rank
+            ts_rank_cd(c.tsv_content, websearch_to_tsquery('english', $2)) as text_rank
           FROM chunks c
           JOIN resources res ON (c.resource_id = res.id OR c.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
@@ -233,9 +237,9 @@ export class MultiLevelHybridRetrievalEngine {
           WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
             AND (
               (c.embedding IS NOT NULL AND 1.0 - (c.embedding <=> $1::vector) > 0.40)
-              OR c.tsv_content @@ plainto_tsquery('english', $2)
+              OR c.tsv_content @@ websearch_to_tsquery('english', $2)
             )
-          ORDER BY vector_sim DESC, text_rank DESC
+          ORDER BY vector_sim DESC NULLS LAST, text_rank DESC
           LIMIT 30;
         `, [embStr, ftsSearchText]);
         chunkRows = chunkRes.rows;
@@ -253,12 +257,13 @@ export class MultiLevelHybridRetrievalEngine {
             c.content,
             c.metadata_json as chunk_meta,
             NULL::float as vector_sim,  -- keyword-only match: no vector similarity was computed
-            ts_rank_cd(c.tsv_content, plainto_tsquery('english', $1)) as text_rank
+            ts_rank_cd(c.tsv_content, websearch_to_tsquery('english', $1)) as text_rank
           FROM chunks c
           JOIN resources res ON (c.resource_id = res.id OR c.repository_id = res.id)
           LEFT JOIN repositories r ON (r.resource_id = res.id OR r.id = res.id)
           JOIN documents d ON c.document_id = d.id
           WHERE res.indexed_at IS NOT NULL  -- has a completed index (stays searchable while re-indexing)
+            AND c.tsv_content @@ websearch_to_tsquery('english', $1)  -- without an embedding, only keyword matches are sources
           ORDER BY text_rank DESC
           LIMIT 20;
         `, [ftsSearchText]);

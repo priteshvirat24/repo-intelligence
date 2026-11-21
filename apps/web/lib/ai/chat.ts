@@ -132,8 +132,9 @@ function githubBlobUrl(repo: RepoInfo | undefined, filePath?: string, startLine?
   return `https://github.com/${repo.owner}/${repo.name}/blob/${encodeURIComponent(repo.ref)}/${path}${anchor}`;
 }
 
-function rangesOverlap(a: ChatSource, filePath: string, start?: number, end?: number): boolean {
-  if (a.filePath !== filePath || a.repositoryId === undefined) return false;
+function rangesOverlap(a: ChatSource, resourceId: string, filePath: string, start?: number, end?: number): boolean {
+  // Same path in another repository (README.md, src/index.ts) is a different file
+  if (a.resourceId !== resourceId || a.filePath !== filePath || a.repositoryId === undefined) return false;
   if (!a.startLine || !start) return a.startLine === start;
   return start <= (a.endLine ?? a.startLine) && (end ?? start) >= a.startLine;
 }
@@ -263,7 +264,7 @@ export class ChatOrchestrator {
     const sources: ChatSource[] = [];
     for (const chunk of chunks.slice(0, MAX_CODE_SOURCES)) {
       const repo = repoByResource.get(chunk.resourceId);
-      if (sources.some((s) => s.filePath === chunk.filePath && rangesOverlap(s, chunk.filePath, chunk.startLine, chunk.endLine))) continue;
+      if (sources.some((s) => s.filePath === chunk.filePath && rangesOverlap(s, chunk.resourceId, chunk.filePath, chunk.startLine, chunk.endLine))) continue;
       sources.push({
         id: String(sources.length + 1),
         kind: 'code',
@@ -323,7 +324,7 @@ export class ChatOrchestrator {
     for (const row of evidenceRows) {
       if (evidenceAdded >= MAX_EVIDENCE_SOURCES) break;
       const repo = repoByResource.get(row.resource_id);
-      const existing = sources.find((s) => rangesOverlap(s, row.file_path, row.start_line, row.end_line));
+      const existing = sources.find((s) => rangesOverlap(s, row.resource_id, row.file_path, row.start_line, row.end_line));
       if (existing) {
         // The excerpt already shown contains this verified definition: upgrade it instead of duplicating
         if (row.is_verified) existing.verified = true;

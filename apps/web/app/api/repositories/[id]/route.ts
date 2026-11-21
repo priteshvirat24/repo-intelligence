@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
+import { contextOrRefusal } from '@/lib/auth/context';
+import { mayGovern } from '@/lib/evolution/store';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   try {
     const { id } = params;
     if (!UUID_RE.test(id)) {
@@ -179,6 +183,10 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  // The library is shared by every workspace, so removing an entry is for those who govern it
+  if (!(await mayGovern(gate.ctx))) return NextResponse.json({ error: 'Only an operator maintainer can remove library entries.' }, { status: 403 });
   try {
     const { id } = params;
     if (!UUID_RE.test(id)) {

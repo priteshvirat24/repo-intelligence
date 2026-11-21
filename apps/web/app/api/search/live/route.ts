@@ -3,8 +3,11 @@ import { TavilyProvider } from '@/lib/providers/tavily';
 import { ResourceTypeDetector } from '@/lib/adapters/detector';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import { WebSearchResult } from '@repo/shared';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 export async function POST(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   const rateLimit = checkRateLimit(req, 'live_web_search', { maxRequests: 20, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {
     return rateLimit.response;

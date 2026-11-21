@@ -85,8 +85,12 @@ def record_source_event(cur, source: str, source_type: str, event: str):
                 claims_verified = source_stats.claims_verified + EXCLUDED.claims_verified,
                 claims_refuted = source_stats.claims_refuted + EXCLUDED.claims_refuted,
                 claims_stale = source_stats.claims_stale + EXCLUDED.claims_stale,
-                verified_weight = source_stats.verified_weight * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM NOW() - COALESCE(source_stats.last_event_at, NOW()))) / 86400.0 / %s) + EXCLUDED.verified_weight,
-                refuted_weight = source_stats.refuted_weight * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM NOW() - COALESCE(source_stats.last_event_at, NOW()))) / 86400.0 / %s) + EXCLUDED.refuted_weight,
+                -- A stale event keeps last_event_at, so it must not decay the weights either: the next
+                -- verified/refuted event decays them from last_event_at, and doing both would decay twice
+                verified_weight = CASE WHEN EXCLUDED.claims_stale > 0 THEN source_stats.verified_weight ELSE
+                    source_stats.verified_weight * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM NOW() - COALESCE(source_stats.last_event_at, NOW()))) / 86400.0 / %s) + EXCLUDED.verified_weight END,
+                refuted_weight = CASE WHEN EXCLUDED.claims_stale > 0 THEN source_stats.refuted_weight ELSE
+                    source_stats.refuted_weight * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM NOW() - COALESCE(source_stats.last_event_at, NOW()))) / 86400.0 / %s) + EXCLUDED.refuted_weight END,
                 last_event_at = CASE WHEN EXCLUDED.claims_stale > 0 THEN source_stats.last_event_at ELSE NOW() END,
                 updated_at = NOW()
             """,

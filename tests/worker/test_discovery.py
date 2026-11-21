@@ -413,3 +413,10 @@ def test_stale_repositories_are_listed_but_not_shortlisted():
     assert [c["full_name"] for c in candidates if c["shortlisted"]] == ["a/fresh"]
     ranking.select_shortlist(candidates, size=6, max_stale_days=None, now=NOW)
     assert all(c["shortlisted"] for c in candidates)
+
+
+def test_health_score_accepts_a_bare_push_date():
+    # A remembered candidate carries the push date from its maintenance claim ("2024-05-01"), without a time
+    # zone; comparing it with an aware `now` used to raise TypeError and fail the discover task
+    score = ranking.health_score({"stars": 10, "pushed_at": "2024-05-01", "license": "MIT"}, NOW)
+    assert 0 < score <= 1

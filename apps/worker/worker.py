@@ -759,6 +759,7 @@ class IngestionWorker:
         """Runs one task of a brief's run graph inside the brief's budget and ledger scope."""
         self.active_task = task
         brief_id = str(task["brief_id"])
+        heartbeat = self._start_task_heartbeat(task)
         try:
             loaded = self.tasks.load_context(brief_id)
             brief = loaded["brief"]
@@ -773,7 +774,12 @@ class IngestionWorker:
             previous = task.get("output_json") or {}
             self.tasks.set_step(brief_id, TASK_STEP[task["type"]])
             if fp == task.get("inputs_fingerprint") and task.get("output_hash") and previous.get("phase") != "waiting":
-                # Inputs unchanged since the last successful run: the result still holds, nothing downstream changes
+                # Inputs unchanged since the last successful run: the result still holds, nothing downstream changes.
+                # A result that was waiting on blocking questions still is: research must not run past them.
+                if previous.get("blockingQuestions"):
+                    self.tasks.await_input(task, previous, fp, self.worker_id)
+                    print(f"[{self.worker_id}] {task['type']} for brief {brief_id}: inputs unchanged, still awaiting answers", flush=True)
+                    return
                 self.tasks.complete(task, previous, fp, self.worker_id)
                 print(f"[{self.worker_id}] {task['type']} for brief {brief_id}: inputs unchanged, reused", flush=True)
                 return
@@ -807,7 +813,26 @@ class IngestionWorker:
                 print(f"[{self.worker_id}] {task['type']} for brief {brief_id} failed: {err_msg}", file=sys.stderr)
                 self._try(lambda: self.tasks.fail(task, err_msg, self.worker_id))
         finally:
+            heartbeat.set()
             self.active_task = None
+
+    def _start_task_heartbeat(self, task: Dict[str, Any]) -> threading.Event:
+        """Refreshes a brief task's lock every minute while it runs. Stages such as the blueprint make several
+        long LLM calls without calling ctx.heartbeat, and without this another worker would reclaim the task
+        as stale after JOB_LOCK_TIMEOUT_MINUTES and run it a second time."""
+        stop = threading.Event()
+
+        def beat():
+            while not stop.wait(60):
+                try:
+                    self.tasks.heartbeat(task, self.worker_id)
+                except JobLostError:
+                    return  # invalidated meanwhile; the main flow notices when it completes
+                except Exception as beat_error:
+                    print(f"[{self.worker_id}] Task heartbeat failed for {task['id']}: {beat_error}", file=sys.stderr)
+
+        threading.Thread(target=beat, name=f"task-heartbeat-{task['id']}", daemon=True).start()
+        return stop
 
     @staticmethod
     def _try(action):

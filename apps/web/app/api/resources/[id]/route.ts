@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@repo/database';
+import { contextOrRefusal } from '@/lib/auth/context';
+import { mayGovern } from '@/lib/evolution/store';
+import { isUuid } from '@/lib/briefs/store';
 
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  if (!isUuid(params.id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   try {
     const { id } = params;
 
@@ -138,6 +144,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  // The library is shared by every workspace, so removing an entry is for those who govern it
+  if (!(await mayGovern(gate.ctx))) return NextResponse.json({ error: 'Only an operator maintainer can remove library entries.' }, { status: 403 });
+  if (!isUuid(params.id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   try {
     const { id } = params;
 

@@ -89,16 +89,20 @@ export async function POST(req: NextRequest) {
 
   const client = await pool.connect();
   try {
+    // The duplicate check and the insert run under one lock per workspace and text, so a double submit
+    // cannot create two briefs (and two paid runs)
+    await client.query('BEGIN');
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`brief:${ctx.workspaceId}:${contentHash}`]);
     const existing = await client.query(
       `SELECT id FROM briefs WHERE content_hash = $1 AND workspace_id = $2 ORDER BY created_at DESC LIMIT 1`,
       [contentHash, ctx.workspaceId]
     );
     if (existing.rows[0]) {
+      await client.query('ROLLBACK');
       return NextResponse.json({ id: existing.rows[0].id, alreadyExists: true });
     }
 
     // Understanding the brief is the run graph's first task, in the worker: nothing here waits for an LLM
-    await client.query('BEGIN');
     const inserted = await client.query(
       `INSERT INTO briefs (title, source_type, source_filename, brief_text, content_hash, workspace_id, created_by,
                            constraints_json, budget_json, step)

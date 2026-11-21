@@ -45,7 +45,7 @@ export class ProcedureActionError extends Error {
  * Activation turns a learned procedure into a planner hint (an L2 change, PRODUCT_DEFINITION 9.1): only a
  * maintainer may do it, and only once the procedure has measured support. Retiring is maintainer-only too.
  */
-export async function changeProcedure(client: PoolClient, id: string, action: ProcedureAction, ctx: RequestContext) {
+export async function changeProcedure(client: PoolClient, id: string, action: ProcedureAction, ctx: RequestContext, governsShared: boolean) {
   if (ctx.role !== 'maintainer') throw new ProcedureActionError(`Only a maintainer can ${action} a procedure.`, 403);
   const res = await client.query(
     `SELECT id, workspace_id AS "workspaceId", status, success_count AS "successCount" FROM procedures WHERE id = $1 FOR UPDATE`,
@@ -53,6 +53,8 @@ export async function changeProcedure(client: PoolClient, id: string, action: Pr
   );
   const p = res.rows[0];
   if (!p || (p.workspaceId && p.workspaceId !== ctx.workspaceId)) throw new ProcedureActionError('Procedure not found.', 404);
+  // A global procedure guides every workspace's planner, so only those who govern the shared configuration change it
+  if (!p.workspaceId && !governsShared) throw new ProcedureActionError(`Only an operator maintainer can ${action} a shared procedure.`, 403);
   if (action === 'activate') {
     if (p.status === 'active') return { id, status: 'active' };
     if (p.status === 'retired') throw new ProcedureActionError('A retired procedure is not re-activated; it is proposed again if it recurs.', 409);

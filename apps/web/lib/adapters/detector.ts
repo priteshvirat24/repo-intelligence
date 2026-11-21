@@ -198,20 +198,23 @@ export class ResourceTypeDetector {
         };
       }
 
+      // GitHub site sections are never owners, at any depth (github.com/topics/python, /orgs/foo, /sponsors/x)
+      const reservedPages = ['explore', 'trending', 'pricing', 'features', 'enterprise', 'topics', 'collections', 'events', 'settings',
+        'orgs', 'sponsors', 'marketplace', 'apps', 'notifications', 'organizations', 'search', 'codespaces', 'login', 'new', 'about', 'site'];
+      if (reservedPages.includes(pathSegments[0].toLowerCase())) {
+        return {
+          resourceType: 'github_repository',
+          sourceUrl: rawUrl,
+          canonicalUrl,
+          domain,
+          estimatedRole: 'software_component',
+          isValid: false,
+          isSupported: false,
+          unsupportedReason: `"${pathSegments[0]}" is a general GitHub site page, not a software repository.`
+        };
+      }
+
       if (pathSegments.length === 1) {
-        const reservedPages = ['explore', 'trending', 'pricing', 'features', 'enterprise', 'topics', 'collections', 'events', 'settings'];
-        if (reservedPages.includes(pathSegments[0].toLowerCase())) {
-          return {
-            resourceType: 'github_repository',
-            sourceUrl: rawUrl,
-            canonicalUrl,
-            domain,
-            estimatedRole: 'software_component',
-            isValid: false,
-            isSupported: false,
-            unsupportedReason: `"${pathSegments[0]}" is a general GitHub site page, not a software repository.`
-          };
-        }
         return {
           resourceType: 'github_repository',
           sourceUrl: rawUrl,

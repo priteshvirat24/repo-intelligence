@@ -245,3 +245,14 @@ def test_runner_fails_clearly_without_sandbox_or_scope(queued_build):
     b = make({"roadmapTaskIds": ["does-not-exist"]})
     process_build(db, BuildStore(db).claim_next("w1"), lambda key: ScriptedLLM([GOOD]), "w1", provider_factory=lambda: sandbox_where(1))
     assert build_row(db, b)[0] == "failed"
+
+
+def test_a_build_released_too_often_is_failed_not_left_queued(queued_build):
+    # Released on shutdown MAX_JOB_ATTEMPTS times, a build used to stay 'queued' for ever, never claimed, and
+    # block every new build of its brief (one active build per brief)
+    from apps.worker.config import config
+    db, make = queued_build
+    build_id = make({"roadmapTaskIds": ["T1"], "requirements": []})
+    sql(db, "UPDATE builds SET attempts = %s WHERE id = %s", (config.MAX_JOB_ATTEMPTS, build_id))
+    assert BuildStore(db).claim_next("w1") is None
+    assert build_row(db, build_id)[0] == "failed"

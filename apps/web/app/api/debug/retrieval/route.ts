@@ -3,10 +3,13 @@ import { OpenProblemDecomposer } from '@/lib/ai/open_query';
 import { MultiLevelHybridRetrievalEngine } from '@/lib/ai/multi_retrieval';
 import { getLLMProvider, getEmbeddingProvider } from '@/lib/ai/providers';
 import { checkRateLimit } from '@/lib/security/rate_limit';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   // Debug endpoint: each call spends an LLM decomposition + embedding, so it is off in production
   // unless explicitly enabled, and rate-limited when on
   if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DEBUG_ROUTES !== 'true') {

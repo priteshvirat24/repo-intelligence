@@ -51,11 +51,19 @@ function ClaimCard({ claim, onChanged }: { claim: MemoryClaim; onChanged: () => 
   const send = async (action: 'refute' | 'confirm') => {
     setBusy(true);
     setMessage(null);
-    const res = await fetch(`/api/claims/${claim.id}/${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(action === 'refute' ? { reason } : {})
-    });
+    let res: Response;
+    try {
+      res = await fetch(`/api/claims/${claim.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action === 'refute' ? { reason } : {})
+      });
+    } catch {
+      // Offline or the server is unreachable: re-enable the buttons instead of leaving them disabled
+      setBusy(false);
+      setMessage('Could not reach the server. Try again.');
+      return;
+    }
     const body = await readJsonSafe<any>(res);
     setBusy(false);
     if (!res.ok) {
@@ -278,9 +286,13 @@ function ProceduralTab() {
 
   const act = async (id: string, action: 'activate' | 'retire') => {
     setMessage(null);
-    const res = await fetch(`/api/memory/procedures/${id}/${action}`, { method: 'POST' });
-    const body = await readJsonSafe<any>(res);
-    if (!res.ok) setMessage(body?.error || `Could not ${action} it.`);
+    try {
+      const res = await fetch(`/api/memory/procedures/${id}/${action}`, { method: 'POST' });
+      const body = await readJsonSafe<any>(res);
+      if (!res.ok) setMessage(body?.error || `Could not ${action} it.`);
+    } catch {
+      setMessage('Could not reach the server. Try again.');
+    }
     load();
   };
 

@@ -3,8 +3,11 @@ import { query } from '@repo/database';
 import { checkRateLimit } from '@/lib/security/rate_limit';
 import { validateResourceUrlSecurity } from '@/lib/security/ssrf';
 import { ResourceTypeDetector } from '@/lib/adapters/detector';
+import { contextOrRefusal } from '@/lib/auth/context';
 
 export async function GET(req: NextRequest) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
   const rateLimit = checkRateLimit(req, 'preview_resource', { maxRequests: 40, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {
     return rateLimit.response;

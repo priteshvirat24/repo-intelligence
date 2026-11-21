@@ -3,8 +3,13 @@ import { query } from '@repo/database';
 import { GitHubClient } from '@/lib/github/client';
 import { queueRepositoryJob } from '@/lib/github/jobs';
 import { checkRateLimit } from '@/lib/security/rate_limit';
+import { contextOrRefusal } from '@/lib/auth/context';
+import { isUuid } from '@/lib/briefs/store';
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const gate = await contextOrRefusal();
+  if (gate.refusal) return gate.refusal;
+  if (!isUuid(params.id)) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   // Rate limit: 5 reindex operations per minute per IP
   const rateLimit = checkRateLimit(req, 'reindex_repo', { maxRequests: 5, windowMs: 60 * 1000 });
   if (!rateLimit.allowed && rateLimit.response) {

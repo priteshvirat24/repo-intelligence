@@ -89,9 +89,12 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+    # A bare date ("2024-05-01", from a remembered maintenance claim) is naive; comparing it with an aware
+    # `now` would raise TypeError and fail the whole discover task
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def health_score(candidate: Dict[str, Any], now: datetime, tuning: Optional[Tuning] = None) -> float:
