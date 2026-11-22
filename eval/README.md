@@ -97,6 +97,22 @@ A trap is a repository that **looks** like a match but must not be recommended f
    Report agreement in `suite.json`: the share of essential solutions both found independently, and the share of requirements whose class both chose. A brief with essential-solution agreement below 0.5 is rewritten (step 1), because it is not specific enough to have a ground truth.
 5. **Freeze.** Set `labels.status` to `final` and record both names in `labelledBy`. From then on labels change only through a new suite version, never in place.
 
+**Tooling** (`apps/worker/eval/labelling.py`) does the bookkeeping; the labelling stays human work:
+
+```bash
+# Step 2: a blind sheet per labeller (the briefs only: no draft labels, no system output)
+python -m apps.worker.eval.labelling sheets eval/suite-v1 --labeller <name> --out eval/labelling/suite-v1/<name>
+# Each labeller fills briefs/<id>.json (record foundAt for every solution), then checks shape and facts
+python -m apps.worker.eval.labelling check eval/labelling/suite-v1/<name>
+python -m apps.worker.eval.verify_labels eval/labelling/suite-v1/<name> --fix
+# Step 4: agreement, disputes and a reconciled draft (compare/report.md, compare/agreement.json, compare/draft/)
+python -m apps.worker.eval.labelling compare eval/labelling/suite-v1/<a> eval/labelling/suite-v1/<b> --out eval/labelling/suite-v1/compare
+# Step 5: once every item under labels.disputes in compare/draft is resolved and deleted
+python -m apps.worker.eval.labelling finalize eval/labelling/suite-v1/compare eval/suite-v1 --status final
+```
+
+`compare` matches requirements by id, else by the words of their names, and computes the two agreement numbers above (essential solutions across the whole brief, so differently worded requirements do not hide agreement). In the draft, a solution both rated essential is essential and everything else is acceptable; every essential-by-one, class or criticality difference, one-sided requirement and one-sided trap is listed under `labels.disputes`. `finalize` refuses while a dispute is open, a brief is below 0.5 agreement, or labels are already final, and records the agreement in `suite.json`.
+
 **Adding cases:**
 - Add briefs over time: every failure seen in production becomes a case.
 - Never remove a case to improve numbers. Retire it only in a new suite version, with the reason recorded.
