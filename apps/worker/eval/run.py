@@ -30,6 +30,7 @@ from ..config import config
 from ..db.repository import DatabaseRepository
 from ..discovery.github_search import GitHubSearchClient
 from ..discovery.registry_search import RegistrySearch
+from ..discovery.web_search import WebSearch
 from ..discovery.runner import DiscoveryRunner
 from ..connectors.gateway import Gateway, MemoryCache
 from ..connectors.registry import Connectors
@@ -166,10 +167,13 @@ def main(argv: List[str] = None) -> int:
             else:
                 decomposition = json.loads((requirements_dir / f"{brief['id']}.json").read_text())
                 github = GitHubSearchClient(http=http)
-                # Registry requests share the recording client; the cache is per run, so replay sees every request
-                registries = (RegistrySearch(Connectors(Gateway(http=http, cache=MemoryCache(), sleep=pacing(transport, args.mode))), github,
-                                             decomposition["requirements"], tuning) if args.registries else None)
-                runner = DiscoveryRunner(make_llm(), github, tuning=tuning, sleep=pacing(transport, args.mode), registry_search=registries)
+                # Registry, web and paper requests share the recording client; the cache is per run, so replay sees every request
+                connectors = Connectors(Gateway(http=http, cache=MemoryCache(), sleep=pacing(transport, args.mode)))
+                registries = RegistrySearch(connectors, github, decomposition["requirements"], tuning) if args.registries else None
+                # Open-web (S4) and papers search, as in production: it runs only when the tuning switches it on
+                web = WebSearch(connectors, github, decomposition["requirements"], tuning)
+                runner = DiscoveryRunner(make_llm(), github, tuning=tuning, sleep=pacing(transport, args.mode),
+                                         registry_search=registries, web_search=web)
                 with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}", tuning_version=tuning.version):
                     result = runner.run(decomposition["requirements"])
                 out = {
@@ -183,6 +187,8 @@ def main(argv: List[str] = None) -> int:
                     "queryPlanner": result["metrics"]["queryPlanner"],
                     "readmesAssessed": result["metrics"]["readmesAssessed"],
                     "decompositionMs": decomposition.get("durationMs"),
+                    "registries": result["metrics"].get("registries"),
+                    "web": result["metrics"].get("web"),
                 }
                 # Ranking inputs of every kept candidate: lets apps/worker/evolution re-rank this run under
                 # another tuning without a network or LLM call
@@ -222,6 +228,7 @@ def main(argv: List[str] = None) -> int:
         "githubAuthenticated": bool(config.GITHUB_TOKEN),
         "note": args.note,
         "registries": bool(args.registries),
+        "webSearch": bool(tuning.get("discovery.web_search")) if args.system == "b1" else None,
         "finishedAt": datetime.now(timezone.utc).isoformat(),
         "aggregate": {
             **aggregate(scored),
