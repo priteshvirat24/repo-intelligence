@@ -75,7 +75,7 @@ Every discovery and execution tool has one registry record **[D§8 tool registry
 | PyPI JSON API | in use (resolution only) | metadata | package name → metadata, version, project URLs | E3 for package metadata |
 | Stack Exchange | in use | search | package term → questions with score and answers | E4 |
 | Tavily | in use | search | query, optional domain list → URLs with snippets | signals; nominates pages |
-| arXiv | registered, unused | search | keywords → papers with abstract | E4 (a paper's claim) |
+| arXiv | built, off by default (`discovery.web_search`) | search | keywords → papers with abstract; GitHub links in the abstract nominate candidates | E4 (a paper's claim) |
 | Semantic Scholar | planned | search, metadata | keywords or paper id → papers, citations | E4 |
 | Docs fetcher (plain HTTP) | in use | fetch | public URL → page text with headings | E3 (via quote check) |
 | Firecrawl | in use (web app only) | fetch | URL → Markdown | E3 (via quote check) |
@@ -336,9 +336,9 @@ Conflicts are never settled silently **[D§5.10 shared state]**. The rules, in o
 | Gateway | `connectors/gateway.py`: cache, ledger, SSRF check on non-official hosts and redirects, pacing, size cap, instruction flagging | GitHub clients (`discovery/github_search.py`, `github/client.py`) and the PyPI and npm lookups in `execution.py` bypass it: no cache, and `github/client.py` is not metered |
 | Research plan | `discovery/planner.py` plans up to 8 kind-of-tool queries (plus focus extras) | No questions, no information-gain scores, no re-planning on findings |
 | Diminishing returns | `discovery/runner.py` per-query rule | Not per question or per mission; skipped nothing on suite-v1 |
-| Strategies | S0 (`memory/`), S1, S5 (`discovery/registry_search.py`); S2 only as relaxation (two words, then no stars floor) | S3, S4, S6, S7 missing; curated lists are down-ranked but their links are not followed |
+| Strategies | S0 (`memory/`), S1, S5 (`discovery/registry_search.py`); S2 only as relaxation (two words, then no stars floor); S4 (`discovery/web_search.py`: Tavily once for the product and for every MUST requirement left without a candidate; GitHub links in the pages are resolved and join with source "web") | S4 is off by default (`discovery.web_search`, an L2 switch) until it passes the gate with five runs per side; S3, S6, S7 missing; curated lists are down-ranked but their links are not followed |
 | Docs evidence | `docs_evidence.py`: own-domain rule, Tavily site search, at most 3 pages, quote check, deps.dev, OSV, Stack Exchange | No layer 3 crawl beyond 3 pages |
-| Papers | `connectors/arxiv.py` registered | Not called by any task; Semantic Scholar absent |
+| Papers | `discovery/web_search.py`: arXiv for requirements that ask for an algorithm or a benchmark; GitHub links in abstracts nominate candidates (source "arxiv") | Off by default with S4; Semantic Scholar absent; papers nominate repositories only, their claims are not stored |
 | Pacing | Per connector id | Docs pacing is per connector, not per host |
 | robots.txt | `connectors/docs.py`, `scraper/api.py` | A 5xx or 429 on robots.txt is treated as "no rules" instead of postponing |
 | Browser tier | `scraper/engine.py`: SSRF checks, `AUTH_REQUIRED` detection, same-site robots-aware crawl, 2 sessions | Stealth browser kept by decision 14: escalation on 403, 999 and challenge pages, listed sites sent straight to it. **Gaps against D§14.14:** it also escalates on 429; `/scrape` skips robots.txt; the site list is hard-coded; stealth fetches are not recorded with a reason |

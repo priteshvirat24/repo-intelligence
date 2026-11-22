@@ -28,6 +28,7 @@ from .graph import digest
 # Phase 2: connectors, registry candidates and evidence depth
 from ..connectors import build_connectors
 from ..discovery.registry_search import RegistrySearch
+from ..discovery.web_search import WebSearch
 from ..docs_evidence import EvidenceCollector
 
 VERIFY_POLL_SECONDS = 30
@@ -162,10 +163,12 @@ def run_discover(ctx: TaskContext) -> Outcome:
     connectors = build_connectors(ctx.db)
     registries = RegistrySearch(connectors, github, requirements, ctx.tuning)
     # --- end Phase 2 ---
+    # Open-web (S4) and papers search; does nothing unless the active tuning switches it on (discovery.web_search)
+    web = WebSearch(connectors, github, requirements, ctx.tuning)
     try:
         runner = DiscoveryRunner(ctx.llm_for("models.discovery"), github, on_step=_step(ctx), tuning=ctx.tuning,
                                  skip_query=(lambda q: q["requirement"] in skip) if skip else None, procedures=procedures,
-                                 registry_search=registries)
+                                 registry_search=registries, web_search=web)
         result = runner.run(requirements)
     finally:
         github.close()

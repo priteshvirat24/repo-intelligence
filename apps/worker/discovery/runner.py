@@ -53,12 +53,15 @@ class DiscoveryRunner:
         skip_query: Optional[Callable[[Dict[str, str]], bool]] = None,
         procedures: Optional[List[Dict[str, Any]]] = None,
         registry_search=None,
+        web_search=None,
     ):
         self.tuning = resolve(tuning)
         self.llm = llm
         self.github = github
         # Optional package-registry search (discovery/registry_search.py), run with every planned query
         self.registry_search = registry_search
+        # Optional open-web (S4) and papers search (discovery/web_search.py), run once after the planned queries
+        self.web_search = web_search
         self.on_step = on_step or (lambda step: None)
         self.sleep = sleep
         # Phase 4 memory: queries memory already answers are not searched; learned procedures guide the planner
@@ -122,13 +125,20 @@ class DiscoveryRunner:
             unproductive = 0 if novel else unproductive + 1
             searched_requirements.add(query["requirement"])
 
-        merged = list(ranking.merge_search_results(results + registry_results).values())
+        web_results = []
+        if self.web_search is not None:
+            covered = {q["requirement"] for q, items in results + registry_results if items}
+            web_results = self.web_search.search(planned, covered, known)
+
+        merged = list(ranking.merge_search_results(results + registry_results + web_results).values())
         github_found = {i["full_name"].lower() for _, items in results for i in items}
         if self.registry_search is not None:
             self.registry_search.annotate(merged, github_found)
         else:
             for c in merged:
                 c["sources"], c["packages"] = ["github"], []
+        if self.web_search is not None:
+            self.web_search.annotate(merged, github_found)
         duplicates = ranking.mark_mirrors(merged)
         for c in merged:
             c["candidate_kind"] = "curated_list" if ranking.looks_like_curated_list(c) else "unknown"
@@ -183,6 +193,7 @@ class DiscoveryRunner:
             # Queries not run because the previous ones stopped finding new candidates
             "diminishingReturns": {"skippedQueries": skipped, "afterUnproductive": stop_after} if skipped else None,
             "registries": self.registry_search.metrics() if self.registry_search is not None else None,
+            "web": self.web_search.metrics() if self.web_search is not None else None,
             "candidatesFound": len(merged),
             "duplicatesRemoved": duplicates,
             "readmesAssessed": len(assessments),

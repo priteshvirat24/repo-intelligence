@@ -16,6 +16,8 @@ from typing import Any, Dict, Optional
 
 # Level per key prefix (PRODUCT_DEFINITION 9.1): numbers and weights are L1, prompts and models are L2
 L2_PREFIXES = ("prompts.", "models.")
+# Switches that add a search strategy are L2 too (RESEARCH_STRATEGY 9: a new strategy passes the gate with five runs a side)
+L2_KEYS = {"discovery.web_search"}
 
 
 class Tuning:
@@ -48,7 +50,7 @@ class Tuning:
 
     @staticmethod
     def level(key: str) -> str:
-        return "L2" if key.startswith(L2_PREFIXES) else "L1"
+        return "L2" if key.startswith(L2_PREFIXES) or key in L2_KEYS else "L1"
 
 
 _DEFAULT: Optional[Tuning] = None
@@ -59,7 +61,7 @@ def default_tuning() -> Tuning:
     import this one)."""
     global _DEFAULT
     if _DEFAULT is None:
-        from .discovery import assess, blueprint, planner, ranking, registry_search, runner
+        from .discovery import assess, blueprint, planner, ranking, registry_search, runner, web_search
         from . import docs_evidence
         _DEFAULT = Tuning({
             "discovery.max_queries": planner.MAX_QUERIES,
@@ -94,6 +96,11 @@ def default_tuning() -> Tuning:
             "discovery.novelty_min_health": runner.NOVELTY_MIN_HEALTH,
             "discovery.registry_results_per_query": registry_search.RESULTS_PER_QUERY,
             "discovery.registry_max_new_repos": registry_search.MAX_NEW_REPOS,
+            # Open-web (S4) and papers search: off until it passes the evaluation gate (discovery/web_search.py)
+            "discovery.web_search": web_search.WEB_SEARCH,
+            "discovery.web_results_per_query": web_search.RESULTS_PER_QUERY,
+            "discovery.web_max_queries": web_search.MAX_QUERIES,
+            "discovery.web_max_new_repos": web_search.MAX_NEW_REPOS,
             "docs.max_pages": docs_evidence.MAX_PAGES,
             "docs.passages_per_requirement": docs_evidence.PASSAGES_PER_REQUIREMENT,
             "docs.max_packages": docs_evidence.MAX_PACKAGES,

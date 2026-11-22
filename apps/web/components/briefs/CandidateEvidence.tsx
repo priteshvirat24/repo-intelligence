@@ -6,13 +6,13 @@ import { BriefCandidate, CandidateClaim, CandidateSource } from '@repo/shared';
 
 // Phase 2: where a candidate was found, and the registry, advisory, docs and forum evidence the docs task collected.
 
-const SOURCE_LABEL: Record<CandidateSource, string> = { github: 'GitHub', npm: 'npm', crates: 'crates.io' };
+const SOURCE_LABEL: Record<CandidateSource, string> = { github: 'GitHub', npm: 'npm', crates: 'crates.io', web: 'Web page', arxiv: 'arXiv paper' };
 const GRADE_HELP: Record<string, string> = {
   E3: 'Officially documented or reported by the platform',
   E4: 'Claimed by a forum post or article; not yet checked'
 };
 
-/** The sources that found the candidate; shown only when a package registry contributed. */
+/** The sources that found the candidate; shown only when a registry, a web page or a paper contributed. */
 export const CandidateSources: React.FC<{ candidate: BriefCandidate }> = ({ candidate }) => {
   const sources = candidate.sources || ['github'];
   if (sources.length === 1 && sources[0] === 'github') return null;

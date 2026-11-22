@@ -1147,7 +1147,7 @@ export interface BuildDetail extends BuildSummary {
 // Phase 2: discovery breadth and verification depth (package registries, advisories, official docs, forums)
 
 /** Where a candidate was found: GitHub search, or a package registry whose package names the repository */
-export type CandidateSource = 'github' | 'npm' | 'crates';
+export type CandidateSource = 'github' | 'npm' | 'crates' | 'web' | 'arxiv';
 
 export interface CandidatePackage {
   system: string; // NPM, CARGO, PYPI, GO, ...

@@ -207,7 +207,7 @@ def test_run_discover_merges_memory_and_records_metrics(monkeypatch):
     seen = {}
 
     class FakeRunner:
-        def __init__(self, llm, github, on_step=None, tuning=None, skip_query=None, procedures=None, registry_search=None):
+        def __init__(self, llm, github, on_step=None, tuning=None, skip_query=None, procedures=None, registry_search=None, web_search=None):
             seen["skip"] = skip_query
             seen["procedures"] = procedures
 
