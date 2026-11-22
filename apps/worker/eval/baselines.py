@@ -43,7 +43,9 @@ def repo_from_url(url: str) -> Optional[str]:
     match = _REPO_URL.match(url or "")
     if not match or match.group(1).lower() in _NOT_REPOS:
         return None
-    return f"{match.group(1)}/{re.sub(r'\.git$', '', match.group(2))}"
+    # No backslash inside the f-string expression: Python 3.11 (the worker image) rejects it
+    name = re.sub(r"\.git$", "", match.group(2))
+    return f"{match.group(1)}/{name}"
 
 
 def web_search_repos(http: httpx.Client, title: str, api_key: str) -> List[str]:
