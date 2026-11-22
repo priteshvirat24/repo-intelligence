@@ -190,6 +190,7 @@ A decision changes only through a new entry that supersedes the old one, with it
 - **Decision:** keep the sandbox interface, Docker locally, E2B for the hosted deployment, behind the per-project opt-in.
 - **Consequences:** hosted E1 checks run with network access, weaker than [D§11]; every run records it.
 - **Revisit when:** a live E2B spike measures cold start, egress control and cost per check. If egress cannot be restricted, evaluate Modal or another provider. If volume makes managed cost exceed a dedicated microVM host, reconsider Firecracker.
+- **How to run the spike:** `pip install e2b`, then `E2B_API_KEY=... python -m apps.worker.sandbox.check --provider e2b --install --price-per-hour <current price> --out eval/sandbox/e2b-check.json` (`sandbox/check.py`). It starts two short-lived sandboxes (with and without network), times the cold start, command latency and a pip install, and checks that host secrets stay out, files round-trip, the hard timeout holds, network can be switched off after installation (expected to fail on E2B) and a sandbox created without network cannot reach the internet. The JSON report is the evidence for this decision; the same command with `--provider docker` checks the local sandbox.
 
 ### TD-14 Authentication: Auth.js with GitHub sign-in
 **Status:** accepted.

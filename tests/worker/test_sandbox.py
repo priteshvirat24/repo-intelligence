@@ -130,3 +130,43 @@ def test_local_docker_sandbox_isolation(monkeypatch):
         sbx.destroy()
     listed = subprocess.run(["docker", "ps", "-a", "--filter", f"name={name}", "--format", "{{.Names}}"], capture_output=True, text=True, timeout=30)
     assert name not in listed.stdout
+
+
+# Live provider check (apps/worker/sandbox/check.py), run here against the fake
+
+def _checked_fake(leak: bool = False):
+    from apps.worker.sandbox.base import ExecResult
+    from tests.worker.sandbox_fakes import FakeProvider
+
+    def hello(sbx, cmd):
+        sbx.files["out/r.txt"] = "result\n"
+        return ExecResult(0, "hello from the sandbox\n", "", 5)
+
+    return FakeProvider([
+        (r"^env$", lambda s, c: (0, "HOME=/work\n" + ("OPENEYE_SANDBOX_CHECK_SECRET=x\n" if leak else ""))),
+        (r"^echo ok$", lambda s, c: (0, "ok\n")),
+        (r"pkg/hello\.py", hello),
+        (r"^sleep 20$", lambda s, c: ExecResult(137, "", "killed", 2000, True)),
+        (r"create_connection", lambda s, c: (0, "OE_NET_REACHABLE\n") if s.network_enabled else (1, "OSError: network unreachable")),
+        (r"pip install", lambda s, c: (0, "")),
+    ])
+
+
+def test_live_check_reports_every_isolation_property():
+    from apps.worker.sandbox.check import run_checks, summary
+    provider = _checked_fake()
+    report = run_checks(provider, install=True, price_per_hour=0.36)
+    assert report["failed"] == [], report["checks"]
+    assert set(report["passed"]) >= {"coldStart", "execLatency", "noHostSecrets", "filesInAndOut", "hardTimeout",
+                                     "networkWhenAllowed", "packageInstall", "networkSwitchedOffAfterInstall", "noNetworkWhenCreatedWithout"}
+    assert all(s.destroyed for s in provider.sandboxes) and len(provider.sandboxes) == 2
+    assert report["estimatedCostUsd"] is not None and "passed" in summary(report)
+    assert "OPENEYE_SANDBOX_CHECK_SECRET" not in os.environ
+
+
+def test_live_check_keeps_going_after_a_failed_check():
+    from apps.worker.sandbox.check import run_checks
+    report = run_checks(_checked_fake(leak=True))
+    assert report["failed"] == ["noHostSecrets"]
+    assert report["checks"]["noHostSecrets"]["leaked"] == ["OPENEYE_SANDBOX_CHECK_SECRET"]
+    assert "hardTimeout" in report["passed"] and report["estimatedCostUsd"] is None
