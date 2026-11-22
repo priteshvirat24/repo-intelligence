@@ -272,8 +272,11 @@ class MemoryMaintenance:
     """Idle-time upkeep of memory, rate-limited: revalidation, applying finished re-indexes, distillation."""
 
     def __init__(self, db, interval_seconds: int = REVALIDATE_INTERVAL_SECONDS, clock: Callable[[], float] = time.monotonic,
-                 client_factory: Callable[[], GitHubStateClient] = GitHubStateClient):
+                 client_factory: Callable[[], GitHubStateClient] = GitHubStateClient, embedder_factory=None):
+        from .embedding import default_embedder
         self.db = db
+        # None disables the embedding pass (tests); the default is the configured provider, or none without a key
+        self.embedder_factory = embedder_factory if embedder_factory is not None else default_embedder
         self.interval = interval_seconds
         self.clock = clock
         self.client_factory = client_factory
@@ -298,6 +301,15 @@ class MemoryMaintenance:
                     conn.commit()
             finally:
                 conn.close()
+            # Embeddings for recall (migration 015): a provider error skips this pass only, never the others
+            from .embedding import maintenance_pass
+            try:
+                summary["embedded"] = maintenance_pass(self.db, self.embedder_factory) if self.embedder_factory else {}
+            except Exception as embed_error:
+                summary["embedded"] = {}
+                print(f"[Memory] Embedding pass failed: {embed_error}", file=sys.stderr, flush=True)
+            if any(summary["embedded"].values()):
+                print(f"[Memory] Embedded {summary['embedded']} for recall", flush=True)
             if summary["checked"] or summary["applied"] or summary.get("proposed"):
                 outcomes = [c["outcome"] for c in summary["checked"]]
                 print(f"[Memory] Revalidated {len(outcomes)} subjects ({', '.join(f'{o} {outcomes.count(o)}' for o in sorted(set(outcomes)))}); "

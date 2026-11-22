@@ -18,11 +18,11 @@ from psycopg2.extras import Json, RealDictCursor
 from ..claims import github_subject
 from ..discovery import ranking
 from ..discovery.planner import capability_requirements
+from .embedding import CLAIM_MIN_SIMILARITY, RECALL_KINDS, vector_literal  # one definition of what recall reads
 
 # Source reliability: weighted counts halve every HALF_LIFE_DAYS, so recent evidence weighs more
 HALF_LIFE_DAYS = 90
 # Recall: findings about these kinds can tie a repository to a requirement
-RECALL_KINDS = ("capability", "readme_summary", "limitation")
 MAX_REMEMBERED = 12
 MAX_CLAIMS_PER_CANDIDATE = 8
 # An earlier brief's README assessment is reused while it is this fresh (the coverage freshness rule)
@@ -271,10 +271,13 @@ def search_claims(cur, workspace_id: str, text: str = "", kind: Optional[str] = 
 
 # Read path: cross-project reuse (the recall task)
 
-def recall_candidates(cur, workspace_id: Optional[str], brief_id: Optional[str], requirements_json: Dict[str, Any]) -> Dict[str, Any]:
+def recall_candidates(cur, workspace_id: Optional[str], brief_id: Optional[str], requirements_json: Dict[str, Any],
+                      vectors: Optional[List[List[float]]] = None) -> Dict[str, Any]:
     """Repositories memory already knows something current about that matches the brief's requirements:
     global claims and indexed resources matching the requirement text, and candidates earlier briefs of
-    the same workspace found for a requirement of the same name. Returns {candidates, skipRequirements}."""
+    the same workspace found for a requirement of the same name. Returns {candidates, skipRequirements}.
+    vectors (one per capability requirement, in order; see recall_texts) add claims whose embedding is close
+    to the requirement's even when they share no keyword; without them recall is full-text only."""
     now = utc_now()
     reqs = capability_requirements(requirements_json or {})
     by_subject: Dict[str, Dict[str, Any]] = {}
@@ -283,9 +286,30 @@ def recall_candidates(cur, workspace_id: Optional[str], brief_id: Optional[str],
         return by_subject.setdefault(subject, {"subject": subject, "fullName": subject.split(":", 1)[1], "matchedRequirements": [],
                                                "via": [], "claims": {}, "assessment": None})
 
-    for r in reqs:
+    for i, r in enumerate(reqs):
         wanted = ranking.tokens(f"{r['name']} {r.get('description', '')}")
         query = _tsquery(wanted)
+        if vectors and i < len(vectors):
+            # Nearest claims by meaning: catches a requirement worded differently from the claim
+            literal = vector_literal(vectors[i])
+            cur.execute(
+                """
+                SELECT id::text, subject, kind, statement, grade, status, observed_at, revalidate_after, revalidated_at, subject_version,
+                       1 - (embedding <=> %s::vector) AS similarity
+                FROM claims
+                WHERE brief_id IS NULL AND subject LIKE 'github:%%' AND status <> 'refuted' AND kind IN %s AND embedding IS NOT NULL
+                ORDER BY embedding <=> %s::vector LIMIT 50
+                """,
+                (literal, RECALL_KINDS, literal)
+            )
+            for row in cur.fetchall():
+                if row[10] is None or float(row[10]) < CLAIM_MIN_SIMILARITY:
+                    continue
+                claim = _claim_row(row[:10])
+                e = entry(claim["subject"])
+                e["claims"][claim["id"]] = claim
+                _add(e["matchedRequirements"], r["name"])
+                _add(e["via"], "embedding")
         if not query:
             continue
         need = min(2, len(wanted))

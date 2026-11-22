@@ -189,33 +189,59 @@ def record_event(cur, brief_id: str, outcome: str, detail: Dict[str, Any]) -> Op
 
 
 def similar_episodes(cur, workspace_id: Optional[str], brief_id: Optional[str], title: str, requirements: Dict[str, Any],
-                     limit: int = 3) -> List[Dict[str, Any]]:
-    """Past runs of this workspace about a similar problem (full-text over problem and requirements), with
-    what they chose and what feedback said since: "a similar brief on <date> chose X; feedback said Y"."""
+                     limit: int = 3, vector: Optional[List[float]] = None) -> List[Dict[str, Any]]:
+    """Past runs of this workspace about a similar problem (full-text over problem and requirements, plus the
+    nearest run episodes by embedding when `vector` is given), with what they chose and what feedback said
+    since: "a similar brief on <date> chose X; feedback said Y"."""
     if not workspace_id:
         return []
     terms = sorted({t for t in ranking.tokens(search_text(title, requirements)) if t.isalnum()})
-    if not terms:
+    if not terms and not vector:
         return []
-    query = " | ".join(terms[:40])
+    columns = """e.id::text AS episode_id, e.brief_id::text AS brief_id, e.title, e.outcome, e.summary,
+                 e.finished_at, e.shortlisted_json, e.decisions_json, e.feedback_json"""
+    by_brief: Dict[str, Dict[str, Any]] = {}
     with cur.connection.cursor(cursor_factory=RealDictCursor) as c:
-        c.execute(
-            """
-            SELECT DISTINCT ON (e.brief_id) e.id::text AS episode_id, e.brief_id::text AS brief_id, e.title, e.outcome, e.summary,
-                   e.finished_at, e.shortlisted_json, e.decisions_json, e.feedback_json,
-                   ts_rank(to_tsvector('english', e.search_text), to_tsquery('english', %s)) AS score
-            FROM episodes e
-            WHERE e.workspace_id = %s AND e.kind = 'run' AND e.brief_id IS DISTINCT FROM %s::uuid
-              AND to_tsvector('english', e.search_text) @@ to_tsquery('english', %s)
-            ORDER BY e.brief_id, e.finished_at DESC
-            """,
-            (query, workspace_id, brief_id, query)
-        )
-        rows = sorted(c.fetchall(), key=lambda r: -r["score"])
+        if terms:
+            query = " | ".join(terms[:40])
+            c.execute(
+                f"""
+                SELECT DISTINCT ON (e.brief_id) {columns},
+                       ts_rank(to_tsvector('english', e.search_text), to_tsquery('english', %s)) AS score
+                FROM episodes e
+                WHERE e.workspace_id = %s AND e.kind = 'run' AND e.brief_id IS DISTINCT FROM %s::uuid
+                  AND to_tsvector('english', e.search_text) @@ to_tsquery('english', %s)
+                ORDER BY e.brief_id, e.finished_at DESC
+                """,
+                (query, workspace_id, brief_id, query)
+            )
+            for r in c.fetchall():
+                if r["score"] >= 0.05:
+                    by_brief[r["brief_id"]] = {**r, "similarity": None}
+        if vector:
+            from .embedding import EPISODE_MIN_SIMILARITY, vector_literal
+            literal = vector_literal(vector)
+            c.execute(
+                f"""
+                SELECT DISTINCT ON (e.brief_id) {columns}, 1 - (e.embedding <=> %s::vector) AS similarity
+                FROM episodes e
+                WHERE e.workspace_id = %s AND e.kind = 'run' AND e.brief_id IS DISTINCT FROM %s::uuid AND e.embedding IS NOT NULL
+                ORDER BY e.brief_id, e.finished_at DESC
+                """,
+                (literal, workspace_id, brief_id)
+            )
+            for r in c.fetchall():
+                if r["similarity"] is None or float(r["similarity"]) < EPISODE_MIN_SIMILARITY:
+                    continue
+                known = by_brief.get(r["brief_id"])
+                if known:
+                    known["similarity"] = float(r["similarity"])
+                else:
+                    by_brief[r["brief_id"]] = {**r, "score": 0.0, "similarity": float(r["similarity"])}
+    # Matched by both first, then by meaning, then by words
+    rows = sorted(by_brief.values(), key=lambda r: (-(r["similarity"] or 0) - (1 if r["score"] and r["similarity"] else 0), -r["score"]))
     out = []
     for r in rows:
-        if r["score"] < 0.05:
-            continue
         feedback = r["feedback_json"] or []
         said = "; ".join(f"{f.get('outcome')} {f.get('subject') or ''}{': ' + f['reason'] if f.get('reason') else ''}".strip() for f in feedback[-3:])
         date = r["finished_at"].date().isoformat() if r["finished_at"] else "an earlier date"
@@ -225,6 +251,7 @@ def similar_episodes(cur, workspace_id: Optional[str], brief_id: Optional[str], 
             "finishedAt": r["finished_at"].isoformat() if r["finished_at"] else None,
             "shortlisted": r["shortlisted_json"][:6], "decisions": r["decisions_json"][:8], "feedback": feedback[-5:],
             "score": round(float(r["score"]), 4),
+            "similarity": round(r["similarity"], 4) if r.get("similarity") is not None else None,
             "note": f"A similar brief on {date} ({r['title']}) {r['outcome']} and shortlisted {chose}"
                     + (f"; feedback said {said}." if said else "."),
         })

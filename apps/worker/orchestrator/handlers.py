@@ -29,6 +29,7 @@ from .graph import digest
 from ..connectors import build_connectors
 from ..discovery.registry_search import RegistrySearch
 from ..discovery.web_search import WebSearch
+from ..memory.embedding import default_embedder
 from ..docs_evidence import EvidenceCollector
 
 VERIFY_POLL_SECONDS = 30
@@ -134,7 +135,8 @@ def run_recall(ctx: TaskContext) -> Outcome:
     conn = ctx.db.get_connection()
     try:
         with conn.cursor() as cur:
-            result = memory.recall(cur, ctx.brief, requirements)
+            # Matches by meaning join the full-text ones when an embedding provider is configured
+            result = memory.recall(cur, ctx.brief, requirements, embedder=default_embedder())
     finally:
         conn.close()
     return Outcome("done", result)
