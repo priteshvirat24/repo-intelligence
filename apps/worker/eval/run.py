@@ -115,8 +115,11 @@ def main(argv: List[str] = None) -> int:
     parser.add_argument("--llm", choices=["live", "snapshot"], default="live",
                         help="live: LLM calls always run live (the default). snapshot: record and replay them with --mode, "
                              "beside the HTTP snapshot (eval/snapshots/<suite>/llm)")
-    parser.add_argument("--registries", action="store_true",
-                        help="B1: also search npm and crates.io through the connector gateway (recorded and replayed like GitHub)")
+    # Production discovery always searches the registries (orchestrator/handlers.run_discover), so the eval does too.
+    # --no-registries reproduces runs measured before this default (GitHub only).
+    parser.add_argument("--registries", action=argparse.BooleanOptionalAction, default=True,
+                        help="B1: also search npm and crates.io through the connector gateway, recorded and replayed like "
+                             "GitHub (default: on, as in production; --no-registries for GitHub only)")
     args = parser.parse_args(argv)
 
     suite = load_suite(args.suite)
