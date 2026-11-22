@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 from ..config import config
 from ..github.client import GitHubWorkerClient
 from .planner import capability_requirements
@@ -43,8 +45,17 @@ def select_verification_targets(candidates: List[Dict[str, Any]], github: GitHub
                     "focusTerms": list(focus_terms or []),
                 }
             eligible += 1
+        except httpx.TransportError:
+            # A dropped connection or timeout is not a fact about the repository: skipping it would be final (the
+            # verify task completes with unchanged inputs and is never re-run), so the task is retried instead
+            raise
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code >= 500:
+                raise
+            target["state"] = "skipped"
+            target["reason"] = str(e)[:300]
         except Exception as e:
-            # Not found, private, or GitHub unavailable: verification is skipped, discovery is not failed
+            # Not found, private, too large to read, or forbidden: verification is skipped, discovery is not failed
             target["state"] = "skipped"
             target["reason"] = str(e)[:300]
         targets.append(target)

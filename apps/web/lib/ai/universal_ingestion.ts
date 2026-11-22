@@ -72,7 +72,9 @@ export class UniversalIngestionService {
     if (existingRes.rows.length > 0 && !options?.forceReindex) {
       const existing = existingRes.rows[0];
 
-      if (existing.status === 'READY' || existing.status === 'PARTIAL') {
+      // A PARTIAL without an index ("no public transcript", "no extractable text") has no content, and its cause
+      // may have been transient (a caption fetch that timed out): it is retried like a failure, not reported as indexed
+      if (existing.status === 'READY' || (existing.status === 'PARTIAL' && existing.indexedAt)) {
         return {
           resourceId: existing.id,
           resourceType: descriptor.resourceType,
@@ -515,9 +517,22 @@ Extract semantic intelligence from this resource and return valid JSON with thes
   private static async indexResourceSegments(
     resourceId: string,
     resourceType: ResourceType,
-    segments: ContentSegment[]
+    allSegments: ContentSegment[]
   ): Promise<void> {
-    if (segments.length === 0) return;
+    if (allSegments.length === 0) return;
+    // Each stored chunk must be what was embedded: a long segment (a page with no headings, a PDF page, a post)
+    // used to be stored whole but embedded from its first 2000 characters only, so search never saw the rest.
+    // Long segments are split into pieces that keep the segment's title and locator.
+    const PIECE = 1900;
+    const segments: ContentSegment[] = allSegments.flatMap((seg) => {
+      if (seg.content.length <= PIECE) return [seg];
+      const pieces: ContentSegment[] = [];
+      for (let i = 0; i < seg.content.length; i += PIECE) {
+        const n = pieces.length + 1;
+        pieces.push({ ...seg, title: seg.title ? `${seg.title} (part ${n})` : seg.title, content: seg.content.slice(i, i + PIECE) });
+      }
+      return pieces;
+    });
 
     const embeddingProvider = getEmbeddingProvider();
 

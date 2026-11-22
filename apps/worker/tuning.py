@@ -142,12 +142,25 @@ def load_active(db) -> Tuning:
     conn = db.get_connection()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT content FROM config_versions WHERE status = 'promoted' ORDER BY promoted_at DESC NULLS LAST LIMIT 1")
+            cur.execute("SELECT content, id FROM config_versions WHERE status = 'promoted' ORDER BY promoted_at DESC NULLS LAST LIMIT 1")
             row = cur.fetchone()
     finally:
         conn.close()
     if not row:
         return default_tuning()
-    # Keys added to the code since the version was promoted take their defaults
-    stored = {k: v for k, v in row[0].items() if k in default_tuning().values()}
-    return default_tuning().with_overrides(stored)
+    # Keys added to the code since the version was promoted take their defaults; keys (and sub-keys of dict
+    # values) the code has since removed are dropped, or with_overrides would raise on every task and build
+    defaults = default_tuning().values()
+    stored = {}
+    for k, v in row[0].items():
+        if k not in defaults:
+            continue
+        if isinstance(defaults[k], dict) and isinstance(v, dict):
+            v = {sub: x for sub, x in v.items() if sub in defaults[k]}
+        stored[k] = v
+    active = default_tuning().with_overrides(stored)
+    # Runs, feedback and new proposals refer to the promoted row. Re-hashing the merged values gave a version
+    # that is not in config_versions as soon as the defaults changed: feedback no longer counted for the promoted
+    # version (so the monitor never had enough to roll back) and proposals failed on the parent foreign key.
+    active.version = row[1]
+    return active

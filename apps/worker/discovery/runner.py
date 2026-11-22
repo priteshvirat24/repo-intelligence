@@ -1,4 +1,7 @@
+import sys
 import time
+
+import httpx
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..providers.llm import BaseLLMProvider
@@ -138,7 +141,14 @@ class DiscoveryRunner:
         self.on_step("READING_READMES")
         to_assess = [c for c in merged if not c.get("duplicate_of") and c["candidate_kind"] != "curated_list"][:t.get("discovery.readme_assess_limit")]
         for c in to_assess:
-            c["readme"] = self.github.fetch_readme(c["full_name"])
+            try:
+                c["readme"] = self.github.fetch_readme(c["full_name"])
+            except httpx.HTTPError as e:
+                # One README that fails (a GitHub 5xx, a dropped connection) is assessed without it, as a repository
+                # with no README is, instead of failing the stage and repeating every search on retry. A rate limit
+                # (GitHubRateLimited) still stops the run.
+                print(f"[discovery] README of {c['full_name']} unavailable: {e}", file=sys.stderr)
+                c["readme"] = ""
         capabilities = capability_requirements(requirements_json)
         assessments = assess_candidates(self.llm, requirements_json.get("problemSummary", ""), capabilities, to_assess, t) if to_assess else {}
 

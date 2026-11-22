@@ -74,7 +74,11 @@ class SemanticChunker:
         # otherwise match in neither chunk and be stored/embedded verbatim
         text = SecretSanitizer.sanitize(text)
 
-        lines = text.splitlines()
+        # Split on "\n" only, like every line count in the analyzers: splitlines() also breaks on \f, \v, \x85 and
+        # others, which shifted the start/end lines of every chunk after such a character
+        lines = [line.rstrip("\r") for line in text.split("\n")]
+        if lines and lines[-1] == "":
+            lines.pop()  # a final newline ends the last line; it does not start another one
 
         # Split any line longer than one chunk (e.g. minified bundles) so no chunk exceeds the
         # target size; every piece keeps its original line number.

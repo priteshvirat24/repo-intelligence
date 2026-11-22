@@ -420,3 +420,22 @@ def test_health_score_accepts_a_bare_push_date():
     # zone; comparing it with an aware `now` used to raise TypeError and fail the discover task
     score = ranking.health_score({"stars": 10, "pushed_at": "2024-05-01", "license": "MIT"}, NOW)
     assert 0 < score <= 1
+
+
+def test_verification_retries_a_dropped_connection_but_skips_a_missing_repository():
+    import httpx
+    from apps.worker.discovery.verification import select_verification_targets
+
+    class Flaky:
+        def fetch_repo_info(self, owner, name, allow_large=False):
+            raise httpx.ConnectError("connection reset")
+
+    class Missing:
+        def fetch_repo_info(self, owner, name, allow_large=False):
+            raise ValueError("REPOSITORY_NOT_FOUND: Repository does not exist or is private.")
+
+    shortlist = [{"full_name": "a/b", "shortlisted": True}]
+    with pytest.raises(httpx.ConnectError):
+        select_verification_targets(shortlist, Flaky(), 3)
+    [target] = select_verification_targets(shortlist, Missing(), 3)
+    assert target["state"] == "skipped" and "REPOSITORY_NOT_FOUND" in target["reason"]

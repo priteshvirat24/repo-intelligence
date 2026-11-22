@@ -89,7 +89,7 @@ class TreeSitterAnalyzer:
         parser = Parser(PY_LANG)
         src = content.encode("utf-8")
         tree = parser.parse(src)
-        lines = content.splitlines()
+        lines = content.split("\n")  # tree-sitter rows count "\n" only; splitlines() would shift lines after \f or \v
 
         def visit(node, parent_class: Optional[str] = None):
             if node.type == "class_definition":

@@ -4,6 +4,8 @@ import { checkRateLimit } from '@/lib/security/rate_limit';
 import { contextOrRefusal } from '@/lib/auth/context';
 import { isUuid } from '@/lib/briefs/store';
 
+const TERMINAL = ['READY', 'PARTIAL', 'FAILED', 'CANCELLED', 'BLOCKED'];
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -32,8 +34,8 @@ export async function POST(
 
     const currentStatus = resRes.rows[0].status;
 
-    // Terminal states cannot be cancelled
-    if (currentStatus === 'READY' || currentStatus === 'CANCELLED' || currentStatus === 'BLOCKED') {
+    // Terminal states cannot be cancelled (the same set the UI treats as finished)
+    if (TERMINAL.includes(currentStatus)) {
       return NextResponse.json({
         message: `Resource is already in terminal state "${currentStatus}".`,
         status: currentStatus,
@@ -48,9 +50,9 @@ export async function POST(
       SET status = CASE WHEN indexed_at IS NOT NULL THEN 'READY' ELSE 'CANCELLED' END,
           error_message = CASE WHEN indexed_at IS NOT NULL THEN 'Re-index cancelled; showing the previous index.' ELSE 'Ingestion cancelled by user.' END,
           updated_at = NOW()
-      WHERE id = $1 AND status NOT IN ('READY', 'CANCELLED', 'BLOCKED')
-      RETURNING id
-    `, [id]);
+      WHERE id = $1 AND status <> ALL($2::text[])
+      RETURNING id, status
+    `, [id, TERMINAL]);
 
     if (cancelRes.rows.length === 0) {
       const latest = await query(`SELECT status FROM resources WHERE id = $1`, [id]);
@@ -84,7 +86,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Resource ingestion successfully cancelled.',
-      status: 'CANCELLED',
+      // READY when a re-index was cancelled and the previous index is still shown
+      status: cancelRes.rows[0].status,
       cancelled: true
     }, { status: 200 });
 

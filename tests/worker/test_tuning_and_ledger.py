@@ -207,3 +207,29 @@ def test_database_sink_writes_provider_usage():
             conn.commit()
     finally:
         conn.close()
+
+
+def test_a_promoted_version_with_removed_sub_keys_still_loads():
+    # A promoted config may carry a sub-key the code has since dropped; with_overrides raises on unknown
+    # sub-keys, which used to make every task and build fail
+    from apps.worker.tuning import load_active
+    weights = dict(default_tuning().get("ranking.health_weights"))
+    stored = {"ranking.health_weights": {**weights, "removedLongAgo": 0.5}, "removed.top_level": 1}
+
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def execute(self, *a): pass
+        def fetchone(self): return (stored, "cfg-promoted0001")
+
+    class Conn:
+        def cursor(self): return Cursor()
+        def close(self): pass
+
+    class Db:
+        def get_connection(self): return Conn()
+
+    active = load_active(Db())
+    assert active.get("ranking.health_weights") == weights
+    # Runs and feedback are attributed to the promoted row, not to a re-hash of the merged values
+    assert active.version == "cfg-promoted0001"

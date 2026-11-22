@@ -31,3 +31,9 @@ def test_scan_python_fixture():
     assert any("README.md" in p for p in included_paths)
     assert any("crawl_module.py" in p for p in included_paths)
     assert any("requirements.txt" in p for p in included_paths)
+
+
+def test_names_that_are_not_utf8_are_excluded():
+    # os.walk decodes such names into lone surrogates, which cannot reach the LLM or Postgres
+    from apps.worker.analyzer.file_filter import _utf8_name
+    assert _utf8_name("café.py") and not _utf8_name("caf\udce9.py")

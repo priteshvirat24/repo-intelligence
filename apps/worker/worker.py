@@ -244,8 +244,18 @@ class IngestionWorker:
                     config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024, config.MAX_FILES)
             else:
                 scratch_dir, commit_sha = GitCloner.clone(repo_url, default_branch or "main")
-            # Safety net for disk usage (submission checks the same limit via the GitHub API)
+            # Safety net for disk usage (submission checks the same limit via the GitHub API). GitHub reports the
+            # packed history size, and the checked-out tree is often larger: such a repository is analysed partially
+            # (its most relevant directories), the same as one GitHub already reports as too large, not failed
             checkout_bytes = GitCloner.checkout_size_bytes(scratch_dir)
+            if checkout_bytes > config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024 and partial is None:
+                print(f"[{self.worker_id}] Checkout is {checkout_bytes // (1024 * 1024)}MB; falling back to a partial clone", flush=True)
+                GitCloner.cleanup(scratch_dir)
+                scratch_dir = None
+                scratch_dir, commit_sha, partial = GitCloner.partial_clone(
+                    repo_url, default_branch or "main", scope.get("focusTerms") or [],
+                    config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024, config.MAX_FILES)
+                checkout_bytes = GitCloner.checkout_size_bytes(scratch_dir)
             if checkout_bytes > config.MAX_REPOSITORY_SIZE_MB * 1024 * 1024:
                 raise ValueError(
                     f"REPOSITORY_TOO_LARGE: Checked-out files total {checkout_bytes // (1024 * 1024)}MB, "
@@ -445,7 +455,11 @@ class IngestionWorker:
             # PASS 4: Evidence Mapping & Verification
             print(f"[{self.worker_id}] Running Pass 4: Strict Evidence Verification Gate...")
             verified_capabilities = []
-            proposed_caps = synthesis.get("capabilities", [])
+            # The model's JSON is not trusted for shape: "capabilities": null (or an object), or "domains" as a string
+            # or an object, must not fail the job or turn into single characters
+            raw_domains = synthesis.get("domains")
+            domains = [d for d in raw_domains if isinstance(d, str)] if isinstance(raw_domains, list) else []
+            proposed_caps = synthesis.get("capabilities") if isinstance(synthesis.get("capabilities"), list) else []
             verified_caps_count = 0
             rejected_ev_count = 0
 
@@ -462,11 +476,18 @@ class IngestionWorker:
                     confidence = 0.5
 
                 valid_evidence_items = []
-                for ev in cap.get("evidence") or []:
+                evidence_items = cap.get("evidence") or []
+                if isinstance(evidence_items, dict):
+                    evidence_items = [evidence_items]  # one evidence object instead of a list
+                for ev in evidence_items if isinstance(evidence_items, list) else []:
                     if not isinstance(ev, dict):
                         rejected_ev_count += 1
                         continue
-                    check = EvidenceVerificationGate.verify_evidence(scratch_dir, ev)
+                    try:
+                        check = EvidenceVerificationGate.verify_evidence(scratch_dir, ev)
+                    except Exception as ev_error:
+                        # One malformed claim is rejected; it must never fail the whole repository
+                        check = {"verified": False, "reason": f"verification_error: {ev_error}"}
                     if check.get("verified"):
                         location = (check.get("file_path"), check.get("start_line"), check.get("end_line"))
                         # Two claims can resolve to the same definition; keep each location once
@@ -500,11 +521,11 @@ class IngestionWorker:
                 "object_type": "repository_profile",
                 "name": full_repo_name,
                 "description": f"{synthesis.get('purpose', '')} Problem space: {synthesis.get('problemSpace', '')}",
-                "category": synthesis["domains"][0] if synthesis.get("domains") else "uncategorized",
+                "category": domains[0] if domains else "uncategorized",
                 "importance": "critical",
                 "confidence": 1.0,
                 "metadata_json": {
-                    "domains": synthesis.get("domains", []),
+                    "domains": domains,
                     "architecture": synthesis.get("architecture", {})
                 }
             })
@@ -661,7 +682,7 @@ class IngestionWorker:
             s_time = time.time()
             stage_metrics["durations"]["total_duration_ms"] = int((time.time() - total_start) * 1000)
 
-            domain_tags = [d for d in (synthesis.get("domains") or []) if isinstance(d, str)]
+            domain_tags = list(domains)
             knowledge_relationships = synthesis.get("relationships", [])
 
             # Calculate analysis completeness. Files excluded by type (images, lockfiles, licenses) are not

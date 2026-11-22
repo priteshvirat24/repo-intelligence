@@ -198,6 +198,21 @@ export class PDFResourceAdapter implements ResourceAdapter {
         }
       }
 
+      // No page structure (the fallback extractor after pdf-parse failed, or one unbroken page of text): index the
+      // text in fixed-size sections instead of marking the PDF READY with nothing searchable
+      if (segments.length === 0) {
+        const SECTION = 2000;
+        const body = text.trim();
+        for (let i = 0, n = 1; i < body.length; i += SECTION, n++) {
+          segments.push({
+            title: `Section ${n}`,
+            content: body.slice(i, i + SECTION),
+            locatorType: 'pdf_page',
+            locator: { totalPages: numPages, url: desc.canonicalUrl }
+          });
+        }
+      }
+
       return {
         success: true,
         status: 'READY',

@@ -74,8 +74,11 @@ export const UnderstandingPanel: React.FC<{ brief: BriefDetail; onChanged: () =>
   const unanswered = u.clarifyingQuestions.filter((q) => !brief.answers?.[q.question]);
   const submit = async () => {
     setBusy(true);
-    setError(await patchBrief(brief.id, { answers }));
+    const err = await patchBrief(brief.id, { answers });
+    setError(err);
     setBusy(false);
+    // A failed save keeps what the person typed so they can retry
+    if (err) return;
     setAnswers({});
     onChanged();
   };

@@ -96,7 +96,9 @@ def _distill_strategies(cur) -> int:
         """
         SELECT brief_class, tuning_version, COUNT(*), AVG((metrics_json->>'recallAt10')::float), array_agg(run_id ORDER BY run_id)
         FROM strategy_records
-        WHERE status = 'current' AND tuning_version IS NOT NULL AND metrics_json ? 'recallAt10'
+        WHERE status = 'current' AND tuning_version IS NOT NULL
+          -- a run with no labelled brief stores recallAt10: null; AVG over only nulls would be NULL and break the comparison below
+          AND jsonb_typeof(metrics_json -> 'recallAt10') = 'number'
         GROUP BY brief_class, tuning_version HAVING COUNT(*) >= %s
         """,
         (STRATEGY_MIN_RUNS,)

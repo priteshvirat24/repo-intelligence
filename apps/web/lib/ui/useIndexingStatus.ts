@@ -30,6 +30,8 @@ export interface ResourceStatusData {
 interface Options {
   /** Called once per resource when it reaches a terminal status. */
   onTerminal?: (data: ResourceStatusData) => void;
+  /** Called once when a resource stops being watched without a terminal status: deleted (404) or lost. */
+  onGone?: (id: string) => void;
   /** Called after every successful poll. */
   onUpdate?: (data: ResourceStatusData) => void;
   initialDelay?: number;
@@ -81,6 +83,7 @@ export function useIndexingStatus(ids: string[], options: Options = {}) {
         if (res.status === 404) {
           // Removed while we were watching it: nothing left to poll.
           pending.delete(id);
+          if (!cancelled) optionsRef.current.onGone?.(id);
           return;
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -99,6 +102,7 @@ export function useIndexingStatus(ids: string[], options: Options = {}) {
         if (failures[id] >= maxFailures) {
           pending.delete(id);
           setLost((prev) => ({ ...prev, [id]: true }));
+          optionsRef.current.onGone?.(id);
         }
       }
     };

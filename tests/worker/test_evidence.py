@@ -44,3 +44,16 @@ def test_path_traversal_rejection():
     result = EvidenceVerificationGate.verify_evidence(repo_dir, evidence)
     assert result["verified"] is False
     assert "path_traversal" in result["reason"]
+
+
+def test_an_overlong_model_path_is_rejected_not_raised(tmp_path):
+    # ENAMETOOLONG used to escape Path.is_file() and fail the whole repository's job
+    result = EvidenceVerificationGate.verify_evidence(tmp_path, {"file_path": "x" * 300 + ".py", "quote_snippet": "a"})
+    assert result["verified"] is False
+
+
+def test_evidence_lines_ignore_form_feeds(tmp_path):
+    # Lines are numbered on "\n"; cutting the quote with splitlines() also split on \f and stored the wrong line
+    (tmp_path / "m.py").write_text("import os\n\x0c\n\n\n\ndef helper_fn():\n    return 1\n")
+    result = EvidenceVerificationGate.verify_evidence(tmp_path, {"file_path": "m.py", "symbol_name": "helper_fn"})
+    assert result["verified"] and result["start_line"] == 6 and result["quote_snippet"] == "def helper_fn():"

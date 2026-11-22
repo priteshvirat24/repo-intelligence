@@ -68,10 +68,23 @@ export async function invalidate(client: PoolClient, briefId: string, fromType: 
      WHERE brief_id = $1 AND type = ANY($2)`,
     [briefId, types, Boolean(options.force), fromType]
   );
+  // The brief's status summarises its tasks exactly as the worker's _sync_brief_status does. Always writing
+  // QUEUED was wrong when a task outside the invalidated set is failed or awaiting an answer: nothing can be
+  // claimed behind it, so the brief showed "Waiting for the worker" for ever and lost its error message.
   await client.query(
-    `UPDATE briefs SET status = 'QUEUED', error_message = NULL, stop_reason = NULL, updated_at = NOW(),
+    `WITH t AS (
+       SELECT status, error_message, array_position($3::text[], type) AS pos FROM tasks WHERE brief_id = $1
+     )
+     UPDATE briefs SET
+       status = CASE
+         WHEN EXISTS (SELECT 1 FROM t WHERE status = 'failed') THEN 'FAILED'
+         WHEN EXISTS (SELECT 1 FROM t WHERE status = 'awaiting_input') THEN 'AWAITING_INPUT'
+         WHEN NOT EXISTS (SELECT 1 FROM t WHERE status NOT IN ('pending', 'stale')) THEN 'QUEUED'
+         ELSE 'RUNNING' END,
+       error_message = (SELECT error_message FROM t WHERE status = 'failed' ORDER BY pos LIMIT 1),
+       stop_reason = NULL, updated_at = NOW(),
        budget_json = CASE WHEN $2 THEN jsonb_set(budget_json, '{resetAt}', to_jsonb(NOW())) ELSE budget_json END
      WHERE id = $1`,
-    [briefId, Boolean(options.resetBudget)]
+    [briefId, Boolean(options.resetBudget), ORDER]
   );
 }

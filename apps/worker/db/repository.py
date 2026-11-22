@@ -199,7 +199,9 @@ class DatabaseRepository:
                 cur.execute(
                     """
                     UPDATE ingestion_jobs
-                    SET status = 'QUEUED', step = 'RELEASED', locked_at = NULL, locked_by = NULL, updated_at = NOW()
+                    SET status = 'QUEUED', step = 'RELEASED', locked_at = NULL, locked_by = NULL, updated_at = NOW(),
+                        -- a graceful shutdown is not a failed attempt: give back the one the claim counted
+                        attempts = GREATEST(attempts - 1, 0)
                     WHERE id = %s AND status = 'RUNNING' AND locked_by = %s
                     """,
                     (job_id, worker_id)
@@ -488,8 +490,10 @@ class DatabaseRepository:
                         (doc_id, repo_id, resource_id, chunk["chunk_index"], _text(chunk["content"]), chunk.get("chunk_hash"), emb, Json(chunk.get("metadata", {})))
                     )
 
-                # 4. Insert Capabilities and Evidence (Relational backwards-compat & vocabulary)
-                for cap in capabilities:
+                # 4. Insert Capabilities and Evidence (Relational backwards-compat & vocabulary). Capability rows are
+                # shared by every repository: upserting them in slug order means two workers lock them in the same
+                # order and cannot deadlock (the loser would redo the clone, every LLM pass and the embeddings)
+                for cap in sorted(capabilities, key=lambda c: str(c.get("slug") or "")):
                     cur.execute(
                         """
                         INSERT INTO capabilities (slug, name, category, description)

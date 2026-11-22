@@ -3,6 +3,15 @@ from pathlib import Path
 from typing import List, Tuple, Dict, Any
 from ..config import config
 
+
+def _utf8_name(name: str) -> bool:
+    """os.walk decodes names that are not valid UTF-8 into lone surrogates, which cannot be encoded again."""
+    try:
+        name.encode("utf-8")
+        return True
+    except UnicodeEncodeError:
+        return False
+
 class FileFilter:
     """Configurable file and directory filtering system."""
 
@@ -94,12 +103,17 @@ class FileFilter:
 
         for root, dirs, files in os.walk(repo_dir):
             # Prune excluded directories
-            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            dirs[:] = [d for d in dirs if d not in exclude_dirs and _utf8_name(d)]
 
             for file in files:
                 discovered_files += 1
                 full_path = Path(root) / file
                 rel_path = str(full_path.relative_to(repo_dir))
+                if not _utf8_name(rel_path):
+                    # A name that is not valid UTF-8 cannot be sent to the LLM or stored in Postgres; it used to
+                    # fail the whole repository's job
+                    excluded_files_count += 1
+                    continue
 
                 if full_path.is_symlink():
                     # Never follow links out of the clone (e.g. README.md -> /proc/self/environ)

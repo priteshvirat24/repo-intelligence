@@ -17,6 +17,7 @@ from psycopg2.extras import Json, RealDictCursor
 from ..discovery import ranking
 from ..discovery.planner import capability_requirements
 from ..orchestrator.graph import digest
+from ..providers import ledger
 
 OUTCOMES = {"COMPLETED": "completed", "STOPPED": "stopped", "FAILED": "failed"}
 MAX_REJECTED = 15
@@ -55,13 +56,14 @@ def record_run(cur, brief_id: str, brief_status: str) -> Optional[str]:
         reset_at = (brief["budget_json"] or {}).get("resetAt")
         c.execute(
             """
-            SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND operation <> 'embedding') AS "llmCalls",
+            SELECT COUNT(*) FILTER (WHERE provider <> 'github' AND provider <> ALL(%s) AND operation <> 'embedding') AS "llmCalls",
                    COALESCE(SUM(COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0)) FILTER (WHERE provider <> 'github'), 0) AS tokens,
                    COUNT(*) FILTER (WHERE provider = 'github') AS "githubRequests"
             FROM provider_usage
             WHERE scope_type = 'brief' AND scope_id = %s AND (%s::timestamptz IS NULL OR created_at >= %s::timestamptz)
             """,
-            (brief_id, reset_at, reset_at)
+            # Connector requests (npm, osv, docs…) are not LLM calls: the budget count excludes them too
+            (sorted(ledger.SOURCE_PROVIDERS), brief_id, reset_at, reset_at)
         )
         budget = {k: int(v) for k, v in c.fetchone().items()}
 

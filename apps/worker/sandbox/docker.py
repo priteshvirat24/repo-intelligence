@@ -52,15 +52,23 @@ def _run(args: List[str], timeout: float, stdin: Optional[bytes] = None, cap: in
 
     readers = [threading.Thread(target=pump, args=(proc.stdout, out), daemon=True),
                threading.Thread(target=pump, args=(proc.stderr, err), daemon=True)]
+    if stdin is not None:
+        # Written on its own thread: a docker exec that stops reading would otherwise block this write for ever,
+        # before the timeout below ever starts counting
+        def feed():
+            try:
+                proc.stdin.write(stdin)
+            except (BrokenPipeError, OSError, ValueError):
+                pass
+            finally:
+                try:
+                    proc.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
+
+        readers.append(threading.Thread(target=feed, daemon=True))
     for r in readers:
         r.start()
-    if stdin is not None:
-        try:
-            proc.stdin.write(stdin)
-        except BrokenPipeError:
-            pass
-        finally:
-            proc.stdin.close()
     timed_out = False
     try:
         proc.wait(timeout=timeout)

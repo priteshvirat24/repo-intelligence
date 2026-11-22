@@ -4,6 +4,15 @@ from typing import Dict, Any, List, Tuple, Optional
 from ..github.clone import GitCloner
 from .chunker import SecretSanitizer
 
+def _is_file(path) -> bool:
+    """Path.is_file() lets some OS errors through (a model-supplied name over the length limit raises
+    ENAMETOOLONG); one bad path must not fail the whole repository's job."""
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 class EvidenceVerificationGate:
     """Validates LLM-proposed evidence against repository files and calculates exact line numbers."""
 
@@ -226,7 +235,7 @@ class EvidenceVerificationGate:
 
         content = ""
         calculated_lines = None
-        if target_file.is_file():
+        if _is_file(target_file):
             try:
                 content = target_file.read_text(errors="ignore")
             except Exception as e:
@@ -249,13 +258,16 @@ class EvidenceVerificationGate:
                 calculated_lines = (line_no, line_no)
 
         if not calculated_lines:
-            if not target_file.is_file():
+            if not _is_file(target_file):
                 return {"verified": False, "reason": f"file_not_found: {file_path_str}"}
             return {"verified": False, "reason": "quote_or_symbol_not_found_in_file"}
 
         start_line, end_line = calculated_lines
         # Persist the actual source text of the matched lines, never the model's rendition of it
-        quote = SecretSanitizer.sanitize("\n".join(content.splitlines()[start_line - 1:end_line]).strip())
+        # Lines are counted on "\n" (tree-sitter rows, _normalize_with_lines), so cut on "\n" too: splitlines() also
+        # splits on \f, \v, \x85 and others and would store the wrong (or an empty) line as verified evidence
+        lines = [line.rstrip("\r") for line in content.split("\n")[start_line - 1:end_line]]
+        quote = SecretSanitizer.sanitize("\n".join(lines).strip())
         ev_type = evidence.get("evidence_type")
         ev_type = ev_type if ev_type in ("code_ast", "doc", "example", "manifest") else "doc"
         strength = cls.classify_evidence_strength(file_path_str, symbol, ev_type, quote)

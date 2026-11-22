@@ -65,7 +65,9 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
     onTerminal: (data) => {
       setBackgroundJobs((prev) => prev.filter((id) => id !== data.id));
       notifyLibraryChanged();
-    }
+    },
+    // Deleted or unreachable: stop counting it as "Indexing" in the navbar
+    onGone: (gone) => setBackgroundJobs((prev) => prev.filter((id) => id !== gone))
   });
 
   const trackBackgroundJob = useCallback((id: string) => {

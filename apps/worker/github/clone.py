@@ -7,6 +7,10 @@ import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+# A clone of a missing or private repository over HTTPS makes git ask for a username: with a terminal attached
+# that prompt waits until the timeout. Never prompt, and never read the worker's stdin.
+_GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+
 # Partial analysis of large repositories: at most this many directories are checked out
 PARTIAL_MAX_DIRS = 8
 _CONTAINER_DIRS = {"packages", "libs", "modules", "crates", "components", "plugins", "apps"}
@@ -92,7 +96,7 @@ class GitCloner:
         try:
             res = subprocess.run(
                 cmd,
-                capture_output=True,
+                capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL,
                 text=True,
                 timeout=120
             )
@@ -113,7 +117,7 @@ class GitCloner:
                 ]
                 res = subprocess.run(
                     fallback_cmd,
-                    capture_output=True,
+                    capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL,
                     text=True,
                     timeout=120
                 )
@@ -124,7 +128,7 @@ class GitCloner:
             rev_res = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 cwd=str(scratch_dir),
-                capture_output=True,
+                capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL,
                 text=True,
                 timeout=10
             )
@@ -148,15 +152,16 @@ class GitCloner:
         base = ["git", "-c", "core.hooksPath=/dev/null", "-c", "core.symlinks=false"]
 
         def git(*args, timeout=120) -> subprocess.CompletedProcess:
-            return subprocess.run(base + ["-C", str(scratch_dir)] + list(args), capture_output=True, text=True, timeout=timeout)
+            # stdin closed: git must never wait on the worker's own stdin (a path named like --stdin would)
+            return subprocess.run(base + ["-C", str(scratch_dir)] + list(args), capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL, text=True, timeout=timeout)
 
         try:
             clone = base + ["clone", "--depth", "1", "--filter=blob:none", "--sparse", "--single-branch"]
-            res = subprocess.run(clone + ["--branch", branch, url, str(scratch_dir)], capture_output=True, text=True, timeout=180)
+            res = subprocess.run(clone + ["--branch", branch, url, str(scratch_dir)], capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL, text=True, timeout=180)
             if res.returncode != 0:
                 shutil.rmtree(scratch_dir, ignore_errors=True)
                 scratch_dir.mkdir(parents=True, exist_ok=True)
-                res = subprocess.run(clone + [url, str(scratch_dir)], capture_output=True, text=True, timeout=180)
+                res = subprocess.run(clone + [url, str(scratch_dir)], capture_output=True, env=_GIT_ENV, stdin=subprocess.DEVNULL, text=True, timeout=180)
                 if res.returncode != 0:
                     raise RuntimeError(f"CLONE_FAILED: {res.stderr.strip()}")
             commit = git("rev-parse", "HEAD", timeout=10)
@@ -184,13 +189,13 @@ class GitCloner:
                     else:
                         skipped.append(f"{path} ({files} files)")
                     continue
-                if git("sparse-checkout", "set", *(included + [path]), timeout=600).returncode != 0:
+                if git("sparse-checkout", "set", "--", *(included + [path]), timeout=600).returncode != 0:
                     skipped.append(f"{path} (checkout failed)")
-                    git("sparse-checkout", "set", *included, timeout=600)
+                    git("sparse-checkout", "set", "--", *included, timeout=600)
                     continue
                 if GitCloner.checkout_size_bytes(scratch_dir) > max_bytes:
                     skipped.append(f"{path} (over the size limit)")
-                    git("sparse-checkout", "set", *included, timeout=600)
+                    git("sparse-checkout", "set", "--", *included, timeout=600)
                     continue
                 included.append(path)
                 files_so_far += files

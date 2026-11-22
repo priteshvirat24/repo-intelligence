@@ -31,13 +31,24 @@ export function normalizeResourceError(
   const coded = mapCodedError(message);
   if (coded) return coded;
 
+  // Our own AI provider failing (a bad API key is "HTTP 401", a quota "429") is not the source blocking us
+  if (/^\[(Mistral|OpenAI)\w*Provider\]|^OpenAI (API|stream) error/.test(message)) {
+    return {
+      status: 'FAILED', code: 'INTERNAL_ERROR', title: 'AI Provider Unavailable',
+      reason: 'The language or embedding model rejected the request; the source itself was read.',
+      action: 'Retry in a few minutes. If it keeps failing, check the server\'s AI provider key and quota.',
+      isRetryable: true
+    };
+  }
+
   // 1. SSRF & Security Blocked
   if (
     lower.includes('ssrf') ||
     lower.includes('prohibited') ||
     lower.includes('loopback') ||
     lower.includes('private ip') ||
-    lower.includes('metadata') ||
+    // the SSRF guard's "cloud metadata IP"; plain "metadata" also appears in "YouTube returned no metadata"
+    lower.includes('cloud metadata') ||
     lower.includes('localhost') ||
     // "internal domain/IP" from the SSRF guard, but not "HTTP 500 Internal Server Error"
     (lower.includes('internal') && !lower.includes('internal server error'))
@@ -192,6 +203,13 @@ function mapCodedError(message: string): NormalizedResourceError | null {
         status: 'FAILED', code: 'RESOURCE_TOO_LARGE', title: 'Repository Too Large',
         reason: detail || 'The repository exceeds the configured size limit.',
         action: 'Index a smaller repository, or raise MAX_REPOSITORY_SIZE_MB if your server has room.',
+        isRetryable: false
+      };
+    case 'RESOURCE_NOT_FOUND':
+      return {
+        status: 'FAILED', code: 'RESOURCE_NOT_FOUND', title: 'Resource Not Found',
+        reason: detail || 'The source did not return this resource.',
+        action: 'Check the link; it may have been removed.',
         isRetryable: false
       };
     case 'REPOSITORY_NOT_FOUND':

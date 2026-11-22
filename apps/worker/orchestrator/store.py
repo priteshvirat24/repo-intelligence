@@ -270,6 +270,16 @@ class TaskStore:
         def after(cur):
             if stop_reason:
                 cur.execute("UPDATE briefs SET stop_reason = %s WHERE id = %s", (stop_reason, task["brief_id"]))
+            # The run stopped: a blueprint still WAITING or RUNNING will not be written by this run. Left as is, the
+            # brief page polls "Writing the blueprint…" for ever and builds are refused.
+            cur.execute(
+                """
+                UPDATE brief_blueprints SET status = 'FAILED', step = 'FAILED', error_message = %s, locked_at = NULL,
+                    locked_by = NULL, updated_at = NOW()
+                WHERE brief_id = %s AND status IN ('WAITING', 'RUNNING')
+                """,
+                (message[:1000], task["brief_id"])
+            )
         self._owned_update(
             task, worker_id,
             """

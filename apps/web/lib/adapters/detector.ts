@@ -1,6 +1,14 @@
 import { ResourceType, ResourceRole } from '@repo/shared';
 import { ResourceDescriptor } from './types';
 
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export class ResourceTypeDetector {
   /**
    * Forgivingly normalizes an incoming raw URL:
@@ -105,6 +113,12 @@ export class ResourceTypeDetector {
         if (pdfMatch) {
           return `https://arxiv.org/abs/${pdfMatch[1]}`;
         }
+      }
+
+      // An in-page anchor (#install) is the same page: keeping it indexed docs links copied with anchors
+      // twice. Hash routes of single-page apps (#/docs, #!/docs) are different pages and are kept.
+      if (parsed.hash && !/^#[/!]/.test(parsed.hash)) {
+        parsed.hash = '';
       }
 
       // Strip trailing slash from pathname if length > 1
@@ -414,7 +428,8 @@ export class ResourceTypeDetector {
         estimatedRole: 'reference',
         isValid: true,
         isSupported: true,
-        previewTitle: decodeURIComponent(filename),
+        // A malformed escape (".../pdf/50%") must not throw: detect() runs on every keystroke in the add modal
+        previewTitle: safeDecode(filename),
         previewDescription: `PDF Document from ${domain}`,
         metadata: {
           filename,

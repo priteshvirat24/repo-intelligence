@@ -14,6 +14,25 @@ export async function GET(
   try {
     const { id } = params;
 
+    // Web pages, videos, PDFs and posts are ingested inside the web process (no worker lock or heartbeat), so a
+    // restart mid-run leaves the job RUNNING for ever and the UI polling "Fetching…" indefinitely. A job with no
+    // progress for 20 minutes (the same threshold ingestResource uses to allow a fresh run) is settled here.
+    await query(`
+      WITH abandoned AS (
+        UPDATE ingestion_jobs
+        SET status = 'FAILED', step = 'ABANDONED', error_message = 'Ingestion stopped before it finished (the server restarted).', updated_at = NOW()
+        WHERE resource_id = $1 AND repository_id IS NULL AND status IN ('QUEUED', 'RUNNING')
+          AND updated_at < NOW() - INTERVAL '20 minutes'
+        RETURNING resource_id
+      )
+      UPDATE resources
+      SET status = CASE WHEN indexed_at IS NOT NULL THEN 'READY' ELSE 'FAILED' END,
+          error_message = CASE WHEN indexed_at IS NOT NULL THEN 'Re-index stopped before it finished; showing the previous index.'
+                               ELSE 'Ingestion stopped before it finished. Add it again to retry.' END,
+          updated_at = NOW()
+      WHERE id IN (SELECT resource_id FROM abandoned) AND status IN ('PENDING', 'FETCHING', 'ANALYZING', 'INDEXING')
+    `, [id]);
+
     const res = await query(`
       SELECT 
         r.id,

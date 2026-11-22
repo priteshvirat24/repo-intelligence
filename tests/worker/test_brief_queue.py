@@ -361,3 +361,13 @@ def test_unchanged_inputs_keep_blocking_questions_open(run, monkeypatch):
     worker.process_task(task)
     assert statuses(db, brief_id)["understand"] == "awaiting_input"
     assert store.claim_next("w1") is None
+
+
+def test_a_failed_task_fails_a_pending_blueprint(run):
+    # The run stopped, so a blueprint left WAITING/RUNNING would be polled ("Writing the blueprint…") for ever
+    db, store, brief_id = run
+    sql(db, "INSERT INTO brief_blueprints (brief_id, status) VALUES (%s, 'WAITING')", (brief_id,))
+    understand = store.claim_next("w1")
+    store.fail(understand, "LLM_UNAVAILABLE: provider down", "w1")
+    status, error = sql(db, "SELECT status, error_message FROM brief_blueprints WHERE brief_id = %s", (brief_id,))[0]
+    assert status == "FAILED" and "provider down" in error

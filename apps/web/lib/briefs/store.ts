@@ -119,13 +119,21 @@ async function attachEvidence(candidates: BriefCandidate[]) {
   if (shortlisted.length === 0) return;
   const subjects = shortlisted.map((c) => `github:${c.fullName.toLowerCase()}`);
   const res = await query(
+    // The source details come from the newest evidence item that is a source: a person's confirmation, a
+    // corroboration or a sandbox run appended later carries no advisory ids or excerpt, and reading it made a
+    // confirmed advisory show as "No known advisories"
     `SELECT id, subject, kind, statement, grade, status,
-            evidence_json->-1->>'sourceUrl' AS "sourceUrl",
-            evidence_json->-1->>'excerpt' AS excerpt,
-            evidence_json->-1->'locator'->>'section' AS section,
-            evidence_json->-1->'advisoryIds' AS "advisoryIds",
-            evidence_json->-1->>'severity' AS severity
+            src.item->>'sourceUrl' AS "sourceUrl",
+            src.item->>'excerpt' AS excerpt,
+            src.item->'locator'->>'section' AS section,
+            src.item->'advisoryIds' AS "advisoryIds",
+            src.item->>'severity' AS severity
      FROM claims
+     LEFT JOIN LATERAL (
+       SELECT e.item FROM jsonb_array_elements(claims.evidence_json) WITH ORDINALITY AS e(item, n)
+       WHERE COALESCE(e.item->>'method', '') NOT IN ('user_confirmation', 'user_refutation', 'corroboration', 'executed')
+       ORDER BY e.n DESC LIMIT 1
+     ) src ON TRUE
      WHERE subject = ANY($1) AND brief_id IS NULL AND status <> 'refuted'
        AND (kind IN ('vulnerability', 'known_issue', 'licence_conflict')
             OR (kind = 'capability' AND evidence_json @> '[{"method": "docs_quote"}]'::jsonb)

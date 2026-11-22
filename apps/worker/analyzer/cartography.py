@@ -12,6 +12,10 @@ class RepositoryCartographer:
         lines = []
         exclude_dirs = {".git", "node_modules", "dist", "build", "venv", ".venv", "__pycache__", "target"}
 
+        def shown(name: str) -> str:
+            # A name that is not valid UTF-8 (lone surrogates from the file system) would break the LLM request
+            return name.encode("utf-8", errors="replace").decode("utf-8")
+
         def walk(current_dir: Path, prefix: str = "", depth: int = 0):
             if depth > max_depth:
                 return
@@ -25,12 +29,12 @@ class RepositoryCartographer:
 
             for i, d in enumerate(dirs):
                 is_last_dir = (i == len(dirs) - 1) and len(files) == 0
-                lines.append(f"{prefix}{'└── ' if is_last_dir else '├── '}{d.name}/")
+                lines.append(f"{prefix}{'└── ' if is_last_dir else '├── '}{shown(d.name)}/")
                 walk(d, prefix + ("    " if is_last_dir else "│   "), depth + 1)
 
             for j, f in enumerate(files[:15]):  # Cap at 15 files per dir in tree
                 is_last = j == len(files) - 1
-                lines.append(f"{prefix}{'└── ' if is_last else '├── '}{f.name}")
+                lines.append(f"{prefix}{'└── ' if is_last else '├── '}{shown(f.name)}")
 
             if len(files) > 15:
                 lines.append(f"{prefix}    ... (+{len(files) - 15} more files)")

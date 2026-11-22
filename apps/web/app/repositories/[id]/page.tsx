@@ -204,7 +204,13 @@ export default function RepositoryDetailPage({ params }: { params: { id: string 
   // Capability deep links (#cap-…) resolve after data loads; fall back to a fuzzy name match.
   useEffect(() => {
     if (loadState !== 'ready' || typeof window === 'undefined') return;
-    const hash = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+    const rawHash = window.location.hash.replace(/^#/, '');
+    let hash = rawHash;
+    try {
+      hash = decodeURIComponent(rawHash);
+    } catch {
+      // A malformed escape (#cap-50%) keeps the raw hash instead of crashing the page
+    }
     if (!hash) return;
     let id = hash;
     if (!document.getElementById(id) && hash.startsWith('cap-')) {
