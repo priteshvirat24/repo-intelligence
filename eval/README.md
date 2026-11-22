@@ -127,7 +127,8 @@ python -m apps.worker.eval.report eval/results/suite-v1/<run>.json ...
 - **record:** calls GitHub and the search provider live and stores every response.
 - **replay:** serves only stored responses. A request missing from the snapshot fails that brief (`REPLAY_MISS`), because the run would no longer be comparable.
 - **fill:** serves stored responses and fetches only the missing ones, storing them. Use it when the system issues different requests than the recording (a changed planner, or the LLM choosing different queries). Requests both runs share still see the same recorded world; each result records how many responses were fetched live.
-- **LLM calls are never replayed.** They run live in every mode, so replay runs differ only by model nondeterminism. Run a configuration at least three times and compare means with their spread.
+- **LLM calls run live by default** (`--llm live`), so replay runs differ by model nondeterminism. Run a configuration at least three times and compare means with their spread.
+- **`--llm snapshot`** records and replays LLM completions too, with the same `--mode`. A replay run is then fully deterministic, costs nothing, and needs no `LLM_API_KEY` (the provider is created only when an answer must be fetched). Use it to check that a change to code after the LLM (ranking, shortlist, scoring) behaves the same, and for fast repeat runs. It does not measure model variance: a change that alters a prompt or the requests the LLM sees misses the snapshot (`REPLAY_MISS`), so use `fill` for those. Replayed completions are not metered, so `llmCalls` in the result counts only answers fetched live; `llmSnapshot` reports how many were recorded, replayed or fetched.
 - **`--requirements-from`** reuses an earlier run's decomposition. Use it when a change concerns discovery or ranking, so decomposition noise does not mask the difference.
 
 ### Ranking features and controlled evolution (Phase 5)
@@ -164,5 +165,7 @@ Classification accuracy and requirement coverage need the six-class blueprint (P
 ## Snapshots
 
 Snapshots are content-addressed JSON files, keyed by a hash of method, URL and request body. Request headers are never stored, and credential fields are removed from bodies before hashing, so snapshots contain no tokens.
+
+LLM completions (`--llm snapshot`) are kept under `snapshots/<suite>/llm/`, keyed by a hash of provider, model, system prompt and user prompt. Only the answers are stored, one per occurrence of the same request, so a retry replays what the recording saw. A changed model name is a different key.
 
 They are not committed (a few MB per brief). Until they move to object storage (Phase 1), a replay run is reproducible only on the machine that recorded it. Each result file records how many responses were recorded or replayed.

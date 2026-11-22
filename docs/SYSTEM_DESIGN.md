@@ -440,7 +440,7 @@ The full plan is [EVALUATION_PLAN.md](EVALUATION_PLAN.md). This section records 
 | B1 first default (`cfg-02b30c8854db`) | 0.111 (0.104–0.116) | 0.091 |
 | Integrated default after P2–P6 (`cfg-66b9cecdb37a`) | 0.341 (0.305–0.365) | 0.255 (0.243–0.276) |
 
-**Reproducibility [A5] (built):** record, replay and fill modes serve GitHub and search responses from a content-addressed snapshot. LLM calls always run live. Snapshots hold no credentials. They are not committed, so a replay is reproducible only on the recording machine until they move to object storage (gap).
+**Reproducibility [A5] (built):** record, replay and fill modes serve GitHub and search responses from a content-addressed snapshot. LLM calls run live by default; with `--llm snapshot` completions are recorded and replayed as well (keyed by provider, model and prompts), so a replay can be deterministic and needs no API key. Snapshots hold no credentials. They are not committed, so a replay is reproducible only on the recording machine until they move to object storage (gap).
 
 **What the suite still needs (gap) [D§12]:** independent labels by two people with agreement reported; the adversarial cases D§12 lists; build tasks with acceptance tests; the held-out set [D§14.12]; every observed failure as a regression case; and a manual-research baseline, without which no superiority claim is made [D§1, D§12].
 

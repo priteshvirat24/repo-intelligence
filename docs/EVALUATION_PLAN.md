@@ -203,7 +203,7 @@ Needed before any claim that Open Eye beats manual research [D§12]. A fair run:
 ### 5.1 Record and replay
 
 - **record** stores every GitHub and search-provider response in a content-addressed snapshot (hash of method, URL and body without credential fields; no headers). **replay** serves only the snapshot and fails a brief on a miss. **fill** serves the snapshot and records only missing requests.
-- **LLM calls are never replayed.** They run live in every mode, so replay runs still differ by model nondeterminism.
+- **LLM calls run live by default**, so replay runs still differ by model nondeterminism. With `--llm snapshot` completions are recorded and replayed too (keyed by provider, model and prompts), which makes a replay run deterministic and free; it is for checking changes downstream of the LLM, not for measuring model variance.
 - `--requirements-from` reuses one decomposition so discovery changes are not masked by decomposition noise.
 - **Gap:** snapshots are not committed and live on the recording machine, so replay is reproducible only there. They move to object storage, and each result file records the snapshot's hash.
 

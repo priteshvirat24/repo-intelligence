@@ -135,3 +135,95 @@ def test_trap_rejection_among_surfaced_traps():
     assert never_found["trapRejection"] == 1.0 and never_found["trapRejectionSurfaced"] is None
     agg = aggregate([found_and_kept_out, never_found, score_brief(BRIEF, ["org/trap"], shortlisted=["org/trap"])])
     assert (agg["trapsSurfaced"], agg["trapsShortlisted"], agg["trapRejectionSurfaced"]) == (2, 1, 0.5)
+
+
+# LLM record and replay
+
+class CountingLLM:
+    """A stand-in provider: numbered answers, so replay can be told apart from a fresh call."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def complete(self, prompt, system=None):
+        self.calls += 1
+        return f"answer {self.calls} to {prompt}"
+
+
+def recording_llm(tmp_path, mode, inner):
+    from apps.worker.eval.recording import LLMSnapshot, RecordingLLM
+    snapshot = LLMSnapshot(str(tmp_path / "llm"), mode)
+    return RecordingLLM(inner, snapshot, "mistral", "ministral-8b-latest"), snapshot
+
+
+def test_llm_record_then_replay_needs_no_provider(tmp_path):
+    real = CountingLLM()
+    llm, snap = recording_llm(tmp_path, "record", real)
+    first = llm.complete("plan queries", "system A")
+    assert real.calls == 1 and snap.recorded == 1
+
+    def no_provider():
+        raise AssertionError("replay must not create the real provider")
+
+    replay, rsnap = recording_llm(tmp_path, "replay", no_provider)
+    assert replay.complete("plan queries", "system A") == first
+    assert rsnap.replayed == 1 and rsnap.fetched == 0
+    # extract_structured goes through complete, so it is replayed too
+    assert replay.model == "ministral-8b-latest"
+
+
+def test_llm_repeated_prompts_replay_each_recorded_answer_in_order(tmp_path):
+    llm, _ = recording_llm(tmp_path, "record", CountingLLM())
+    answers = [llm.complete("same"), llm.complete("same")]
+    assert answers[0] != answers[1]
+    replay, _ = recording_llm(tmp_path, "replay", CountingLLM())
+    assert [replay.complete("same"), replay.complete("same")] == answers
+    from apps.worker.eval.recording import ReplayMiss
+    with pytest.raises(ReplayMiss, match="occurrence 3"):
+        replay.complete("same")
+
+
+def test_llm_replay_misses_a_changed_prompt_system_or_model(tmp_path):
+    from apps.worker.eval.recording import LLMSnapshot, RecordingLLM, ReplayMiss
+    llm, _ = recording_llm(tmp_path, "record", CountingLLM())
+    llm.complete("prompt", "system")
+    replay, _ = recording_llm(tmp_path, "replay", CountingLLM())
+    for prompt, system in (("prompt!", "system"), ("prompt", "other system")):
+        with pytest.raises(ReplayMiss):
+            replay.complete(prompt, system)
+    other_model = RecordingLLM(CountingLLM(), LLMSnapshot(str(tmp_path / "llm"), "replay"), "mistral", "mistral-large-latest")
+    with pytest.raises(ReplayMiss):
+        other_model.complete("prompt", "system")
+
+
+def test_llm_fill_serves_recorded_and_fetches_only_missing(tmp_path):
+    llm, _ = recording_llm(tmp_path, "record", CountingLLM())
+    recorded = llm.complete("known")
+    real = CountingLLM()
+    fill, snap = recording_llm(tmp_path, "fill", real)
+    assert fill.complete("known") == recorded
+    fresh = fill.complete("new")
+    assert real.calls == 1 and snap.replayed == 1 and snap.recorded == 1
+    replay, _ = recording_llm(tmp_path, "replay", CountingLLM())
+    assert replay.complete("new") == fresh
+
+
+def test_llm_snapshots_store_no_prompt_text_and_skip_failures(tmp_path):
+    from apps.worker.eval.recording import ReplayMiss
+
+    class Failing:
+        def complete(self, prompt, system=None):
+            raise RuntimeError("LLM_UNAVAILABLE: provider down")
+
+    llm, snap = recording_llm(tmp_path, "record", Failing())
+    with pytest.raises(RuntimeError):
+        llm.complete("secret-looking prompt text")
+    assert snap.recorded == 0 and not list((tmp_path / "llm").rglob("*.json"))
+    replay, _ = recording_llm(tmp_path, "replay", CountingLLM())
+    with pytest.raises(ReplayMiss):
+        replay.complete("secret-looking prompt text")
+    ok, _ = recording_llm(tmp_path, "record", CountingLLM())
+    ok.complete("secret-looking prompt text")
+    [stored] = list((tmp_path / "llm").rglob("*.json"))
+    text = stored.read_text()
+    assert "secret-looking prompt text" not in text.split('"responses"')[0]  # only the answer is kept, not the prompt

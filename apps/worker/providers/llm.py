@@ -168,6 +168,14 @@ def _completion_text(data: Dict[str, Any]) -> str:
     return choice["message"]["content"]
 
 
+_DEFAULT_MODELS = {"mistral": "mistral-small-latest", "openai": "gpt-4o-mini"}
+
+
+def configured_model(model: Optional[str] = None) -> Optional[str]:
+    """The model get_llm_provider() would use, without creating a provider (replay runs need no API key)."""
+    return model or config.LLM_MODEL or _DEFAULT_MODELS.get(config.LLM_PROVIDER.strip())
+
+
 def get_llm_provider(model: Optional[str] = None) -> BaseLLMProvider:
     """Returns the configured real LLM provider. There is deliberately no mock fallback.
     model overrides LLM_MODEL (model routing from the active tuning)."""
@@ -177,7 +185,7 @@ def get_llm_provider(model: Optional[str] = None) -> BaseLLMProvider:
     if not api_key:
         raise RuntimeError("LLM_API_KEY is not set; refusing to analyze repositories without a real LLM provider.")
     if provider == "mistral":
-        return MistralLLMProvider(api_key=api_key, model=model or config.LLM_MODEL or "mistral-small-latest")
+        return MistralLLMProvider(api_key=api_key, model=configured_model(model))
     if provider == "openai":
-        return OpenAILLMProvider(api_key=api_key, model=model or config.LLM_MODEL or "gpt-4o-mini")
+        return OpenAILLMProvider(api_key=api_key, model=configured_model(model))
     raise RuntimeError(f"Unsupported LLM_PROVIDER={provider!r}; expected 'mistral' or 'openai'.")

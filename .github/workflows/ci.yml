@@ -1,0 +1,81 @@
+# Tests and type checks on every push to main and every pull request.
+# The worker suite runs against a real Postgres with pgvector (migrations applied first), the same as
+# docker-compose.yml. No secrets are needed: the tests use fakes for every LLM, embedding and sandbox call,
+# except the docker sandbox test, which runs a real container on the runner's docker daemon.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker:
+    name: Worker tests (Python + Postgres)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: openeye_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/openeye_test
+      # The database client prefers the pooled URL; both point at the service
+      DATABASE_POOLED_URL: postgresql://postgres:postgres@localhost:5432/openeye_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # the worker image's version (apps/worker/Dockerfile)
+          cache: pip
+          cache-dependency-path: apps/worker/requirements.txt
+      - run: pip install -r apps/worker/requirements.txt
+
+      - name: Apply migrations
+        run: pnpm --filter @repo/database migrate
+
+      - name: Worker tests
+        run: python -m pytest tests/worker -q -rfE
+
+  web:
+    name: Web tests and type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        working-directory: apps/web
+        run: npx tsc --noEmit -p .
+
+      - name: Web tests
+        working-directory: apps/web
+        run: npx tsx --test ../../tests/web/*.ts

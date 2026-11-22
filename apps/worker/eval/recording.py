@@ -3,7 +3,8 @@ Record/replay of external HTTP responses for reproducible evaluation (SYSTEM_DES
 
 The first live run of a suite records every response from GitHub and the search provider into a
 content-addressed snapshot; replay runs serve those responses, so two configurations are compared
-against the same external world. LLM calls are never recorded: they run live in every mode.
+against the same external world. LLM completions are recorded too when the run asks for it (LLMSnapshot,
+eval --llm snapshot); otherwise they run live in every mode.
 
 Snapshots never contain secrets: request headers (where tokens live) are not stored, and the request
 key is a hash of method, URL and a body with credential fields removed.
@@ -15,6 +16,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+
+from ..providers.llm import BaseLLMProvider
 
 # Body fields that carry credentials (Tavily sends api_key in the JSON body)
 _SECRET_BODY_FIELDS = {"api_key", "apiKey", "token", "access_token"}
@@ -89,3 +92,83 @@ class RecordingTransport(httpx.BaseTransport):
         # content is already decoded: drop the headers that would make httpx decode or size-check it again
         headers = {k: v for k, v in response.headers.items() if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")}
         return httpx.Response(response.status_code, headers=headers, content=response.content, request=request)
+
+
+class LLMSnapshot:
+    """Record/replay of LLM completions, beside the HTTP snapshot (eval --llm snapshot).
+
+    Each completion is stored under a hash of the provider, model, system prompt and user prompt. The prompt
+    text itself is not stored, and neither are API keys (they never reach this layer). A prompt asked several
+    times in one run keeps one answer per occurrence, so the n-th identical request replays the n-th recorded
+    answer and retries reproduce what the recording saw.
+
+    Modes match RecordingTransport: live, record, replay (a missing answer raises ReplayMiss) and fill. Replay
+    needs no API key: the real provider is only created when an answer has to be fetched.
+    """
+
+    def __init__(self, snapshot_dir: str, mode: str):
+        if mode not in ("live", "record", "replay", "fill"):
+            raise ValueError(f"Unknown mode {mode!r}")
+        self.dir = Path(snapshot_dir)
+        self.mode = mode
+        self.recorded = 0
+        self.replayed = 0
+        self.fetched = 0
+        self._occurrences: dict = {}
+        if mode in ("record", "fill"):
+            self.dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def key(provider: str, model: Optional[str], system: Optional[str], prompt: str) -> str:
+        material = json.dumps({"provider": provider, "model": model, "system": system, "prompt": prompt}, sort_keys=True)
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _path(self, key: str) -> Path:
+        return self.dir / key[:2] / f"{key}.json"
+
+    def complete(self, provider: str, model: Optional[str], prompt: str, system: Optional[str], fetch) -> str:
+        key = self.key(provider, model, system, prompt)
+        n = self._occurrences.get(key, 0)
+        self._occurrences[key] = n + 1
+        if self.mode == "live":
+            self.fetched += 1
+            return fetch()
+        path = self._path(key)
+        stored = json.loads(path.read_text()) if path.exists() else {"provider": provider, "model": model, "responses": []}
+        responses = stored["responses"]
+        # A slot is empty (None) when that occurrence failed live during the recording: it counts as missing
+        if self.mode in ("replay", "fill") and n < len(responses) and responses[n] is not None:
+            self.replayed += 1
+            return responses[n]
+        if self.mode == "replay":
+            raise ReplayMiss(f"No recorded LLM answer for {provider}/{model} (key {key[:12]}, occurrence {n + 1})")
+        text = fetch()  # an error propagates and nothing is stored: failures are not part of the recorded world
+        self.fetched += 1
+        if n < len(responses):
+            responses[n] = text  # record mode re-records over an older recording
+        else:
+            responses.extend([None] * (n - len(responses)))
+            responses.append(text)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(stored))
+        self.recorded += 1
+        return text
+
+
+class RecordingLLM(BaseLLMProvider):
+    """An LLM provider whose completions go through an LLMSnapshot. inner is the real provider, or a factory
+    for it, so replay never needs one."""
+
+    def __init__(self, inner, snapshot: LLMSnapshot, provider: str, model: Optional[str]):
+        self._inner = inner
+        self.snapshot = snapshot
+        self.provider = provider
+        self.model = model
+
+    def _real(self) -> BaseLLMProvider:
+        if callable(self._inner) and not isinstance(self._inner, BaseLLMProvider):
+            self._inner = self._inner()
+        return self._inner
+
+    def complete(self, prompt: str, system: Optional[str] = None) -> str:
+        return self.snapshot.complete(self.provider, self.model, prompt, system, lambda: self._real().complete(prompt, system))

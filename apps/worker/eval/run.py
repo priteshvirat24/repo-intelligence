@@ -9,8 +9,10 @@ Systems: b0 (plain search baseline), b0s (the same, GitHub sorted by stars) and 
 task, then discovery with the given tuning). Modes: record (live, storing every GitHub/search response), replay (serving the snapshot;
 a missing response fails that brief), fill (serving the snapshot and recording what is missing) and live.
 
-LLM calls always run live; their tokens land in provider_usage under scope eval/<run id>:<brief>, and
-the run's cost is read back from there. Results go to eval/results/<suite version>/<run id>.json.
+LLM calls run live by default; their tokens land in provider_usage under scope eval/<run id>:<brief>, and
+the run's cost is read back from there. With --llm snapshot they are recorded and replayed like the HTTP
+responses (same --mode), so a replay run is fully deterministic, costs nothing and needs no API key; replayed
+completions are not metered, so its llmCalls count only the answers fetched live. Results go to eval/results/<suite version>/<run id>.json.
 """
 import argparse
 import json
@@ -33,11 +35,11 @@ from ..connectors.gateway import Gateway, MemoryCache
 from ..connectors.registry import Connectors
 from ..evolution import offline
 from ..providers import ledger
-from ..providers.llm import get_llm_provider
+from ..providers.llm import configured_model, get_llm_provider
 from ..tuning import default_tuning, load_tuning_file
 from ..understanding import understand
 from .baselines import run_b0
-from .recording import RecordingTransport, ReplayMiss
+from .recording import LLMSnapshot, RecordingLLM, RecordingTransport, ReplayMiss
 from .suite import aggregate, load_suite, score_brief
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -50,10 +52,10 @@ def git_commit() -> str:
         return "unknown"
 
 
-def decompose(briefs: List[Dict[str, Any]], out_dir: Path, run_id: str):
+def decompose(briefs: List[Dict[str, Any]], out_dir: Path, run_id: str, make_llm=get_llm_provider):
     """B1 step 1: the production understanding task (apps/worker/understanding.py) for every brief."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    llm = get_llm_provider()
+    llm = make_llm()
     for brief in briefs:
         started = time.time()
         with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}"):
@@ -110,6 +112,9 @@ def main(argv: List[str] = None) -> int:
     parser.add_argument("--requirements-from", help="Reuse the decomposition of an earlier B1 run instead of decomposing again")
     parser.add_argument("--briefs", help="Comma-separated brief ids (default: all)")
     parser.add_argument("--note", default="")
+    parser.add_argument("--llm", choices=["live", "snapshot"], default="live",
+                        help="live: LLM calls always run live (the default). snapshot: record and replay them with --mode, "
+                             "beside the HTTP snapshot (eval/snapshots/<suite>/llm)")
     parser.add_argument("--registries", action="store_true",
                         help="B1: also search npm and crates.io through the connector gateway (recorded and replayed like GitHub)")
     args = parser.parse_args(argv)
@@ -127,6 +132,13 @@ def main(argv: List[str] = None) -> int:
     results_dir.mkdir(parents=True, exist_ok=True)
 
     transport = RecordingTransport(str(snapshot_dir), args.mode)
+    llm_snapshot = LLMSnapshot(str(snapshot_dir / "llm"), args.mode if args.llm == "snapshot" else "live")
+
+    def make_llm():
+        if args.llm == "live":
+            return get_llm_provider()
+        # The real provider is created only when an answer must be fetched: replay needs no API key
+        return RecordingLLM(get_llm_provider, llm_snapshot, config.LLM_PROVIDER.strip(), configured_model())
     http = httpx.Client(transport=transport, timeout=30.0)
     db = DatabaseRepository()
     sink = ledger.DatabaseSink(db)
@@ -138,7 +150,7 @@ def main(argv: List[str] = None) -> int:
             requirements_dir = work_dir / args.requirements_from / "requirements"
         else:
             requirements_dir = work_dir / run_id / "requirements"
-            decompose(briefs, requirements_dir, run_id)
+            decompose(briefs, requirements_dir, run_id, make_llm)
 
     per_brief = []
     for brief in briefs:
@@ -154,7 +166,7 @@ def main(argv: List[str] = None) -> int:
                 # Registry requests share the recording client; the cache is per run, so replay sees every request
                 registries = (RegistrySearch(Connectors(Gateway(http=http, cache=MemoryCache(), sleep=pacing(transport, args.mode))), github,
                                              decomposition["requirements"], tuning) if args.registries else None)
-                runner = DiscoveryRunner(get_llm_provider(), github, tuning=tuning, sleep=pacing(transport, args.mode), registry_search=registries)
+                runner = DiscoveryRunner(make_llm(), github, tuning=tuning, sleep=pacing(transport, args.mode), registry_search=registries)
                 with ledger.ledger_scope(scope_type="eval", scope_id=f"{run_id}:{brief['id']}", tuning_version=tuning.version):
                     result = runner.run(decomposition["requirements"])
                 out = {
@@ -218,6 +230,8 @@ def main(argv: List[str] = None) -> int:
             "costCents": round(sum(llm_costs), 4) if all(c is not None for c in llm_costs) else None,
         },
         "snapshot": {"recorded": transport.recorded, "replayed": transport.replayed, "fetchedLive": transport.fetched},
+        "llm": args.llm,
+        "llmSnapshot": {"recorded": llm_snapshot.recorded, "replayed": llm_snapshot.replayed, "fetchedLive": llm_snapshot.fetched},
         "briefs": per_brief,
     }
     out_path = results_dir / f"{run_id}.json"
